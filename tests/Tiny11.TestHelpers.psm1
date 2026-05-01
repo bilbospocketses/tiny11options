@@ -4,7 +4,7 @@ function Import-Tiny11Module {
     param([Parameter(Mandatory)][string]$Name)
     $modulePath = "$PSScriptRoot/../src/$Name.psm1"
     if (-not (Test-Path $modulePath)) { throw "Module not found: $modulePath" }
-    Import-Module $modulePath -Force -DisableNameChecking
+    Import-Module $modulePath -Force -DisableNameChecking -Global
 }
 function New-TempScratchDir {
     $tmp = Join-Path $env:TEMP "tiny11test-$([guid]::NewGuid())"

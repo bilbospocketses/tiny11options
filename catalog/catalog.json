@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "id": "store-apps",
+      "displayName": "Microsoft Store apps",
+      "description": "Pre-installed Store apps that can be safely removed."
+    }
+  ],
+  "items": [
+    {
+      "id": "remove-clipchamp",
+      "category": "store-apps",
+      "displayName": "Clipchamp video editor",
+      "description": "The Clipchamp video editor app.",
+      "default": "apply",
+      "runtimeDepsOn": [],
+      "actions": [
+        { "type": "provisioned-appx", "packagePrefix": "Clipchamp.Clipchamp" }
+      ]
+    }
+  ]
+}
