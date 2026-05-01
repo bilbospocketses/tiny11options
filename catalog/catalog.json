@@ -1,23 +1,189 @@
 {
   "version": 1,
   "categories": [
-    {
-      "id": "store-apps",
-      "displayName": "Microsoft Store apps",
-      "description": "Pre-installed Store apps that can be safely removed."
-    }
+    { "id": "store-apps",        "displayName": "Microsoft Store apps",          "description": "Pre-installed Store apps that can be safely removed." },
+    { "id": "xbox-and-gaming",   "displayName": "Xbox and gaming",                "description": "Xbox app, gaming overlays, and bundled games." },
+    { "id": "communication",     "displayName": "Communication apps",             "description": "Mail, Skype, Teams, People, and other messaging apps." },
+    { "id": "edge-and-webview",  "displayName": "Microsoft Edge and WebView",     "description": "Microsoft Edge browser, Edge Update, EdgeCore, and the Edge WebView runtime." },
+    { "id": "onedrive",          "displayName": "OneDrive",                       "description": "OneDrive setup binary and folder-backup policy." },
+    { "id": "telemetry",         "displayName": "Telemetry and diagnostics",      "description": "Diagnostic data collection, advertising ID, input personalization, and related scheduled tasks." },
+    { "id": "sponsored",         "displayName": "Sponsored apps and suggestions", "description": "Pre-installed sponsored apps, Start menu suggestions, and consumer content delivery." },
+    { "id": "copilot-ai",        "displayName": "Copilot and AI features",        "description": "Windows Copilot app and policy keys that disable AI surfaces." },
+    { "id": "hardware-bypass",   "displayName": "Hardware requirement bypass",    "description": "Bypass TPM, Secure Boot, RAM, CPU, and storage checks for installation and upgrade." },
+    { "id": "oobe",              "displayName": "OOBE and system tweaks",         "description": "Out-of-box experience tweaks (local accounts, reserved storage, BitLocker auto-encryption, chat icon)." }
   ],
   "items": [
-    {
-      "id": "remove-clipchamp",
-      "category": "store-apps",
-      "displayName": "Clipchamp video editor",
-      "description": "The Clipchamp video editor app.",
-      "default": "apply",
-      "runtimeDepsOn": [],
-      "actions": [
-        { "type": "provisioned-appx", "packagePrefix": "Clipchamp.Clipchamp" }
-      ]
-    }
+    { "id": "remove-intelmanagement", "category": "store-apps", "displayName": "Intel Management and Security Status", "description": "Removes the AppUp.IntelManagementandSecurityStatus provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "AppUp.IntelManagementandSecurityStatus" } ] },
+    { "id": "remove-clipchamp", "category": "store-apps", "displayName": "Clipchamp video editor", "description": "Removes the Clipchamp.Clipchamp provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Clipchamp.Clipchamp" } ] },
+    { "id": "remove-dolby-access", "category": "store-apps", "displayName": "Dolby Access", "description": "Removes the DolbyLaboratories.DolbyAccess provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "DolbyLaboratories.DolbyAccess" } ] },
+    { "id": "remove-dolby-digital-plus", "category": "store-apps", "displayName": "Dolby Digital Plus Decoder (OEM)", "description": "Removes the DolbyLaboratories.DolbyDigitalPlusDecoderOEM provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "DolbyLaboratories.DolbyDigitalPlusDecoderOEM" } ] },
+    { "id": "remove-bing-news", "category": "store-apps", "displayName": "Bing News", "description": "Removes the Microsoft.BingNews provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.BingNews" } ] },
+    { "id": "remove-bing-search", "category": "store-apps", "displayName": "Bing Search", "description": "Removes the Microsoft.BingSearch provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.BingSearch" } ] },
+    { "id": "remove-bing-weather", "category": "store-apps", "displayName": "Bing Weather", "description": "Removes the Microsoft.BingWeather provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.BingWeather" } ] },
+    { "id": "remove-cross-device", "category": "store-apps", "displayName": "Cross Device", "description": "Removes the Microsoft.Windows.CrossDevice provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Windows.CrossDevice" } ] },
+    { "id": "remove-get-help", "category": "store-apps", "displayName": "Get Help", "description": "Removes the Microsoft.GetHelp provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.GetHelp" } ] },
+    { "id": "remove-getstarted", "category": "store-apps", "displayName": "Get Started (Tips)", "description": "Removes the Microsoft.Getstarted provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Getstarted" } ] },
+    { "id": "remove-3dviewer", "category": "store-apps", "displayName": "3D Viewer", "description": "Removes the Microsoft.Microsoft3DViewer provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Microsoft3DViewer" } ] },
+    { "id": "remove-office-hub", "category": "store-apps", "displayName": "Office Hub", "description": "Removes the Microsoft.MicrosoftOfficeHub provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.MicrosoftOfficeHub" } ] },
+    { "id": "remove-sticky-notes", "category": "store-apps", "displayName": "Sticky Notes", "description": "Removes the Microsoft.MicrosoftStickyNotes provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.MicrosoftStickyNotes" } ] },
+    { "id": "remove-mixed-reality", "category": "store-apps", "displayName": "Mixed Reality Portal", "description": "Removes the Microsoft.MixedReality.Portal provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.MixedReality.Portal" } ] },
+    { "id": "remove-mspaint", "category": "store-apps", "displayName": "MS Paint (legacy provisioning)", "description": "Removes the Microsoft.MSPaint provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.MSPaint" } ] },
+    { "id": "remove-onenote", "category": "store-apps", "displayName": "OneNote (Office)", "description": "Removes the Microsoft.Office.OneNote provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Office.OneNote" } ] },
+    { "id": "remove-office-push", "category": "store-apps", "displayName": "Office Push Notification Utility", "description": "Removes the Microsoft.OfficePushNotificationUtility provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.OfficePushNotificationUtility" } ] },
+    { "id": "remove-paint", "category": "store-apps", "displayName": "Paint (modern)", "description": "Removes the Microsoft.Paint provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Paint" } ] },
+    { "id": "remove-power-automate", "category": "store-apps", "displayName": "Power Automate Desktop", "description": "Removes the Microsoft.PowerAutomateDesktop provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.PowerAutomateDesktop" } ] },
+    { "id": "remove-start-experiences", "category": "store-apps", "displayName": "Start Experiences app", "description": "Removes the Microsoft.StartExperiencesApp provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.StartExperiencesApp" } ] },
+    { "id": "remove-todos", "category": "store-apps", "displayName": "Microsoft To Do", "description": "Removes the Microsoft.Todos provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Todos" } ] },
+    { "id": "remove-wallet", "category": "store-apps", "displayName": "Microsoft Wallet", "description": "Removes the Microsoft.Wallet provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Wallet" } ] },
+    { "id": "remove-devhome", "category": "store-apps", "displayName": "Dev Home", "description": "Removes the Microsoft.Windows.DevHome provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Windows.DevHome" } ] },
+    { "id": "remove-alarms", "category": "store-apps", "displayName": "Windows Alarms and Clock", "description": "Removes the Microsoft.WindowsAlarms provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.WindowsAlarms" } ] },
+    { "id": "remove-camera", "category": "store-apps", "displayName": "Windows Camera", "description": "Removes the Microsoft.WindowsCamera provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.WindowsCamera" } ] },
+    { "id": "remove-feedback-hub", "category": "store-apps", "displayName": "Feedback Hub", "description": "Removes the Microsoft.WindowsFeedbackHub provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.WindowsFeedbackHub" } ] },
+    { "id": "remove-maps", "category": "store-apps", "displayName": "Windows Maps", "description": "Removes the Microsoft.WindowsMaps provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.WindowsMaps" } ] },
+    { "id": "remove-sound-recorder", "category": "store-apps", "displayName": "Windows Sound Recorder", "description": "Removes the Microsoft.WindowsSoundRecorder provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.WindowsSoundRecorder" } ] },
+    { "id": "remove-windowsterminal", "category": "store-apps", "displayName": "Windows Terminal", "description": "Removes the Microsoft.WindowsTerminal provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.WindowsTerminal" } ] },
+    { "id": "remove-zune-music", "category": "store-apps", "displayName": "Groove Music (Zune)", "description": "Removes the Microsoft.ZuneMusic provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.ZuneMusic" } ] },
+    { "id": "remove-zune-video", "category": "store-apps", "displayName": "Movies and TV (Zune Video)", "description": "Removes the Microsoft.ZuneVideo provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.ZuneVideo" } ] },
+    { "id": "remove-family", "category": "store-apps", "displayName": "Microsoft Family", "description": "Removes the MicrosoftCorporationII.MicrosoftFamily provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "MicrosoftCorporationII.MicrosoftFamily" } ] },
+    { "id": "remove-quick-assist", "category": "store-apps", "displayName": "Quick Assist", "description": "Removes the MicrosoftCorporationII.QuickAssist provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "MicrosoftCorporationII.QuickAssist" } ] },
+
+    { "id": "remove-gaming-app", "category": "xbox-and-gaming", "displayName": "Xbox / Gaming app", "description": "Removes the Microsoft.GamingApp provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.GamingApp" } ] },
+    { "id": "remove-solitaire", "category": "xbox-and-gaming", "displayName": "Microsoft Solitaire Collection", "description": "Removes the Microsoft.MicrosoftSolitaireCollection provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.MicrosoftSolitaireCollection" } ] },
+    { "id": "remove-xbox-tcui", "category": "xbox-and-gaming", "displayName": "Xbox TCUI", "description": "Removes the Microsoft.Xbox.TCUI provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Xbox.TCUI" } ] },
+    { "id": "remove-xbox-app", "category": "xbox-and-gaming", "displayName": "Xbox app (Console Companion)", "description": "Removes the Microsoft.XboxApp provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.XboxApp" } ] },
+    { "id": "remove-xbox-game-overlay", "category": "xbox-and-gaming", "displayName": "Xbox Game Overlay", "description": "Removes the Microsoft.XboxGameOverlay provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.XboxGameOverlay" } ] },
+    { "id": "remove-xbox-gaming-overlay", "category": "xbox-and-gaming", "displayName": "Xbox Gaming Overlay (Game Bar)", "description": "Removes the Microsoft.XboxGamingOverlay provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.XboxGamingOverlay" } ] },
+    { "id": "remove-xbox-identity", "category": "xbox-and-gaming", "displayName": "Xbox Identity Provider", "description": "Removes the Microsoft.XboxIdentityProvider provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.XboxIdentityProvider" } ] },
+    { "id": "remove-xbox-speech", "category": "xbox-and-gaming", "displayName": "Xbox Speech-to-Text Overlay", "description": "Removes the Microsoft.XboxSpeechToTextOverlay provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.XboxSpeechToTextOverlay" } ] },
+    { "id": "remove-xbox-gamebar-549981", "category": "xbox-and-gaming", "displayName": "Xbox Game Bar (Microsoft.549981C3F5F10)", "description": "Removes the Microsoft.549981C3F5F10 provisioned package (Game Bar component).", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.549981C3F5F10" } ] },
+
+    { "id": "remove-outlook-for-windows", "category": "communication", "displayName": "Outlook for Windows (new)", "description": "Removes the Microsoft.OutlookForWindows provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.OutlookForWindows" } ] },
+    { "id": "remove-people", "category": "communication", "displayName": "People", "description": "Removes the Microsoft.People provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.People" } ] },
+    { "id": "remove-skype", "category": "communication", "displayName": "Skype", "description": "Removes the Microsoft.SkypeApp provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.SkypeApp" } ] },
+    { "id": "remove-windows-teams", "category": "communication", "displayName": "Windows Teams component", "description": "Removes the Microsoft.Windows.Teams provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Windows.Teams" } ] },
+    { "id": "remove-mail-calendar", "category": "communication", "displayName": "Mail and Calendar (Communications Apps)", "description": "Removes the microsoft.windowscommunicationsapps provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "microsoft.windowscommunicationsapps" } ] },
+    { "id": "remove-your-phone", "category": "communication", "displayName": "Phone Link (Your Phone)", "description": "Removes the Microsoft.YourPhone provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.YourPhone" } ] },
+    { "id": "remove-msteams", "category": "communication", "displayName": "Microsoft Teams (consumer, MSTeams)", "description": "Removes the MSTeams provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "MSTeams" } ] },
+    { "id": "remove-msteams-classic", "category": "communication", "displayName": "Microsoft Teams (classic, MicrosoftTeams)", "description": "Removes the MicrosoftTeams provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "MicrosoftTeams" } ] },
+    { "id": "tweak-prevent-teams-install", "category": "communication", "displayName": "Prevent Microsoft Teams from being installed", "description": "Sets HKLM\\SOFTWARE\\Policies\\Microsoft\\Teams!DisableInstallation=1.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Teams", "name": "DisableInstallation", "valueType": "REG_DWORD", "value": "1" } ] },
+    { "id": "tweak-prevent-new-outlook", "category": "communication", "displayName": "Prevent installation of New Outlook", "description": "Sets HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Mail!PreventRun=1.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Windows\\Windows Mail", "name": "PreventRun", "valueType": "REG_DWORD", "value": "1" } ] },
+    { "id": "tweak-prevent-outlook-update", "category": "communication", "displayName": "Block scheduled OutlookUpdate orchestrator", "description": "Marks the OutlookUpdate scheduled-update tasks as completed and removes the OOBE OutlookUpdate orchestrator key.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Orchestrator\\UScheduler_Oobe\\OutlookUpdate", "name": "workCompleted", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Orchestrator\\UScheduler\\OutlookUpdate", "name": "workCompleted", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "remove", "hive": "SOFTWARE", "key": "Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler_Oobe\\OutlookUpdate" }
+    ] },
+    { "id": "tweak-prevent-devhome-update", "category": "communication", "displayName": "Block scheduled DevHomeUpdate orchestrator", "description": "Marks the DevHomeUpdate scheduled-update task as completed and removes the OOBE DevHomeUpdate orchestrator key.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Orchestrator\\UScheduler\\DevHomeUpdate", "name": "workCompleted", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "remove", "hive": "SOFTWARE", "key": "Microsoft\\WindowsUpdate\\Orchestrator\\UScheduler_Oobe\\DevHomeUpdate" }
+    ] },
+
+    { "id": "remove-edge", "category": "edge-and-webview", "displayName": "Microsoft Edge (browser folders)", "description": "Removes Program Files (x86)\\Microsoft\\Edge, EdgeUpdate, and EdgeCore directories.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "filesystem", "op": "remove", "path": "Program Files (x86)\\Microsoft\\Edge", "recurse": true },
+      { "type": "filesystem", "op": "remove", "path": "Program Files (x86)\\Microsoft\\EdgeUpdate", "recurse": true },
+      { "type": "filesystem", "op": "remove", "path": "Program Files (x86)\\Microsoft\\EdgeCore", "recurse": true }
+    ] },
+    { "id": "remove-edge-webview", "category": "edge-and-webview", "displayName": "Microsoft Edge WebView runtime", "description": "Takes ownership of and removes the Windows\\System32\\Microsoft-Edge-Webview directory.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "filesystem", "op": "takeown-and-remove", "path": "Windows\\System32\\Microsoft-Edge-Webview", "recurse": true }
+    ] },
+    { "id": "tweak-remove-edge-uninstall-keys", "category": "edge-and-webview", "displayName": "Remove Edge uninstall registry entries", "description": "Removes the WOW6432Node Uninstall keys for Microsoft Edge and Microsoft Edge Update.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "remove", "hive": "SOFTWARE", "key": "WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Microsoft Edge" },
+      { "type": "registry", "op": "remove", "hive": "SOFTWARE", "key": "WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Microsoft Edge Update" }
+    ] },
+
+    { "id": "remove-onedrive-setup", "category": "onedrive", "displayName": "OneDrive setup binary", "description": "Takes ownership of and removes Windows\\System32\\OneDriveSetup.exe so OneDrive does not auto-install on first sign-in.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "filesystem", "op": "takeown-and-remove", "path": "Windows\\System32\\OneDriveSetup.exe", "recurse": false }
+    ] },
+    { "id": "tweak-disable-onedrive-folder-backup", "category": "onedrive", "displayName": "Disable OneDrive folder backup (DisableFileSyncNGSC)", "description": "Sets HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\OneDrive!DisableFileSyncNGSC=1.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Windows\\OneDrive", "name": "DisableFileSyncNGSC", "valueType": "REG_DWORD", "value": "1" }
+    ] },
+
+    { "id": "tweak-disable-telemetry", "category": "telemetry", "displayName": "Disable diagnostic data and input personalization", "description": "Disables advertising ID, tailored experiences, online speech privacy, input personalization, and the AllowTelemetry policy. Also stops dmwappushservice.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo", "name": "Enabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\Privacy", "name": "TailoredExperiencesWithDiagnosticDataEnabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Speech_OneCore\\Settings\\OnlineSpeechPrivacy", "name": "HasAccepted", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Input\\TIPC", "name": "Enabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\InputPersonalization", "name": "RestrictImplicitInkCollection", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\InputPersonalization", "name": "RestrictImplicitTextCollection", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\InputPersonalization\\TrainedDataStore", "name": "HarvestContacts", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Personalization\\Settings", "name": "AcceptedPrivacyPolicy", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Windows\\DataCollection", "name": "AllowTelemetry", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "SYSTEM",   "key": "ControlSet001\\Services\\dmwappushservice", "name": "Start", "valueType": "REG_DWORD", "value": "4" }
+    ] },
+    { "id": "disable-task-compat-appraiser", "category": "telemetry", "displayName": "Remove Microsoft Compatibility Appraiser scheduled task", "description": "Deletes the Microsoft\\Windows\\Application Experience\\Microsoft Compatibility Appraiser task definition file.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "scheduled-task", "op": "remove", "path": "Microsoft\\Windows\\Application Experience\\Microsoft Compatibility Appraiser", "recurse": false }
+    ] },
+    { "id": "disable-task-ceip", "category": "telemetry", "displayName": "Remove Customer Experience Improvement Program tasks", "description": "Recursively deletes the Microsoft\\Windows\\Customer Experience Improvement Program task folder.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "scheduled-task", "op": "remove", "path": "Microsoft\\Windows\\Customer Experience Improvement Program", "recurse": true }
+    ] },
+    { "id": "disable-task-program-data-updater", "category": "telemetry", "displayName": "Remove Program Data Updater scheduled task", "description": "Deletes the Microsoft\\Windows\\Application Experience\\ProgramDataUpdater task definition file.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "scheduled-task", "op": "remove", "path": "Microsoft\\Windows\\Application Experience\\ProgramDataUpdater", "recurse": false }
+    ] },
+    { "id": "disable-task-chkdsk-proxy", "category": "telemetry", "displayName": "Remove Chkdsk Proxy scheduled task", "description": "Deletes the Microsoft\\Windows\\Chkdsk\\Proxy task definition file.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "scheduled-task", "op": "remove", "path": "Microsoft\\Windows\\Chkdsk\\Proxy", "recurse": false }
+    ] },
+    { "id": "disable-task-werqueue", "category": "telemetry", "displayName": "Remove Windows Error Reporting QueueReporting task", "description": "Deletes the Microsoft\\Windows\\Windows Error Reporting\\QueueReporting task definition file.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "scheduled-task", "op": "remove", "path": "Microsoft\\Windows\\Windows Error Reporting\\QueueReporting", "recurse": false }
+    ] },
+
+    { "id": "tweak-disable-sponsored-apps", "category": "sponsored", "displayName": "Disable sponsored / OEM pre-installed apps", "description": "Disables OEM, pre-installed, silently-installed, and content-delivery sponsored apps; suppresses Start menu pin suggestions and SubscribedContent feeds.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "OemPreInstalledAppsEnabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "PreInstalledAppsEnabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SilentInstalledAppsEnabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Windows\\CloudContent", "name": "DisableWindowsConsumerFeatures", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "ContentDeliveryAllowed", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Microsoft\\PolicyManager\\current\\device\\Start", "name": "ConfigureStartPins", "valueType": "REG_SZ", "value": "{\"pinnedList\": [{}]}" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "FeatureManagementEnabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "PreInstalledAppsEverEnabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SoftLandingEnabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContentEnabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-310093Enabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-338388Enabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-338389Enabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-338393Enabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-353694Enabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-353696Enabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SystemPaneSuggestionsEnabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\PushToInstall", "name": "DisablePushToInstall", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\MRT", "name": "DontOfferThroughWUAU", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "remove", "hive": "NTUSER", "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager\\Subscriptions" },
+      { "type": "registry", "op": "remove", "hive": "NTUSER", "key": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager\\SuggestedApps" },
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Windows\\CloudContent", "name": "DisableConsumerAccountStateContent", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Windows\\CloudContent", "name": "DisableCloudOptimizedContent", "valueType": "REG_DWORD", "value": "1" }
+    ] },
+
+    { "id": "remove-copilot", "category": "copilot-ai", "displayName": "Microsoft Copilot app", "description": "Removes the Microsoft.Copilot provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Copilot" } ] },
+    { "id": "remove-windows-copilot", "category": "copilot-ai", "displayName": "Windows Copilot stub", "description": "Removes the Microsoft.Windows.Copilot provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "Microsoft.Windows.Copilot" } ] },
+    { "id": "tweak-disable-copilot", "category": "copilot-ai", "displayName": "Disable Windows Copilot and AI surfaces", "description": "Sets the TurnOffWindowsCopilot policy, disables the Edge Hubs sidebar, and disables Explorer search-box suggestions.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Windows\\WindowsCopilot", "name": "TurnOffWindowsCopilot", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Edge", "name": "HubsSidebarEnabled", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Windows\\Explorer", "name": "DisableSearchBoxSuggestions", "valueType": "REG_DWORD", "value": "1" }
+    ] },
+
+    { "id": "tweak-bypass-hardware-checks", "category": "hardware-bypass", "displayName": "Bypass TPM, Secure Boot, RAM, CPU, and storage checks", "description": "Writes the LabConfig and MoSetup keys plus UnsupportedHardwareNotificationCache flags so Setup proceeds on unsupported hardware.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "set", "hive": "DEFAULT", "key": "Control Panel\\UnsupportedHardwareNotificationCache", "name": "SV1", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "DEFAULT", "key": "Control Panel\\UnsupportedHardwareNotificationCache", "name": "SV2", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",  "key": "Control Panel\\UnsupportedHardwareNotificationCache", "name": "SV1", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",  "key": "Control Panel\\UnsupportedHardwareNotificationCache", "name": "SV2", "valueType": "REG_DWORD", "value": "0" },
+      { "type": "registry", "op": "set", "hive": "SYSTEM",  "key": "Setup\\LabConfig", "name": "BypassCPUCheck", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "SYSTEM",  "key": "Setup\\LabConfig", "name": "BypassRAMCheck", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "SYSTEM",  "key": "Setup\\LabConfig", "name": "BypassSecureBootCheck", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "SYSTEM",  "key": "Setup\\LabConfig", "name": "BypassStorageCheck", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "SYSTEM",  "key": "Setup\\LabConfig", "name": "BypassTPMCheck", "valueType": "REG_DWORD", "value": "1" },
+      { "type": "registry", "op": "set", "hive": "SYSTEM",  "key": "Setup\\MoSetup", "name": "AllowUpgradesWithUnsupportedTPMOrCPU", "valueType": "REG_DWORD", "value": "1" }
+    ] },
+
+    { "id": "tweak-bypass-nro", "category": "oobe", "displayName": "Enable local accounts during OOBE (BypassNRO)", "description": "Sets HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OOBE!BypassNRO=1 so the Network Requirement Override is bypassed and local accounts work in OOBE.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Microsoft\\Windows\\CurrentVersion\\OOBE", "name": "BypassNRO", "valueType": "REG_DWORD", "value": "1" }
+    ] },
+    { "id": "tweak-disable-reserved-storage", "category": "oobe", "displayName": "Disable reserved storage", "description": "Sets HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ReserveManager!ShippedWithReserves=0.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Microsoft\\Windows\\CurrentVersion\\ReserveManager", "name": "ShippedWithReserves", "valueType": "REG_DWORD", "value": "0" }
+    ] },
+    { "id": "tweak-disable-bitlocker-auto", "category": "oobe", "displayName": "Disable BitLocker automatic device encryption", "description": "Sets HKLM\\SYSTEM\\ControlSet001\\Control\\BitLocker!PreventDeviceEncryption=1 to avoid silent encryption on first boot.", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "set", "hive": "SYSTEM", "key": "ControlSet001\\Control\\BitLocker", "name": "PreventDeviceEncryption", "valueType": "REG_DWORD", "value": "1" }
+    ] },
+    { "id": "tweak-disable-chat-icon", "category": "oobe", "displayName": "Disable taskbar Chat icon", "description": "Hides the Teams Chat icon from the taskbar (ChatIcon=3, TaskbarMn=0).", "default": "apply", "runtimeDepsOn": [], "actions": [
+      { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Windows\\Windows Chat", "name": "ChatIcon", "valueType": "REG_DWORD", "value": "3" },
+      { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "TaskbarMn", "valueType": "REG_DWORD", "value": "0" }
+    ] }
   ]
 }

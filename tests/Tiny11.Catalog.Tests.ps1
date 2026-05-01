@@ -70,3 +70,40 @@ Describe "Real catalog file" {
         $cat.Items.Count | Should -BeGreaterThan 0
     }
 }
+
+Describe "Catalog completeness" {
+    BeforeAll { $script:cat = Get-Tiny11Catalog -Path "$PSScriptRoot/../catalog/catalog.json" }
+    It "has the expected 10 categories" {
+        $expected = @('store-apps','xbox-and-gaming','communication','edge-and-webview','onedrive','telemetry','sponsored','copilot-ai','hardware-bypass','oobe')
+        ($script:cat.Categories | ForEach-Object id) | Should -Be $expected
+    }
+    It "covers every package prefix from the legacy script" {
+        $legacyPrefixes = @(
+            'AppUp.IntelManagementandSecurityStatus','Clipchamp.Clipchamp','DolbyLaboratories.DolbyAccess',
+            'DolbyLaboratories.DolbyDigitalPlusDecoderOEM','Microsoft.BingNews','Microsoft.BingSearch',
+            'Microsoft.BingWeather','Microsoft.Copilot','Microsoft.Windows.CrossDevice','Microsoft.GamingApp',
+            'Microsoft.GetHelp','Microsoft.Getstarted','Microsoft.Microsoft3DViewer','Microsoft.MicrosoftOfficeHub',
+            'Microsoft.MicrosoftSolitaireCollection','Microsoft.MicrosoftStickyNotes','Microsoft.MixedReality.Portal',
+            'Microsoft.MSPaint','Microsoft.Office.OneNote','Microsoft.OfficePushNotificationUtility',
+            'Microsoft.OutlookForWindows','Microsoft.Paint','Microsoft.People','Microsoft.PowerAutomateDesktop',
+            'Microsoft.SkypeApp','Microsoft.StartExperiencesApp','Microsoft.Todos','Microsoft.Wallet',
+            'Microsoft.Windows.DevHome','Microsoft.Windows.Copilot','Microsoft.Windows.Teams',
+            'Microsoft.WindowsAlarms','Microsoft.WindowsCamera','microsoft.windowscommunicationsapps',
+            'Microsoft.WindowsFeedbackHub','Microsoft.WindowsMaps','Microsoft.WindowsSoundRecorder',
+            'Microsoft.WindowsTerminal','Microsoft.Xbox.TCUI','Microsoft.XboxApp','Microsoft.XboxGameOverlay',
+            'Microsoft.XboxGamingOverlay','Microsoft.XboxIdentityProvider','Microsoft.XboxSpeechToTextOverlay',
+            'Microsoft.YourPhone','Microsoft.ZuneMusic','Microsoft.ZuneVideo',
+            'MicrosoftCorporationII.MicrosoftFamily','MicrosoftCorporationII.QuickAssist',
+            'MSTeams','MicrosoftTeams','Microsoft.549981C3F5F10'
+        )
+        $catalogPrefixes = @()
+        foreach ($item in $script:cat.Items) {
+            foreach ($a in $item.actions) {
+                if ($a.type -eq 'provisioned-appx') { $catalogPrefixes += $a.packagePrefix }
+            }
+        }
+        foreach ($legacy in $legacyPrefixes) {
+            $catalogPrefixes | Should -Contain $legacy
+        }
+    }
+}

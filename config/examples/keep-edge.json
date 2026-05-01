@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "selections": {
+    "remove-edge": "skip",
+    "remove-edge-webview": "skip",
+    "tweak-remove-edge-uninstall-keys": "skip"
+  }
+}
