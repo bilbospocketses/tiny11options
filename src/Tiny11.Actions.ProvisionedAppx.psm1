@@ -18,8 +18,8 @@ function Invoke-ProvisionedAppxAction {
     [CmdletBinding()]
     param([Parameter(Mandatory)] $Action, [Parameter(Mandatory)][string]$ScratchDir)
     $packages = Get-ProvisionedAppxPackagesFromImage -ScratchDir $ScratchDir
-    $matches = $packages | Where-Object { $_ -like "*$($Action.packagePrefix)*" }
-    foreach ($pkg in $matches) { Invoke-DismRemoveAppx -ScratchDir $ScratchDir -PackageName $pkg }
+    $matchedPackages = $packages | Where-Object { $_ -like "*$($Action.packagePrefix)*" }
+    foreach ($pkg in $matchedPackages) { Invoke-DismRemoveAppx -ScratchDir $ScratchDir -PackageName $pkg }
 }
 
 Export-ModuleMember -Function Invoke-ProvisionedAppxAction, Get-ProvisionedAppxPackagesFromImage, Invoke-DismRemoveAppx

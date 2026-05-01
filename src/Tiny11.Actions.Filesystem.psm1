@@ -2,9 +2,9 @@ Set-StrictMode -Version Latest
 
 function Invoke-Takeown {
     param([Parameter(Mandatory)][string]$Path, [bool]$Recurse)
-    $args = @('/f', $Path)
-    if ($Recurse) { $args += '/r'; $args += '/d'; $args += 'Y' }
-    & 'takeown.exe' @args | Out-Null
+    $takeownArgs = @('/f', $Path)
+    if ($Recurse) { $takeownArgs += '/r'; $takeownArgs += '/d'; $takeownArgs += 'Y' }
+    & 'takeown.exe' @takeownArgs | Out-Null
 }
 
 function Invoke-Icacls {
