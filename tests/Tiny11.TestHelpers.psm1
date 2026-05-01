@@ -1,3 +1,5 @@
+Set-StrictMode -Version 3.0
+
 function Import-Tiny11Module {
     param([Parameter(Mandatory)][string]$Name)
     $modulePath = "$PSScriptRoot/../src/$Name.psm1"
