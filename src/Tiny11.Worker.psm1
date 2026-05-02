@@ -39,7 +39,8 @@ function Invoke-Tiny11BuildPipeline {
         [Parameter(Mandatory)] $Catalog,
         [Parameter(Mandatory)][hashtable]$ResolvedSelections,
         [Parameter(Mandatory)][scriptblock]$ProgressCallback,
-        [Parameter()]$CancellationToken = $null
+        [Parameter()]$CancellationToken = $null,
+        [Parameter()][bool]$FastBuild = $false
     )
 
     function CheckCancel { if ($CancellationToken -and $CancellationToken.IsCancellationRequested) { throw "Build cancelled by user" } }
@@ -55,12 +56,13 @@ function Invoke-Tiny11BuildPipeline {
         }
         CheckCancel
 
-        & $progress @{ phase='copy'; step='Copying ISO contents'; percent=5 }
+        & $progress @{ phase='copy'; step='Copying ISO contents (robocopy /MT:8)'; percent=5 }
         $tinyDir = Join-Path $ScratchDir 'tiny11'
         $scratchImg = Join-Path $ScratchDir 'scratchdir'
         New-Item -ItemType Directory -Force -Path "$tinyDir\sources" | Out-Null
         New-Item -ItemType Directory -Force -Path $scratchImg | Out-Null
-        Copy-Item -Path "$sourceRoot*" -Destination $tinyDir -Recurse -Force | Out-Null
+        & 'robocopy.exe' $sourceRoot.TrimEnd('\') $tinyDir '/MIR' '/MT:8' '/NFL' '/NDL' '/NJH' '/NJS' '/NP' '/NS' '/NC' | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "robocopy failed (exit $LASTEXITCODE) copying $sourceRoot to $tinyDir" }
         CheckCancel
 
         if ((Test-Path "$tinyDir\sources\install.esd") -and -not (Test-Path "$tinyDir\sources\install.wim")) {
@@ -83,16 +85,24 @@ function Invoke-Tiny11BuildPipeline {
         & $progress @{ phase='hives-unload'; step='Unloading hives'; percent=70 }
         Dismount-Tiny11AllHives
 
-        & $progress @{ phase='cleanup-image'; step='dism /Cleanup-Image /StartComponentCleanup /ResetBase'; percent=75 }
-        & 'dism.exe' "/Image:$scratchImg" '/Cleanup-Image' '/StartComponentCleanup' '/ResetBase' | Out-Null
+        if ($FastBuild) {
+            & $progress @{ phase='cleanup-image-skip'; step='Skipping /Cleanup-Image (FastBuild)'; percent=75 }
+        } else {
+            & $progress @{ phase='cleanup-image'; step='dism /Cleanup-Image /StartComponentCleanup /ResetBase'; percent=75 }
+            & 'dism.exe' "/Image:$scratchImg" '/Cleanup-Image' '/StartComponentCleanup' '/ResetBase' | Out-Null
+        }
 
         & $progress @{ phase='wim-save'; step='Dismounting install.wim (save)'; percent=80 }
         Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
 
-        & $progress @{ phase='export'; step='Exporting install.wim with recovery compression'; percent=85 }
-        & 'dism.exe' '/Export-Image' "/SourceImageFile:$tinyDir\sources\install.wim" "/SourceIndex:$ImageIndex" "/DestinationImageFile:$tinyDir\sources\install2.wim" '/Compress:recovery' | Out-Null
-        Remove-Item -Path "$tinyDir\sources\install.wim" -Force | Out-Null
-        Rename-Item -Path "$tinyDir\sources\install2.wim" -NewName 'install.wim' | Out-Null
+        if ($FastBuild) {
+            & $progress @{ phase='export-skip'; step='Skipping /Export-Image recovery compression (FastBuild)'; percent=85 }
+        } else {
+            & $progress @{ phase='export'; step='Exporting install.wim with recovery compression'; percent=85 }
+            & 'dism.exe' '/Export-Image' "/SourceImageFile:$tinyDir\sources\install.wim" "/SourceIndex:$ImageIndex" "/DestinationImageFile:$tinyDir\sources\install2.wim" '/Compress:recovery' | Out-Null
+            Remove-Item -Path "$tinyDir\sources\install.wim" -Force | Out-Null
+            Rename-Item -Path "$tinyDir\sources\install2.wim" -NewName 'install.wim' | Out-Null
+        }
 
         & $progress @{ phase='bootwim'; step='Applying hardware-bypass tweaks to boot.wim'; percent=88 }
         $bootWim = "$tinyDir\sources\boot.wim"

@@ -38,6 +38,7 @@ param(
     [string]$ScratchDir,
     [string]$OutputPath,
     [switch]$NonInteractive,
+    [switch]$FastBuild,
     [switch]$Internal
 )
 
@@ -109,6 +110,7 @@ if ($nonInteractive) {
         -Source $Source -ImageIndex $ImageIndex -ScratchDir $ScratchDir `
         -OutputPath $OutputPath -UnmountSource $true `
         -Catalog $catalog -ResolvedSelections $resolved `
+        -FastBuild ([bool]$FastBuild) `
         -ProgressCallback { param($p) Write-Output "[$($p.phase)] $($p.step) ($($p.percent)%)" }
 
     Write-Output "Build complete: $OutputPath"

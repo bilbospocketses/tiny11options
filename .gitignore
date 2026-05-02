@@ -1,0 +1,7 @@
+# scratch / test artifacts
+*.iso
+oscdimg-cache/
+scratchdir/
+tiny11/
+tiny11_*.log
+autounattend.xml
