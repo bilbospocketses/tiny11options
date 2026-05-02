@@ -30,11 +30,6 @@ $EmbeddedTemplate = @'
                     </InstallFrom>
                 </OSImage>
             </ImageInstall>
-            <UserData>
-                <ProductKey>
-                    <Key/>
-                </ProductKey>
-            </UserData>
         </component>
     </settings>
 </unattend>
