@@ -47,9 +47,9 @@ function Invoke-Tiny11BuildPipeline {
     $progress = { param($p) & $ProgressCallback $p }
     & $progress @{ phase='start'; step='Mounting source'; percent=0 }
 
-    $source = Mount-Tiny11Source -InputPath $Source
+    $mountResult = Mount-Tiny11Source -InputPath $Source
     try {
-        $sourceRoot = "$($source.DriveLetter):\"
+        $sourceRoot = "$($mountResult.DriveLetter):\"
         if (-not (Test-Path "$sourceRoot\sources\install.wim") -and -not (Test-Path "$sourceRoot\sources\install.esd")) {
             throw "No install.wim or install.esd at $sourceRoot\sources"
         }
@@ -125,9 +125,9 @@ function Invoke-Tiny11BuildPipeline {
 
         & $progress @{ phase='complete'; step='Build complete'; percent=100; outputPath=$OutputPath }
     } finally {
-        if ($source.MountedByUs -and $UnmountSource) {
+        if ($mountResult.MountedByUs -and $UnmountSource) {
             & $progress @{ phase='unmount-source'; step='Unmounting source ISO'; percent=99 }
-            Dismount-Tiny11Source -IsoPath $source.IsoPath -MountedByUs:$source.MountedByUs -ForceUnmount:$UnmountSource
+            Dismount-Tiny11Source -IsoPath $mountResult.IsoPath -MountedByUs:$mountResult.MountedByUs -ForceUnmount:$UnmountSource
         }
         $tinyDir = Join-Path $ScratchDir 'tiny11'
         $scratchImg = Join-Path $ScratchDir 'scratchdir'
