@@ -23,3 +23,26 @@ Describe "Invoke-ProvisionedAppxAction" {
         Should -Invoke -CommandName 'Invoke-DismRemoveAppx' -ModuleName 'Tiny11.Actions.ProvisionedAppx' -Times 0
     }
 }
+
+Describe "Provisioned-appx package cache" {
+    BeforeEach {
+        Clear-Tiny11AppxPackageCache
+        Mock -CommandName 'Get-ProvisionedAppxPackagesFromImage' -ModuleName 'Tiny11.Actions.ProvisionedAppx' -MockWith {
+            @('Clipchamp.Clipchamp_x', 'Microsoft.BingNews_x', 'Microsoft.WindowsTerminal_x')
+        }
+        Mock -CommandName 'Invoke-DismRemoveAppx' -ModuleName 'Tiny11.Actions.ProvisionedAppx' -MockWith { }
+    }
+    It "enumerates packages only once across multiple actions on the same scratchdir" {
+        Invoke-ProvisionedAppxAction -Action @{ type='provisioned-appx'; packagePrefix='Clipchamp.Clipchamp' } -ScratchDir 'C:\s'
+        Invoke-ProvisionedAppxAction -Action @{ type='provisioned-appx'; packagePrefix='Microsoft.BingNews' } -ScratchDir 'C:\s'
+        Invoke-ProvisionedAppxAction -Action @{ type='provisioned-appx'; packagePrefix='Microsoft.WindowsTerminal' } -ScratchDir 'C:\s'
+        Should -Invoke -CommandName 'Get-ProvisionedAppxPackagesFromImage' -ModuleName 'Tiny11.Actions.ProvisionedAppx' -Times 1
+        Should -Invoke -CommandName 'Invoke-DismRemoveAppx' -ModuleName 'Tiny11.Actions.ProvisionedAppx' -Times 3
+    }
+    It "re-enumerates after the cache is cleared" {
+        Invoke-ProvisionedAppxAction -Action @{ type='provisioned-appx'; packagePrefix='Clipchamp.Clipchamp' } -ScratchDir 'C:\s'
+        Clear-Tiny11AppxPackageCache
+        Invoke-ProvisionedAppxAction -Action @{ type='provisioned-appx'; packagePrefix='Microsoft.BingNews' } -ScratchDir 'C:\s'
+        Should -Invoke -CommandName 'Get-ProvisionedAppxPackagesFromImage' -ModuleName 'Tiny11.Actions.ProvisionedAppx' -Times 2
+    }
+}
