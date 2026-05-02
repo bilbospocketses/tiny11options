@@ -30,6 +30,11 @@ $EmbeddedTemplate = @'
                     </InstallFrom>
                 </OSImage>
             </ImageInstall>
+            <UserData>
+                <ProductKey>
+                    <Key>{{PRODUCT_KEY}}</Key>
+                </ProductKey>
+            </UserData>
         </component>
     </settings>
 </unattend>
@@ -54,7 +59,11 @@ function Render-Tiny11Autounattend {
 
 function Get-Tiny11AutounattendBindings {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][hashtable]$ResolvedSelections, [Parameter(Mandatory)][int]$ImageIndex)
+    param(
+        [Parameter(Mandatory)][hashtable]$ResolvedSelections,
+        [Parameter(Mandatory)][int]$ImageIndex,
+        [Parameter()][string]$ProductKey = ''
+    )
     function State($id) { if ($ResolvedSelections.ContainsKey($id)) { $ResolvedSelections[$id].EffectiveState } else { 'apply' } }
     $hideOnline = if ((State 'tweak-bypass-nro') -eq 'apply') { 'true' } else { 'false' }
     $chatAuto   = if ((State 'tweak-disable-chat-icon') -eq 'apply') { 'false' } else { 'true' }
@@ -64,6 +73,7 @@ function Get-Tiny11AutounattendBindings {
         CONFIGURE_CHAT_AUTO_INSTALL = $chatAuto
         COMPACT_INSTALL             = $compact
         IMAGE_INDEX                 = "$ImageIndex"
+        PRODUCT_KEY                 = $ProductKey
     }
 }
 

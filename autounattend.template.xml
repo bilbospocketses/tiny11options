@@ -27,6 +27,11 @@
                     </InstallFrom>
                 </OSImage>
             </ImageInstall>
+            <UserData>
+                <ProductKey>
+                    <Key>{{PRODUCT_KEY}}</Key>
+                </ProductKey>
+            </UserData>
         </component>
     </settings>
 </unattend>

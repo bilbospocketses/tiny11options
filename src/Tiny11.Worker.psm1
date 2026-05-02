@@ -3,6 +3,7 @@ Import-Module "$PSScriptRoot/Tiny11.Actions.psm1"        -Force -Global -Disable
 Import-Module "$PSScriptRoot/Tiny11.Hives.psm1"          -Force -Global -DisableNameChecking
 Import-Module "$PSScriptRoot/Tiny11.Iso.psm1"            -Force -Global -DisableNameChecking
 Import-Module "$PSScriptRoot/Tiny11.Autounattend.psm1"   -Force -Global -DisableNameChecking
+Import-Module "$PSScriptRoot/Tiny11.GenericKeys.psm1"    -Force -Global -DisableNameChecking
 
 function Get-Tiny11ApplyItems {
     [CmdletBinding()]
@@ -40,7 +41,8 @@ function Invoke-Tiny11BuildPipeline {
         [Parameter(Mandatory)][hashtable]$ResolvedSelections,
         [Parameter(Mandatory)][scriptblock]$ProgressCallback,
         [Parameter()]$CancellationToken = $null,
-        [Parameter()][bool]$FastBuild = $false
+        [Parameter()][bool]$FastBuild = $false,
+        [Parameter()][bool]$NoProductKey = $false
     )
 
     function CheckCancel { if ($CancellationToken -and $CancellationToken.IsCancellationRequested) { throw "Build cancelled by user" } }
@@ -117,9 +119,20 @@ function Invoke-Tiny11BuildPipeline {
         Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
 
         & $progress @{ phase='autounattend'; step='Rendering autounattend.xml'; percent=92 }
+        $productKey = ''
+        if (-not $NoProductKey) {
+            $editions = Get-Tiny11Editions -DriveLetter $mountResult.DriveLetter
+            $editionEntry = $editions | Where-Object { $_.ImageIndex -eq $ImageIndex } | Select-Object -First 1
+            if ($editionEntry) {
+                try { $productKey = Get-Tiny11GenericKey -EditionName $editionEntry.ImageName }
+                catch { Write-Warning "No generic install key for '$($editionEntry.ImageName)' — autounattend will ship without a product key. ($_)" }
+            } else {
+                Write-Warning "ImageIndex $ImageIndex not found in source editions; skipping generic-key injection."
+            }
+        }
         $tplLocal = Join-Path (Split-Path $Catalog.Path) '..\autounattend.template.xml' | Resolve-Path | Select-Object -ExpandProperty Path
         $tplResult = Get-Tiny11AutounattendTemplate -LocalPath $tplLocal
-        $bindings = Get-Tiny11AutounattendBindings -ResolvedSelections $ResolvedSelections -ImageIndex $ImageIndex
+        $bindings = Get-Tiny11AutounattendBindings -ResolvedSelections $ResolvedSelections -ImageIndex $ImageIndex -ProductKey $productKey
         $rendered = Render-Tiny11Autounattend -Template $tplResult.Content -Bindings $bindings
         Set-Content -Path "$tinyDir\autounattend.xml" -Value $rendered -Encoding UTF8
 
