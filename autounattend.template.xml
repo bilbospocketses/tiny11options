@@ -29,8 +29,10 @@
             </ImageInstall>
             <UserData>
                 <ProductKey>
-                    <Key/>
+                    <Key>{{PRODUCT_KEY}}</Key>
+                    <WillShowUI>Never</WillShowUI>
                 </ProductKey>
+                <AcceptEula>true</AcceptEula>
             </UserData>
         </component>
     </settings>

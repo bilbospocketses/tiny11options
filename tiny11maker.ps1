@@ -46,7 +46,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $srcDir = Join-Path $PSScriptRoot 'src'
-foreach ($mod in @('Tiny11.Catalog','Tiny11.Selections','Tiny11.Hives','Tiny11.Actions','Tiny11.Iso','Tiny11.Autounattend','Tiny11.Worker')) {
+foreach ($mod in @('Tiny11.Catalog','Tiny11.Selections','Tiny11.Hives','Tiny11.Actions','Tiny11.Iso','Tiny11.Autounattend','Tiny11.GenericKeys','Tiny11.Worker')) {
     Import-Module "$srcDir\$mod.psm1" -Force -DisableNameChecking
 }
 

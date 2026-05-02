@@ -32,8 +32,10 @@ $EmbeddedTemplate = @'
             </ImageInstall>
             <UserData>
                 <ProductKey>
-                    <Key/>
+                    <Key>{{PRODUCT_KEY}}</Key>
+                    <WillShowUI>Never</WillShowUI>
                 </ProductKey>
+                <AcceptEula>true</AcceptEula>
             </UserData>
         </component>
     </settings>
@@ -61,7 +63,8 @@ function Get-Tiny11AutounattendBindings {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$ResolvedSelections,
-        [Parameter(Mandatory)][int]$ImageIndex
+        [Parameter(Mandatory)][int]$ImageIndex,
+        [Parameter(Mandatory)][string]$ProductKey
     )
     function State($id) { if ($ResolvedSelections.ContainsKey($id)) { $ResolvedSelections[$id].EffectiveState } else { 'apply' } }
     $hideOnline = if ((State 'tweak-bypass-nro') -eq 'apply') { 'true' } else { 'false' }
@@ -72,6 +75,7 @@ function Get-Tiny11AutounattendBindings {
         CONFIGURE_CHAT_AUTO_INSTALL = $chatAuto
         COMPACT_INSTALL             = $compact
         IMAGE_INDEX                 = "$ImageIndex"
+        PRODUCT_KEY                 = $ProductKey
     }
 }
 
