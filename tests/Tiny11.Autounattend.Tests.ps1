@@ -23,7 +23,7 @@ Describe "Get-Tiny11AutounattendBindings" {
             'tweak-disable-chat-icon' = [pscustomobject]@{ EffectiveState='skip' }
             'tweak-compact-install'   = [pscustomobject]@{ EffectiveState='apply' }
         }
-        $b = Get-Tiny11AutounattendBindings -ResolvedSelections $resolved -ImageIndex 6 -ProductKey 'TEST-KEY'
+        $b = Get-Tiny11AutounattendBindings -ResolvedSelections $resolved -ImageIndex 6
         $b['HIDE_ONLINE_ACCOUNT_SCREENS'] | Should -Be 'true'
         $b['CONFIGURE_CHAT_AUTO_INSTALL'] | Should -Be 'true'
         $b['COMPACT_INSTALL']             | Should -Be 'true'

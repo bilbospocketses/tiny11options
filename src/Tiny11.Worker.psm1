@@ -3,7 +3,6 @@ Import-Module "$PSScriptRoot/Tiny11.Actions.psm1"        -Force -Global -Disable
 Import-Module "$PSScriptRoot/Tiny11.Hives.psm1"          -Force -Global -DisableNameChecking
 Import-Module "$PSScriptRoot/Tiny11.Iso.psm1"            -Force -Global -DisableNameChecking
 Import-Module "$PSScriptRoot/Tiny11.Autounattend.psm1"   -Force -Global -DisableNameChecking
-Import-Module "$PSScriptRoot/Tiny11.GenericKeys.psm1"    -Force -Global -DisableNameChecking
 
 function Get-Tiny11ApplyItems {
     [CmdletBinding()]
@@ -78,13 +77,9 @@ function Invoke-Tiny11BuildPipeline {
         Mount-WindowsImage -ImagePath "$tinyDir\sources\install.wim" -Index $ImageIndex -Path $scratchImg | Out-Null
 
         & $progress @{ phase='autounattend-render'; step='Rendering autounattend.xml'; percent=18 }
-        $editions = Get-Tiny11Editions -DriveLetter $mountResult.DriveLetter
-        $editionEntry = $editions | Where-Object { $_.ImageIndex -eq $ImageIndex } | Select-Object -First 1
-        if (-not $editionEntry) { throw "ImageIndex $ImageIndex not found in source ISO." }
-        $productKey = Get-Tiny11GenericKey -EditionName $editionEntry.ImageName
         $tplLocal = Join-Path (Split-Path $Catalog.Path) '..\autounattend.template.xml' | Resolve-Path | Select-Object -ExpandProperty Path
         $tplResult = Get-Tiny11AutounattendTemplate -LocalPath $tplLocal
-        $bindings = Get-Tiny11AutounattendBindings -ResolvedSelections $ResolvedSelections -ImageIndex $ImageIndex -ProductKey $productKey
+        $bindings = Get-Tiny11AutounattendBindings -ResolvedSelections $ResolvedSelections -ImageIndex $ImageIndex
         $renderedAutounattend = Render-Tiny11Autounattend -Template $tplResult.Content -Bindings $bindings
 
         & $progress @{ phase='autounattend-sysprep'; step='Injecting autounattend.xml into install.wim Sysprep'; percent=19 }
