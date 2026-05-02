@@ -3,7 +3,6 @@ Import-Module "$PSScriptRoot/Tiny11.Actions.psm1"        -Force -Global -Disable
 Import-Module "$PSScriptRoot/Tiny11.Hives.psm1"          -Force -Global -DisableNameChecking
 Import-Module "$PSScriptRoot/Tiny11.Iso.psm1"            -Force -Global -DisableNameChecking
 Import-Module "$PSScriptRoot/Tiny11.Autounattend.psm1"   -Force -Global -DisableNameChecking
-Import-Module "$PSScriptRoot/Tiny11.GenericKeys.psm1"    -Force -Global -DisableNameChecking
 
 function Get-Tiny11ApplyItems {
     [CmdletBinding()]
@@ -41,8 +40,7 @@ function Invoke-Tiny11BuildPipeline {
         [Parameter(Mandatory)][hashtable]$ResolvedSelections,
         [Parameter(Mandatory)][scriptblock]$ProgressCallback,
         [Parameter()]$CancellationToken = $null,
-        [Parameter()][bool]$FastBuild = $false,
-        [Parameter()][bool]$NoProductKey = $false
+        [Parameter()][bool]$FastBuild = $false
     )
 
     function CheckCancel { if ($CancellationToken -and $CancellationToken.IsCancellationRequested) { throw "Build cancelled by user" } }
@@ -77,6 +75,17 @@ function Invoke-Tiny11BuildPipeline {
         & $progress @{ phase='mount'; step='Mounting install.wim'; percent=15 }
         Set-ItemProperty -Path "$tinyDir\sources\install.wim" -Name IsReadOnly -Value $false
         Mount-WindowsImage -ImagePath "$tinyDir\sources\install.wim" -Index $ImageIndex -Path $scratchImg | Out-Null
+
+        & $progress @{ phase='autounattend-render'; step='Rendering autounattend.xml'; percent=18 }
+        $tplLocal = Join-Path (Split-Path $Catalog.Path) '..\autounattend.template.xml' | Resolve-Path | Select-Object -ExpandProperty Path
+        $tplResult = Get-Tiny11AutounattendTemplate -LocalPath $tplLocal
+        $bindings = Get-Tiny11AutounattendBindings -ResolvedSelections $ResolvedSelections -ImageIndex $ImageIndex
+        $renderedAutounattend = Render-Tiny11Autounattend -Template $tplResult.Content -Bindings $bindings
+
+        & $progress @{ phase='autounattend-sysprep'; step='Injecting autounattend.xml into install.wim Sysprep'; percent=19 }
+        $sysprepDir = Join-Path $scratchImg 'Windows\System32\Sysprep'
+        New-Item -ItemType Directory -Force -Path $sysprepDir | Out-Null
+        Set-Content -Path (Join-Path $sysprepDir 'autounattend.xml') -Value $renderedAutounattend -Encoding UTF8
 
         & $progress @{ phase='hives'; step='Loading offline registry hives'; percent=20 }
         Mount-Tiny11AllHives -ScratchDir $scratchImg
@@ -118,23 +127,8 @@ function Invoke-Tiny11BuildPipeline {
         Dismount-Tiny11AllHives
         Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
 
-        & $progress @{ phase='autounattend'; step='Rendering autounattend.xml'; percent=92 }
-        $productKey = ''
-        if (-not $NoProductKey) {
-            $editions = Get-Tiny11Editions -DriveLetter $mountResult.DriveLetter
-            $editionEntry = $editions | Where-Object { $_.ImageIndex -eq $ImageIndex } | Select-Object -First 1
-            if ($editionEntry) {
-                try { $productKey = Get-Tiny11GenericKey -EditionName $editionEntry.ImageName }
-                catch { Write-Warning "No generic install key for '$($editionEntry.ImageName)' — autounattend will ship without a product key. ($_)" }
-            } else {
-                Write-Warning "ImageIndex $ImageIndex not found in source editions; skipping generic-key injection."
-            }
-        }
-        $tplLocal = Join-Path (Split-Path $Catalog.Path) '..\autounattend.template.xml' | Resolve-Path | Select-Object -ExpandProperty Path
-        $tplResult = Get-Tiny11AutounattendTemplate -LocalPath $tplLocal
-        $bindings = Get-Tiny11AutounattendBindings -ResolvedSelections $ResolvedSelections -ImageIndex $ImageIndex -ProductKey $productKey
-        $rendered = Render-Tiny11Autounattend -Template $tplResult.Content -Bindings $bindings
-        Set-Content -Path "$tinyDir\autounattend.xml" -Value $rendered -Encoding UTF8
+        & $progress @{ phase='autounattend-iso'; step='Writing autounattend.xml to ISO root'; percent=92 }
+        Set-Content -Path "$tinyDir\autounattend.xml" -Value $renderedAutounattend -Encoding UTF8
 
         & $progress @{ phase='oscdimg-resolve'; step='Resolving oscdimg.exe'; percent=94 }
         $oscdimgCache = Join-Path (Split-Path $Catalog.Path) '..\dependencies\oscdimg' | Resolve-Path -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path

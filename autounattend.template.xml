@@ -29,7 +29,7 @@
             </ImageInstall>
             <UserData>
                 <ProductKey>
-                    <Key>{{PRODUCT_KEY}}</Key>
+                    <Key/>
                 </ProductKey>
             </UserData>
         </component>

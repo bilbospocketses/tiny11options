@@ -39,7 +39,6 @@ param(
     [string]$OutputPath,
     [switch]$NonInteractive,
     [switch]$FastBuild,
-    [switch]$NoProductKey,
     [switch]$Internal
 )
 
@@ -47,7 +46,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $srcDir = Join-Path $PSScriptRoot 'src'
-foreach ($mod in @('Tiny11.Catalog','Tiny11.Selections','Tiny11.Hives','Tiny11.Actions','Tiny11.Iso','Tiny11.Autounattend','Tiny11.GenericKeys','Tiny11.Worker')) {
+foreach ($mod in @('Tiny11.Catalog','Tiny11.Selections','Tiny11.Hives','Tiny11.Actions','Tiny11.Iso','Tiny11.Autounattend','Tiny11.Worker')) {
     Import-Module "$srcDir\$mod.psm1" -Force -DisableNameChecking
 }
 
@@ -112,7 +111,6 @@ if ($nonInteractive) {
         -OutputPath $OutputPath -UnmountSource $true `
         -Catalog $catalog -ResolvedSelections $resolved `
         -FastBuild ([bool]$FastBuild) `
-        -NoProductKey ([bool]$NoProductKey) `
         -ProgressCallback { param($p) Write-Output "[$($p.phase)] $($p.step) ($($p.percent)%)" }
 
     Write-Output "Build complete: $OutputPath"
