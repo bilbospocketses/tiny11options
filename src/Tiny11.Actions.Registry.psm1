@@ -13,7 +13,8 @@ function Invoke-RegistryAction {
             Invoke-RegCommand 'add' $fullKey '/v' $Action.name '/t' $Action.valueType '/d' $Action.value '/f' | Out-Null
         }
         'remove' {
-            Invoke-RegCommand 'delete' $fullKey '/f' | Out-Null
+            try { Invoke-RegCommand 'delete' $fullKey '/f' | Out-Null }
+            catch { if ($_.Exception.Message -notmatch 'unable to find') { throw } }
         }
         default { throw "Invalid registry op: $($Action.op)" }
     }
