@@ -293,6 +293,15 @@ section.drill h2 {
     opacity: 0.7;
 }
 
+.item-list li.clickable {
+    cursor: pointer;
+    transition: background 80ms;
+}
+
+.item-list li.clickable:hover {
+    background: var(--bg-card);
+}
+
 .item-list input[type="checkbox"] {
     grid-row: span 2;
     margin-top: 4px;

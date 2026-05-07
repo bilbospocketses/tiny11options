@@ -239,6 +239,35 @@ function reconcile() {
     return resolved;
 }
 
+// Smart bulk-select button. Acts on the visible items passed in, skipping any locked ones.
+// Label flips between "Check all" and "Uncheck all" depending on whether every unlocked item
+// in the visible set is already 'apply'.
+function bulkSelectButton(items, resolved) {
+    const unlocked = items.filter(it => !resolved[it.id].locked);
+    const allChecked = unlocked.length > 0 && unlocked.every(it => state.selections[it.id] === 'apply');
+    const label = allChecked ? 'Uncheck all' : 'Check all';
+    const target = allChecked ? 'skip' : 'apply';
+    return el('button', {
+        disabled: unlocked.length === 0,
+        onclick: () => {
+            unlocked.forEach(it => state.selections[it.id] = target);
+            renderStep();
+        }
+    }, label);
+}
+
+// Handler for clicking anywhere on a non-locked item row. Toggles the row's checkbox
+// unless the click landed on the checkbox itself (in which case the native handler
+// already fired) or on a link/button.
+function rowClickHandler(ev) {
+    const tag = ev.target.tagName;
+    if (tag === 'INPUT' || tag === 'A' || tag === 'BUTTON') return;
+    const cb = ev.currentTarget.querySelector('input[type="checkbox"]');
+    if (!cb || cb.disabled) return;
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change'));
+}
+
 function countsByCategory(resolved) {
     const out = {};
     state.catalog.categories.forEach(c => {
@@ -322,7 +351,8 @@ function renderSearchResults(term, resolved) {
         if (r.locked) {
             liChildren.push(el('p', { class: 'lock' }, `🔒 Locked — kept because: ${r.lockedBy.join(', ')}`));
         }
-        return el('li', { class: r.locked ? 'locked' : '' }, ...liChildren);
+        const liOpts = r.locked ? { class: 'locked' } : { class: 'clickable', onclick: rowClickHandler };
+        return el('li', liOpts, ...liChildren);
     });
 
     return el('section', { class: 'customize' },
@@ -337,6 +367,7 @@ function renderSearchResults(term, resolved) {
         ),
         el('div', { class: 'row' },
             el('button', { onclick: () => { state.search = ''; renderStep(); } }, '< Back to categories'),
+            bulkSelectButton(matchingItems, resolved),
             el('button', { onclick: () => ps({ type: 'save-profile-request', selections: state.selections }) }, 'Save profile...'),
             el('button', { onclick: () => ps({ type: 'load-profile-request' }) }, 'Load profile...'),
             el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
@@ -370,13 +401,17 @@ function renderDrillin(catId, resolved) {
         if (r.locked) {
             liChildren.push(el('p', { class: 'lock' }, `🔒 Locked — kept because: ${r.lockedBy.join(', ')}`));
         }
-        return el('li', { class: r.locked ? 'locked' : '' }, ...liChildren);
+        const liOpts = r.locked ? { class: 'locked' } : { class: 'clickable', onclick: rowClickHandler };
+        return el('li', liOpts, ...liChildren);
     });
 
     return el('section', { class: 'drill' },
-        el('button', {
-            onclick: () => { state.drilledCategory = null; renderStep(); }
-        }, '< Back to categories'),
+        el('div', { class: 'row' },
+            el('button', {
+                onclick: () => { state.drilledCategory = null; renderStep(); }
+            }, '< Back to categories'),
+            bulkSelectButton(items, resolved)
+        ),
         el('h2', null, cat.displayName),
         el('ul', { class: 'item-list' }, itemElements)
     );
