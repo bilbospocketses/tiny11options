@@ -23,10 +23,10 @@ This is a hard fork of [ntdevlabs/tiny11builder](https://github.com/ntdevlabs/ti
 pwsh -NoProfile -File tiny11maker.ps1
 ```
 
-Opens a 900×700 wizard window:
-1. **Source** — pick your Win11 ISO + edition, scratch directory, output path.
-2. **Customize** — browse 10 categories of removable items + tweaks; drill into any category to fine-tune; Save / Load profile JSON.
-3. **Build** — confirm the summary and click Build. Progress streams live; cancel button works mid-build.
+Opens a 1200×900 wizard window (resizable; size is remembered between sessions in `%LOCALAPPDATA%\tiny11options\settings.json`). The theme follows your system light/dark preference on first launch, with a toggle button in the header to override (override is persisted in WebView2 localStorage):
+1. **Source** — pick your Win11 ISO + edition, scratch directory, fast-build option.
+2. **Customize** — browse 10 categories of removable items + tweaks; drill into any category to fine-tune; click anywhere on a row to toggle it; "Check all" / "Uncheck all" button operates on the visible filtered set; Save / Load profile JSON; cross-category search.
+3. **Build** — review the summary; output ISO path is auto-prefilled to `<scratchDir>\tiny11.iso` (override anytime); click Build. Progress streams live; cancel button works mid-build; the "Show build details" panel stays open across phase changes once expanded.
 
 ### Scripted
 
@@ -34,15 +34,17 @@ Opens a 900×700 wizard window:
 pwsh -NoProfile -File tiny11maker.ps1 `
     -Source 'C:\path\to\Win11.iso' `
     -Config 'config\examples\tiny11-classic.json' `
-    -ImageIndex 6 `
+    -Edition 'Windows 11 Pro' `
     -OutputPath 'C:\out\tiny11.iso' `
     -NonInteractive
 ```
 
 `-Source` accepts an `.iso` path or a drive letter (`E:`, `E:\`, just `E`).
-`-ImageIndex` is the edition index inside `install.wim` (typically 6 for Pro on consumer ISOs).
+`-Edition` resolves an edition name (case-insensitive exact match) to the right `ImageIndex` by enumerating the source. Cleaner than `-ImageIndex` because the index varies between ISOs.
+`-ImageIndex` is the edition index inside `install.wim` (typically 6 for Pro on consumer ISOs). Mutually exclusive with `-Edition`; use whichever you prefer.
 `-Config` is one of the example profiles or your own.
 `-NonInteractive` suppresses the GUI; implied when both `-Source` and `-Config` are present.
+`-AllowVLSource` overrides the VL/MSDN ISO preflight rejection (see [System requirements](#system-requirements)).
 
 ## WebView2 boundary
 
@@ -84,7 +86,7 @@ A profile JSON has shape `{ "version": 1, "selections": { "<item-id>": "apply"|"
 - PowerShell 7 (`pwsh.exe`) on PATH for the GUI; PowerShell 5.1 (`powershell.exe`) is sufficient for scripted mode
 - Microsoft Edge WebView2 Runtime (preinstalled on Win11; on Win10, install from https://developer.microsoft.com/microsoft-edge/webview2/)
 - ~10 GB free in the scratch directory
-- A retail / consumer Win11 ISO (Microsoft media-creation-tool, direct ISO download). VL / MSDN multi-edition ISOs are not supported in v1.0.0 — they trip Setup's stricter VL key validator.
+- A retail / consumer Win11 ISO (Microsoft media-creation-tool, direct ISO download). VL / MSDN multi-edition ISOs are rejected at preflight by default (they trip Setup's stricter VL key validator); pass `-AllowVLSource` to override at your own risk.
 
 The build process self-elevates via UAC; no need to launch as admin manually.
 
@@ -92,7 +94,7 @@ The build process self-elevates via UAC; no need to launch as admin manually.
 
 `pwsh.exe` invoked from another `pwsh.exe` terminal (`pwsh → pwsh -File tiny11maker.ps1`) **deterministically produces ISOs that fail Win11 25H2 Setup product-key validation**, even though the build output is content-identical to working invocations. Mechanism is unknown; full investigation 2026-05-04 → 2026-05-06 confirmed every byte of the produced ISO matches a working build except for `reg.exe` timestamp/sequence noise inside hives.
 
-The script blocks this combination at runtime with a clear error message. **Workaround**: launch `tiny11maker.ps1` from a `cmd.exe` or Windows PowerShell 5.1 terminal. The full bundled `.exe` launcher (Path C, post-v1.0.0) eliminates this caveat by always running under a controlled host.
+The script blocks this combination at runtime with a clear error message. **Workaround**: launch `tiny11maker.ps1` from a `cmd.exe` or Windows PowerShell 5.1 terminal. A future bundled `.exe` launcher will eliminate this caveat by always running under a controlled host.
 
 Five working invocation patterns:
 - `cmd → powershell -File tiny11maker.ps1` ✅
@@ -110,9 +112,9 @@ One blocked:
 pwsh -NoProfile -File tests/Run-Tests.ps1
 ```
 
-72 Pester tests covering catalog parsing + schema validation, selection model + reconcile/lock logic, registry hive helpers, four action handlers (registry / provisioned-appx / filesystem / scheduled-task), action dispatcher, ISO mounting + edition enumeration, autounattend templating + 3-tier acquisition + drift detection, worker dispatch, bridge protocol, WebView2 SDK detection.
+82 Pester tests covering catalog parsing + schema validation, selection model + reconcile/lock logic, registry hive helpers, four action handlers (registry / provisioned-appx / filesystem / scheduled-task), action dispatcher, ISO mounting + edition enumeration, source-is-consumer heuristic + edition-name resolution, autounattend templating + 3-tier acquisition + drift detection, worker dispatch, bridge protocol, WebView2 SDK detection.
 
-GUI behavior is verified manually (Task 24 in the implementation plan); no headless GUI tests in v1.0.0.
+GUI behavior and ISO build are verified manually; no headless GUI tests or end-to-end build tests in v0.2.0.
 
 ## VM testing recommendations
 
@@ -132,6 +134,6 @@ This is a standalone hard fork. Issues and PRs filed here will not be propagated
 
 ## License / credits
 
-Originally based on [`ntdevlabs/tiny11builder`](https://github.com/ntdevlabs/tiny11builder) by NTDEV. The upstream project's removal lists, registry tweaks, and overall approach inform the v1.0.0 catalog. Refer to the upstream repository for license and contributor history.
+Originally based on [`ntdevlabs/tiny11builder`](https://github.com/ntdevlabs/tiny11builder) by NTDEV. The upstream project's removal lists, registry tweaks, and overall approach inform the catalog. Refer to the upstream repository for license and contributor history.
 
 Fork additions (catalog schema, selection/reconcile model, WebView2 + WPF wizard, Pester test suite, runspace-based progress streaming) by the tiny11options maintainers.

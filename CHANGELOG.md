@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-v0.2.0 polish on `feat/v0.2.0` branch — UX wizard improvements, scripted-mode CLI additions, small cleanups, expanded test coverage. 82/82 Pester tests green.
+## [0.2.0] - 2026-05-07
+
+UX wizard improvements (theme detection + toggle, persistent window size, bulk-select, clickable rows, output-path autofill, locked build-details panel), scripted-mode CLI additions (`-Edition`, `-AllowVLSource`), small cleanups, and expanded test coverage. Built end-to-end ISO + Hyper-V install verified. 82/82 Pester tests green (72 prior + 10 new).
 
 ### Added
 - Light/dark theme support in the wizard UI. On first launch the theme follows the system `prefers-color-scheme` setting; a toggle button in the top-right corner of the breadcrumb header lets the user override this. The override is persisted in `localStorage` (which lives in `%LOCALAPPDATA%\tiny11options\webview2-userdata\`) so it survives across sessions until cleared.
