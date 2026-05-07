@@ -16,7 +16,13 @@
     if omitted in -NonInteractive mode, defaults are used.
 
 .PARAMETER ImageIndex
-    Edition index inside install.wim (e.g. 6 for Pro). Required in -NonInteractive mode.
+    Edition index inside install.wim (e.g. 6 for Pro on consumer ISO). One of -ImageIndex or -Edition is required in -NonInteractive mode.
+
+.PARAMETER Edition
+    Edition name (case-insensitive exact match) e.g. 'Windows 11 Pro'. Resolved to ImageIndex by enumerating the source. Cleaner alternative to -ImageIndex which varies by ISO source.
+
+.PARAMETER AllowVLSource
+    Allow building from a VL/MSDN multi-edition ISO. By default tiny11maker rejects sources that look like VL/MSDN (>4 editions, or any Enterprise/Education/Server variant) because Setup's stricter VL key validator fails on the empty <Key/> autounattend approach.
 
 .PARAMETER ScratchDir
     Working directory; needs ~10 GB free. Defaults to $PSScriptRoot.
@@ -35,6 +41,8 @@ param(
     [string]$Source,
     [string]$Config,
     [int]$ImageIndex,
+    [string]$Edition,
+    [switch]$AllowVLSource,
     [string]$ScratchDir,
     [string]$OutputPath,
     [switch]$NonInteractive,
@@ -121,8 +129,32 @@ $catalog = Get-Tiny11Catalog -Path $catalogPath
 $nonInteractive = $NonInteractive -or ($Source -and $Config)
 
 if ($nonInteractive) {
-    if (-not $Source)     { throw "-NonInteractive requires -Source" }
-    if (-not $ImageIndex) { throw "-NonInteractive requires -ImageIndex" }
+    if (-not $Source) { throw "-NonInteractive requires -Source" }
+    if ($ImageIndex -and $Edition) { throw "-ImageIndex and -Edition are mutually exclusive; pick one." }
+    if (-not $ImageIndex -and -not $Edition) { throw "-NonInteractive requires either -ImageIndex or -Edition." }
+
+    # Preflight: enumerate source editions, check VL/MSDN, resolve -Edition to -ImageIndex if needed.
+    $preflightMount = Mount-Tiny11Source -InputPath $Source
+    try {
+        $editions = @(Get-Tiny11Editions -DriveLetter $preflightMount.DriveLetter)
+        $isConsumer = Test-Tiny11SourceIsConsumer -Editions $editions
+        if (-not $isConsumer) {
+            $editionsList = ($editions | ForEach-Object { $_.ImageName }) -join '; '
+            $vlMsg = "Source ISO appears to be VL/MSDN (more than 4 editions or contains Enterprise/Education/Server variants). tiny11 targets the consumer Win11 ISO; build will probably fail at install time with `"Setup has failed to validate the product key`". Editions found: $editionsList"
+            if (-not $AllowVLSource) {
+                throw "$vlMsg`nOverride with -AllowVLSource to proceed anyway."
+            }
+            Write-Warning $vlMsg
+        }
+        if ($Edition) {
+            $ImageIndex = Resolve-Tiny11ImageIndex -Editions $editions -Edition $Edition
+            Write-Output "Resolved -Edition '$Edition' to ImageIndex $ImageIndex."
+        }
+    } finally {
+        if ($preflightMount.MountedByUs) {
+            Dismount-Tiny11Source -IsoPath $preflightMount.IsoPath -MountedByUs:$preflightMount.MountedByUs -ForceUnmount:$true
+        }
+    }
 
     $selections = if ($Config) {
         Import-Tiny11Selections -Path $Config -Catalog $catalog

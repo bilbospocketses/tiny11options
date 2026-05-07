@@ -82,7 +82,7 @@
       { "type": "filesystem", "op": "remove", "path": "Program Files (x86)\\Microsoft\\EdgeUpdate", "recurse": true },
       { "type": "filesystem", "op": "remove", "path": "Program Files (x86)\\Microsoft\\EdgeCore", "recurse": true }
     ] },
-    { "id": "remove-edge-webview", "category": "edge-and-webview", "displayName": "Microsoft Edge WebView runtime", "description": "Takes ownership of and removes the Windows\\System32\\Microsoft-Edge-Webview directory.", "default": "apply", "runtimeDepsOn": [], "actions": [
+    { "id": "remove-edge-webview", "category": "edge-and-webview", "displayName": "Microsoft Edge System32 WebView host", "description": "Takes ownership of and removes the Windows\\System32\\Microsoft-Edge-Webview directory. NOTE: This is a separate System32 binary, NOT the WebView2 Runtime that powers Start menu search and Widgets — that Runtime lives elsewhere and is preserved.", "default": "apply", "runtimeDepsOn": [], "actions": [
       { "type": "filesystem", "op": "takeown-and-remove", "path": "Windows\\System32\\Microsoft-Edge-Webview", "recurse": true }
     ] },
     { "id": "tweak-remove-edge-uninstall-keys", "category": "edge-and-webview", "displayName": "Remove Edge uninstall registry entries", "description": "Removes the WOW6432Node Uninstall keys for Microsoft Edge and Microsoft Edge Update.", "default": "apply", "runtimeDepsOn": [], "actions": [

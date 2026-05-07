@@ -3,6 +3,30 @@
 const ps   = (msg) => window.chrome.webview.postMessage(msg);
 const onPs = (cb)  => window.chrome.webview.addEventListener('message', e => cb(JSON.parse(e.data)));
 
+// Theme — stored in localStorage (key 'tiny11-theme'). On first run, read system preference.
+// Persistence lives in the WebView2 userdata folder under %LOCALAPPDATA%\tiny11options\webview2-userdata\.
+function detectSystemTheme() {
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    const btn = document.getElementById('theme-toggle');
+    if (btn) {
+        btn.textContent = theme === 'dark' ? '\u{1F319}' : '\u{2600}\u{FE0F}';
+        btn.title = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+    }
+}
+function initTheme() {
+    const stored = localStorage.getItem('tiny11-theme');
+    const theme = (stored === 'light' || stored === 'dark') ? stored : detectSystemTheme();
+    applyTheme(theme);
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('tiny11-theme', next);
+        applyTheme(next);
+    });
+}
+
 // DOM construction helper. children may be strings (textContent) or DOM nodes.
 function el(tag, attrs, ...children) {
     const e = document.createElement(tag);
@@ -49,7 +73,19 @@ const state = {
     building: false,
     completed: null,
     progress: null,
+    buildDetailsOpen: false,
 };
+
+// When the user picks or types a scratch directory, prefill the output ISO path with
+// "<scratchDir>\tiny11.iso" — but only if outputPath is empty so we never clobber a
+// custom value. Output goes alongside scratchDir's tiny11/ source folder, not inside it,
+// so oscdimg never sees its own output as input.
+function prefillOutputIfEmpty() {
+    if (state.outputPath || !state.scratchDir) return;
+    const trimmed = state.scratchDir.replace(/[\\/]+$/, '');
+    const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
+    state.outputPath = trimmed + sep + 'tiny11.iso';
+}
 
 function renderStep() {
     // Preserve focus + cursor position on the search input across re-renders, so typing isn't disrupted.
@@ -162,7 +198,11 @@ function renderProgress() {
         el('p', null, `Phase: ${p.phase || '—'}`),
         el('p', null, `Step: ${p.step || '—'}`),
         el('button', { onclick: () => ps({ type: 'cancel' }) }, 'Cancel build'),
-        el('details', { class: 'build-details' },
+        el('details', {
+            class: 'build-details',
+            open: state.buildDetailsOpen,
+            ontoggle: ev => { state.buildDetailsOpen = ev.target.open; }
+        },
             el('summary', null, 'Show build details'),
             el('dl', { class: 'build-details-summary' },
                 el('dt', null, 'Edition'),     el('dd', null, editionLabel),
@@ -213,6 +253,35 @@ function reconcile() {
         };
     });
     return resolved;
+}
+
+// Smart bulk-select button. Acts on the visible items passed in, skipping any locked ones.
+// Label flips between "Check all" and "Uncheck all" depending on whether every unlocked item
+// in the visible set is already 'apply'.
+function bulkSelectButton(items, resolved) {
+    const unlocked = items.filter(it => !resolved[it.id].locked);
+    const allChecked = unlocked.length > 0 && unlocked.every(it => state.selections[it.id] === 'apply');
+    const label = allChecked ? 'Uncheck all' : 'Check all';
+    const target = allChecked ? 'skip' : 'apply';
+    return el('button', {
+        disabled: unlocked.length === 0,
+        onclick: () => {
+            unlocked.forEach(it => state.selections[it.id] = target);
+            renderStep();
+        }
+    }, label);
+}
+
+// Handler for clicking anywhere on a non-locked item row. Toggles the row's checkbox
+// unless the click landed on the checkbox itself (in which case the native handler
+// already fired) or on a link/button.
+function rowClickHandler(ev) {
+    const tag = ev.target.tagName;
+    if (tag === 'INPUT' || tag === 'A' || tag === 'BUTTON') return;
+    const cb = ev.currentTarget.querySelector('input[type="checkbox"]');
+    if (!cb || cb.disabled) return;
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change'));
 }
 
 function countsByCategory(resolved) {
@@ -298,7 +367,8 @@ function renderSearchResults(term, resolved) {
         if (r.locked) {
             liChildren.push(el('p', { class: 'lock' }, `🔒 Locked — kept because: ${r.lockedBy.join(', ')}`));
         }
-        return el('li', { class: r.locked ? 'locked' : '' }, ...liChildren);
+        const liOpts = r.locked ? { class: 'locked' } : { class: 'clickable', onclick: rowClickHandler };
+        return el('li', liOpts, ...liChildren);
     });
 
     return el('section', { class: 'customize' },
@@ -313,6 +383,7 @@ function renderSearchResults(term, resolved) {
         ),
         el('div', { class: 'row' },
             el('button', { onclick: () => { state.search = ''; renderStep(); } }, '< Back to categories'),
+            bulkSelectButton(matchingItems, resolved),
             el('button', { onclick: () => ps({ type: 'save-profile-request', selections: state.selections }) }, 'Save profile...'),
             el('button', { onclick: () => ps({ type: 'load-profile-request' }) }, 'Load profile...'),
             el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
@@ -346,13 +417,17 @@ function renderDrillin(catId, resolved) {
         if (r.locked) {
             liChildren.push(el('p', { class: 'lock' }, `🔒 Locked — kept because: ${r.lockedBy.join(', ')}`));
         }
-        return el('li', { class: r.locked ? 'locked' : '' }, ...liChildren);
+        const liOpts = r.locked ? { class: 'locked' } : { class: 'clickable', onclick: rowClickHandler };
+        return el('li', liOpts, ...liChildren);
     });
 
     return el('section', { class: 'drill' },
-        el('button', {
-            onclick: () => { state.drilledCategory = null; renderStep(); }
-        }, '< Back to categories'),
+        el('div', { class: 'row' },
+            el('button', {
+                onclick: () => { state.drilledCategory = null; renderStep(); }
+            }, '< Back to categories'),
+            bulkSelectButton(items, resolved)
+        ),
         el('h2', null, cat.displayName),
         el('ul', { class: 'item-list' }, itemElements)
     );
@@ -392,7 +467,7 @@ function renderSourceStep() {
         el('div', { class: 'row' },
             el('input', {
                 id: 'scratch-input', type: 'text', value: state.scratchDir || '',
-                onchange: e => state.scratchDir = e.target.value
+                onchange: e => { state.scratchDir = e.target.value; prefillOutputIfEmpty(); }
             }),
             el('button', { onclick: () => ps({ type: 'browse-scratch' }) }, 'Browse...')
         ),
@@ -423,7 +498,7 @@ function renderSourceStep() {
     return section;
 }
 
-document.addEventListener('DOMContentLoaded', renderStep);
+document.addEventListener('DOMContentLoaded', () => { initTheme(); renderStep(); });
 
 onPs(msg => {
     if (msg.type === 'iso-validated') {
@@ -439,7 +514,7 @@ onPs(msg => {
         }
     } else if (msg.type === 'browse-result') {
         if (msg.field === 'source')  { state.source = msg.path; renderStep(); ps({ type: 'validate-iso', path: msg.path }); }
-        if (msg.field === 'scratch') { state.scratchDir = msg.path; renderStep(); }
+        if (msg.field === 'scratch') { state.scratchDir = msg.path; prefillOutputIfEmpty(); renderStep(); }
         if (msg.field === 'output')  { state.outputPath = msg.path; renderStep(); }
     } else if (msg.type === 'profile-loaded') {
         state.selections = {};

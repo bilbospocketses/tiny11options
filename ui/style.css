@@ -65,6 +65,7 @@ body {
 /* Breadcrumb */
 .breadcrumb {
     display: flex;
+    align-items: center;
     gap: var(--gap-lg);
     padding: var(--gap) var(--gap-lg);
     background: var(--bg-alt);
@@ -82,6 +83,23 @@ body {
     color: var(--accent);
     border-bottom-color: var(--accent);
     font-weight: 600;
+}
+
+.theme-toggle {
+    margin-left: auto;
+    padding: 4px 8px;
+    font-size: 16px;
+    line-height: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    cursor: pointer;
+    color: var(--fg);
+}
+
+.theme-toggle:hover {
+    background: var(--bg-card);
+    border-color: var(--border);
 }
 
 /* Main content area */
@@ -213,7 +231,7 @@ section.customize .row {
 
 .card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--gap);
     margin-top: var(--gap-lg);
 }
@@ -273,6 +291,15 @@ section.drill h2 {
 
 .item-list li.locked {
     opacity: 0.7;
+}
+
+.item-list li.clickable {
+    cursor: pointer;
+    transition: background 80ms;
+}
+
+.item-list li.clickable:hover {
+    background: var(--bg-card);
 }
 
 .item-list input[type="checkbox"] {

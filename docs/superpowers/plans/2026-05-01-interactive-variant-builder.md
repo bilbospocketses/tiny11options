@@ -2082,6 +2082,8 @@ End state: `tiny11maker.ps1` with no args opens a WebView2-hosted wizard; same I
 
 ## Task 16: WebView2 SDK fetch + Runtime detection
 
+> **Post-shipment note (v0.1.0):** This task shipped with **vendored DLLs**, not runtime fetch. `Install-Tiny11WebView2Sdk` was dropped in favor of `Test-Tiny11WebView2SdkPresent`. The vendored DLLs live at `dependencies/webview2/1.0.2535.41/` (Core+Wpf from `lib/net462/`, `WebView2Loader.dll` from `runtimes/win-x64/native/` — total ~770KB). NuGet's package layout also changed since the plan was written: `lib/netstandard2.0/` no longer exists; use `lib/net462/`. Plan code below is the original design and does not match shipped.
+
 **Files:**
 - Create: `src/Tiny11.WebView2.psm1`
 - Create: `tests/Tiny11.WebView2.Tests.ps1`
@@ -2262,6 +2264,16 @@ git commit -m "feat(bridge): add message-protocol helpers"
 ---
 
 ## Task 18: WPF window host + Show-Tiny11Wizard
+
+> **Post-shipment notes (v0.1.0):** Several drifts from this plan landed during Task 24 manual smoke and the v0.1.0 polish bundle. The shipped pattern in `src/Tiny11.WebView2.psm1`:
+> - The XAML root must declare `xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"` for `x:Name` to parse — `[xml]$xaml` rejects the doc otherwise.
+> - `EnsureCoreWebView2Async` MUST be called from the window's `Loaded` event handler. Calling it synchronously during `Show-Tiny11Wizard` setup throws "EnsureCoreWebView2Async cannot be used before the application's event loop has started running."
+> - Dropped `-SdkCacheRoot` parameter entirely (Task 16 vendored model — no runtime fetch path).
+> - Replaced `Install-Tiny11WebView2Sdk -CacheRoot ...` with `Test-Tiny11WebView2SdkPresent`.
+> - WebView2 userdata moved from `$sdk.VersionDir\userdata` (in-repo) to `$env:LOCALAPPDATA\tiny11options\webview2-userdata\`. Don't put user state in the repo.
+> - `WebMessageReceived` handler must be registered on the WPF wrapper at top-level `Show-Tiny11Wizard` scope, NOT inside the `CoreWebView2InitializationCompleted` handler. Nested registration leaves the handler in a closure context that fails to wire correctly once the runspace is busy in `ShowDialog` — messages silently aren't dispatched.
+> - Post-init setup (virtual host mapping, init-script injection, navigation) stays inside the InitializationCompleted handler. Defensive `Settings.IsWebMessageEnabled = $true` set there too.
+> - All event-handler scriptblocks use `.GetNewClosure()` to bind `$wv`, `$window`, `$MessageHandlers`, etc.
 
 **Files:**
 - Modify: `src/Tiny11.WebView2.psm1` (append `Show-Tiny11Wizard`, `Set-Tiny11WizardWindow`, getters)
@@ -2617,6 +2629,8 @@ git commit -m "feat(ui): implement Step 1 source picker"
 
 ## Task 21: Step 2 — categories + drill-in + reconcile/lock
 
+> **Post-shipment note (v0.1.0):** Plan code below renders a search input but never wires the filter. Shipped v0.1.0 includes a working filter (added in the v0.1.0 polish bundle): empty search renders category cards as below; non-empty switches to a flat list of items across all categories matching `displayName + description` (case-insensitive), each with a category badge. Esc and a "< Back to categories" button clear the filter; focus and cursor position are preserved across re-renders.
+
 **Files:**
 - Modify: `ui/app.js` (replace `renderCustomizeStep`)
 
@@ -2856,6 +2870,12 @@ git commit -m "feat(ui): implement Step 3 build summary + progress + complete"
 ---
 
 ## Task 23: Wire bridge handlers in tiny11maker.ps1 + runspace build worker
+
+> **Post-shipment notes (v0.1.0):**
+> - Drop `-SdkCacheRoot $sdkCache` from the `Show-Tiny11Wizard` call (Task 16/18 vendored model). Drop the surrounding `$sdkCache = Join-Path $PSScriptRoot 'dependencies\webview2'` + `New-Item` lines too.
+> - Replace every `$state.Window` with `(Get-Tiny11WizardWindow)` and `$state.Wv` with `(Get-Tiny11WizardWebView)` throughout handlers AND the runspace `SetVariable` calls. The plan's `$state.Window = Get-Tiny11WizardWindow` assignment after `Show-Tiny11Wizard` only runs after `ShowDialog` returns (i.e., after the window closes), so handlers fired during the build see `$null`. Lazy-fetching via the getters resolves to the actual window/WebView from `$script:wizardWindow`/`$script:wizardWebView` set by `Set-Tiny11WizardWindow` during `Show-Tiny11Wizard`'s window construction.
+> - `validate-iso` handler dropped `Architecture` and `Languages` properties from the editions output. `Get-WindowsImage -ImagePath` (no `-Index`) doesn't return those; under StrictMode the access threw.
+> - `build` handler passes `-FastBuild ([bool]$__msg.fastBuild)` into `Invoke-Tiny11BuildPipeline` so the GUI fast-build choice reaches the worker (added in v0.1.0 polish bundle).
 
 **Files:**
 - Modify: `tiny11maker.ps1` (replace the interactive stub)

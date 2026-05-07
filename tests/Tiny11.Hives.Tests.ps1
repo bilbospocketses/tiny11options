@@ -15,8 +15,8 @@ Describe "Resolve-Tiny11HivePath" {
         (Resolve-Tiny11HivePath -Hive 'COMPONENTS' -ScratchDir 'C:\s').EndsWith('config\COMPONENTS') | Should -BeTrue
         (Resolve-Tiny11HivePath -Hive 'SYSTEM' -ScratchDir 'C:\s').EndsWith('config\SYSTEM') | Should -BeTrue
     }
-    It "throws on unknown hive" {
-        { Resolve-Tiny11HivePath -Hive 'BOGUS' -ScratchDir 'C:\s' } | Should -Throw
+    It "throws on unknown hive with helpful message" {
+        { Resolve-Tiny11HivePath -Hive 'BOGUS' -ScratchDir 'C:\s' } | Should -Throw -ExpectedMessage '*Unknown hive*'
     }
 }
 
