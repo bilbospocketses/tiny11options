@@ -34,6 +34,18 @@
     <EmbeddedResource Remove="Tests/**" />
   </ItemGroup>
 
+  <!-- Test fixture for EmbeddedResources unit tests. Real resources are added in Task 6. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\test-fixture.txt">
+      <LogicalName>test-fixture.txt</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- Expose internal types to the sibling test project. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="tiny11options.Launcher.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <Reference Include="Microsoft.Web.WebView2.Core">
       <HintPath>..\dependencies\webview2\1.0.2535.41\Microsoft.Web.WebView2.Core.dll</HintPath>
