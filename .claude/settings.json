@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(vpk *)",
+      "Bash(vpk pack *)",
+      "PowerShell(vpk*)"
+    ]
+  }
+}
