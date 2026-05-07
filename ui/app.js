@@ -84,8 +84,70 @@ document.getElementById('next-btn').addEventListener('click', () => {
     renderStep();
 });
 
-// Stub replaced in task 22:
-function renderBuildStep()     { return el('p', null, 'Build step (task 22)'); }
+function renderBuildStep() {
+    if (state.building) return renderProgress();
+    if (state.completed) return renderComplete();
+
+    const resolved = reconcile();
+    const totalApplied = state.catalog.items.filter(i => resolved[i.id].effective === 'apply').length;
+    const editionLabel = (state.editions || []).find(e => e.index === state.edition);
+
+    return el('section', { class: 'build' },
+        el('h2', null, 'Ready to build'),
+        el('dl', null,
+            el('dt', null, 'Source'),     el('dd', null, state.source || ''),
+            el('dt', null, 'Edition'),    el('dd', null, editionLabel ? editionLabel.name : String(state.edition || '')),
+            el('dt', null, 'Scratch'),    el('dd', null, state.scratchDir || ''),
+            el('dt', null, 'Output ISO'),
+            el('dd', { class: 'row' },
+                el('input', {
+                    id: 'out-input', type: 'text', value: state.outputPath || '',
+                    onchange: e => state.outputPath = e.target.value
+                }),
+                el('button', { onclick: () => ps({ type: 'browse-output' }) }, 'Browse...')
+            ),
+            el('dt', null, 'Changes'), el('dd', null, `${totalApplied} items applied`)
+        ),
+        el('button', {
+            class: 'primary',
+            onclick: () => {
+                state.building = true;
+                renderStep();
+                ps({
+                    type: 'build',
+                    source: state.source,
+                    imageIndex: state.edition,
+                    scratchDir: state.scratchDir,
+                    outputPath: state.outputPath,
+                    unmountSource: state.unmountSource,
+                    selections: state.selections,
+                });
+            }
+        }, 'Build ISO')
+    );
+}
+
+function renderProgress() {
+    const p = state.progress || {};
+    const progressBar = el('progress', { max: 100, value: p.percent || 0 });
+    return el('section', { class: 'progress' },
+        el('h2', null, 'Building tiny11 image...'),
+        progressBar,
+        el('p', null, `Phase: ${p.phase || '—'}`),
+        el('p', null, `Step: ${p.step || '—'}`),
+        el('button', { onclick: () => ps({ type: 'cancel' }) }, 'Cancel build')
+    );
+}
+
+function renderComplete() {
+    const c = state.completed;
+    return el('section', { class: 'complete' },
+        el('h2', null, 'Build complete'),
+        el('p', null, `Output: ${c.outputPath}`),
+        el('button', { onclick: () => ps({ type: 'open-folder', path: c.outputPath }) }, 'Open output folder'),
+        el('button', { onclick: () => ps({ type: 'close' }) }, 'Close')
+    );
+}
 
 function buildSelectionsIfEmpty() {
     if (Object.keys(state.selections).length > 0) return;
@@ -270,5 +332,31 @@ onPs(msg => {
         state.selections = {};
         for (const [k, v] of Object.entries(msg.selections)) state.selections[k] = v;
         renderStep();
+    }
+});
+
+// Extended onPs handler — Task 22 build-progress/complete/error + profile-saved + handler-error.
+onPs(msg => {
+    if (msg.type === 'build-progress') {
+        state.progress = msg;
+        renderStep();
+    } else if (msg.type === 'build-complete') {
+        state.building = false;
+        state.completed = msg;
+        renderStep();
+    } else if (msg.type === 'build-error') {
+        state.building = false;
+        const root = document.getElementById('content');
+        clear(root);
+        root.appendChild(el('section', { class: 'error' },
+            el('h2', null, 'Build failed'),
+            el('p', null, msg.message || 'Unknown error'),
+            el('button', { onclick: () => ps({ type: 'close' }) }, 'Close')
+        ));
+    } else if (msg.type === 'profile-saved') {
+        // v1: log only; future: transient toast.
+        console.log('Profile saved:', msg.path);
+    } else if (msg.type === 'handler-error') {
+        console.error('Handler error:', msg.message);
     }
 });
