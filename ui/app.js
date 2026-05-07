@@ -84,9 +84,119 @@ document.getElementById('next-btn').addEventListener('click', () => {
     renderStep();
 });
 
-// Stubs replaced in tasks 21-22:
-function renderCustomizeStep() { return el('p', null, 'Customize step (tasks 21)'); }
+// Stub replaced in task 22:
 function renderBuildStep()     { return el('p', null, 'Build step (task 22)'); }
+
+function buildSelectionsIfEmpty() {
+    if (Object.keys(state.selections).length > 0) return;
+    state.catalog.items.forEach(it => state.selections[it.id] = it.default);
+}
+
+function reconcile() {
+    const pinnedBy = {};
+    state.catalog.items.forEach(it => {
+        if (state.selections[it.id] === 'skip') {
+            (it.runtimeDepsOn || []).forEach(dep => {
+                if (!pinnedBy[dep]) pinnedBy[dep] = [];
+                pinnedBy[dep].push(it.id);
+            });
+        }
+    });
+    const resolved = {};
+    state.catalog.items.forEach(it => {
+        const locked = !!pinnedBy[it.id];
+        resolved[it.id] = {
+            user: state.selections[it.id],
+            effective: locked ? 'skip' : state.selections[it.id],
+            locked,
+            lockedBy: pinnedBy[it.id] || [],
+        };
+    });
+    return resolved;
+}
+
+function countsByCategory(resolved) {
+    const out = {};
+    state.catalog.categories.forEach(c => {
+        const items = state.catalog.items.filter(i => i.category === c.id);
+        out[c.id] = {
+            applied: items.filter(i => resolved[i.id].effective === 'apply').length,
+            total: items.length
+        };
+    });
+    return out;
+}
+
+function renderCustomizeStep() {
+    buildSelectionsIfEmpty();
+    const resolved = reconcile();
+    if (state.drilledCategory) return renderDrillin(state.drilledCategory, resolved);
+
+    const counts = countsByCategory(resolved);
+    const totalApplied = state.catalog.items.filter(i => resolved[i.id].effective === 'apply').length;
+
+    const cards = state.catalog.categories.map(c => {
+        const cnt = counts[c.id];
+        const indicator = cnt.applied === cnt.total ? '[✓]' : cnt.applied === 0 ? '[ ]' : '[~]';
+        return el('div', {
+            class: 'card',
+            data: { cat: c.id },
+            onclick: () => { state.drilledCategory = c.id; renderStep(); }
+        },
+            el('h3', null, c.displayName),
+            el('p',  null, c.description),
+            el('span', { class: 'cat-count' }, `${indicator} ${cnt.applied}/${cnt.total}`)
+        );
+    });
+
+    return el('section', { class: 'customize' },
+        el('div', { class: 'row' },
+            el('input', { id: 'search', type: 'text', placeholder: 'Search...' }),
+            el('span', { class: 'counter' }, `Items applied: ${totalApplied}/${state.catalog.items.length}`)
+        ),
+        el('div', { class: 'row' },
+            el('button', { onclick: () => ps({ type: 'save-profile-request', selections: state.selections }) }, 'Save profile...'),
+            el('button', { onclick: () => ps({ type: 'load-profile-request' }) }, 'Load profile...'),
+            el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
+        ),
+        el('div', { class: 'card-grid' }, cards)
+    );
+}
+
+function renderDrillin(catId, resolved) {
+    const cat = state.catalog.categories.find(c => c.id === catId);
+    const items = state.catalog.items.filter(i => i.category === catId);
+
+    const itemElements = items.map(it => {
+        const r = resolved[it.id];
+        const liChildren = [
+            el('input', {
+                type: 'checkbox',
+                checked: r.effective === 'apply',
+                disabled: r.locked,
+                data: { id: it.id },
+                onchange: ev => {
+                    state.selections[it.id] = ev.target.checked ? 'apply' : 'skip';
+                    renderStep();
+                }
+            }),
+            el('span', { class: 'item-name' }, it.displayName),
+            el('p', { class: 'item-desc' }, it.description)
+        ];
+        if (r.locked) {
+            liChildren.push(el('p', { class: 'lock' }, `🔒 Locked — kept because: ${r.lockedBy.join(', ')}`));
+        }
+        return el('li', { class: r.locked ? 'locked' : '' }, ...liChildren);
+    });
+
+    return el('section', { class: 'drill' },
+        el('button', {
+            onclick: () => { state.drilledCategory = null; renderStep(); }
+        }, '< Back to categories'),
+        el('h2', null, cat.displayName),
+        el('ul', { class: 'item-list' }, itemElements)
+    );
+}
 
 function renderSourceStep() {
     const editionsOptions = (state.editions || []).map(e =>
