@@ -83,6 +83,31 @@ function Invoke-SelfElevate {
 
 if ($Internal) { return }
 
+# Block pwsh-from-pwsh: this combination deterministically produces ISOs that fail Setup product-key validation on Win11 25H2 (mechanism unknown; build output is content-identical to working invocations).
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    $parentId = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction SilentlyContinue).ParentProcessId
+    $parentName = $null
+    if ($parentId) {
+        $proc = Get-Process -Id $parentId -ErrorAction SilentlyContinue
+        if ($proc) { $parentName = $proc.ProcessName }
+    }
+    if ($parentName -eq 'pwsh') {
+        Write-Error @'
+pwsh-from-pwsh invocation is not supported. This combination produces ISOs that fail
+Setup product-key validation on Windows 11 25H2 (mechanism unknown; build output is
+content-identical to working invocations).
+
+Workarounds:
+  1. Run from cmd.exe:               cmd /c pwsh -ExecutionPolicy Bypass -NoProfile -File tiny11maker.ps1 [args]
+  2. Run from Windows PowerShell:    powershell -ExecutionPolicy Bypass -NoProfile -File tiny11maker.ps1 [args]
+  3. Run via tiny11maker.ps1 directly from a cmd.exe or PowerShell 5.1 console.
+
+Path C (post-v1.0.0) will eliminate this caveat via a bundled .exe launcher.
+'@
+        exit 1
+    }
+}
+
 if (-not (Test-IsAdmin)) {
     Invoke-SelfElevate -Bound $PSBoundParameters
     exit
