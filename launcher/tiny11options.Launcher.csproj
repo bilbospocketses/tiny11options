@@ -46,6 +46,39 @@
     <InternalsVisibleTo Include="tiny11options.Launcher.Tests" />
   </ItemGroup>
 
+  <!-- Embedded resources: ui, catalog, retained PS modules, autounattend, orchestrator.
+       LogicalName preserves the relative path used at runtime via Assembly.GetManifestResourceStream. -->
+  <ItemGroup>
+    <!-- ui/ - HTML/CSS/JS for the WebView2 UI -->
+    <EmbeddedResource Include="..\ui\**\*">
+      <LogicalName>ui/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+      <Link>Resources\ui\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+
+    <!-- catalog/ - YAML feature catalog -->
+    <EmbeddedResource Include="..\catalog\**\*">
+      <LogicalName>catalog/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+      <Link>Resources\catalog\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+
+    <!-- Retained PS modules (named explicitly per spec D3) -->
+    <EmbeddedResource Include="..\src\Tiny11.Iso.psm1"><LogicalName>src/Tiny11.Iso.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Worker.psm1"><LogicalName>src/Tiny11.Worker.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Catalog.psm1"><LogicalName>src/Tiny11.Catalog.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Hives.psm1"><LogicalName>src/Tiny11.Hives.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Selections.psm1"><LogicalName>src/Tiny11.Selections.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Autounattend.psm1"><LogicalName>src/Tiny11.Autounattend.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Actions.psm1"><LogicalName>src/Tiny11.Actions.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Actions.Registry.psm1"><LogicalName>src/Tiny11.Actions.Registry.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Actions.Filesystem.psm1"><LogicalName>src/Tiny11.Actions.Filesystem.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Actions.ProvisionedAppx.psm1"><LogicalName>src/Tiny11.Actions.ProvisionedAppx.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Actions.ScheduledTask.psm1"><LogicalName>src/Tiny11.Actions.ScheduledTask.psm1</LogicalName></EmbeddedResource>
+
+    <!-- Orchestrator + autounattend template -->
+    <EmbeddedResource Include="..\tiny11maker.ps1"><LogicalName>tiny11maker.ps1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\autounattend.template.xml"><LogicalName>autounattend.template.xml</LogicalName></EmbeddedResource>
+  </ItemGroup>
+
   <ItemGroup>
     <Reference Include="Microsoft.Web.WebView2.Core">
       <HintPath>..\dependencies\webview2\1.0.2535.41\Microsoft.Web.WebView2.Core.dll</HintPath>

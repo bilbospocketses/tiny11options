@@ -40,4 +40,17 @@ public class EmbeddedResourcesTests
             if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
         }
     }
+
+    [Theory]
+    [InlineData("tiny11maker.ps1")]
+    [InlineData("autounattend.template.xml")]
+    [InlineData("src/Tiny11.Iso.psm1")]
+    [InlineData("ui/index.html")]
+    public void RealResource_IsEmbedded(string logicalName)
+    {
+        var asm = typeof(EmbeddedResources).Assembly;
+        using var stream = asm.GetManifestResourceStream(logicalName);
+        Assert.NotNull(stream);
+        Assert.True(stream!.Length > 0, $"{logicalName} stream is empty");
+    }
 }
