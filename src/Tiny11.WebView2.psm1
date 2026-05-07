@@ -42,4 +42,77 @@ function Test-Tiny11WebView2RuntimeInstalled {
     $false
 }
 
-Export-ModuleMember -Function Get-Tiny11WebView2SdkPath, Test-Tiny11WebView2SdkPresent, Test-Tiny11WebView2RuntimeInstalled
+function Set-Tiny11WizardWindow { param($Window, $WebView) $script:wizardWindow = $Window; $script:wizardWebView = $WebView }
+function Get-Tiny11WizardWindow  { $script:wizardWindow }
+function Get-Tiny11WizardWebView { $script:wizardWebView }
+
+function Show-Tiny11Wizard {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$UiDir,
+        [Parameter(Mandatory)][string]$CatalogJson,
+        [Parameter(Mandatory)][hashtable]$MessageHandlers
+    )
+
+    if (-not (Test-Tiny11WebView2RuntimeInstalled)) {
+        throw "Microsoft Edge WebView2 Runtime is required. On Windows 11 this is preinstalled; on Windows 10 install from https://developer.microsoft.com/microsoft-edge/webview2/."
+    }
+
+    $sdk = Test-Tiny11WebView2SdkPresent
+
+    Add-Type -AssemblyName PresentationFramework
+    Add-Type -AssemblyName PresentationCore
+    Add-Type -AssemblyName WindowsBase
+    Add-Type -Path $sdk.CoreDll
+    Add-Type -Path $sdk.WpfDll
+
+    $xaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="tiny11options" Width="900" Height="700"
+        WindowStartupLocation="CenterScreen"
+        MinWidth="700" MinHeight="500">
+    <Grid>
+        <wv2:WebView2 x:Name="WV"/>
+    </Grid>
+</Window>
+'@
+
+    $reader = [System.Xml.XmlNodeReader]::new(([xml]$xaml))
+    $window = [Windows.Markup.XamlReader]::Load($reader)
+    $wv = $window.FindName('WV')
+    Set-Tiny11WizardWindow $window $wv
+
+    $userdata = Join-Path $env:LOCALAPPDATA 'tiny11options\webview2-userdata'
+    New-Item -ItemType Directory -Path $userdata -Force | Out-Null
+    $envTask = [Microsoft.Web.WebView2.Core.CoreWebView2Environment]::CreateAsync($null, $userdata)
+    $coreEnv = $envTask.GetAwaiter().GetResult()
+    $wv.EnsureCoreWebView2Async($coreEnv).GetAwaiter().GetResult()
+
+    $wv.CoreWebView2.SetVirtualHostNameToFolderMapping(
+        'ui.tiny11options', $UiDir,
+        [Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind]::DenyCors
+    )
+
+    $initScript = "window.__tinyCatalog = $CatalogJson;"
+    $wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync($initScript) | Out-Null
+
+    $wv.add_WebMessageReceived({
+        param($msgSender, $eventArgs)
+        $msg = $eventArgs.WebMessageAsJson | ConvertFrom-Json
+        try {
+            $reply = Invoke-Tiny11BridgeHandler -Registry $MessageHandlers -Message $msg
+            if ($reply) {
+                $window.Dispatcher.Invoke([action]{ $wv.CoreWebView2.PostWebMessageAsString($reply) })
+            }
+        } catch {
+            $errReply = ConvertTo-Tiny11BridgeMessage -Type 'handler-error' -Payload @{ message = "$_" }
+            $window.Dispatcher.Invoke([action]{ $wv.CoreWebView2.PostWebMessageAsString($errReply) })
+        }
+    })
+
+    $wv.Source = [Uri]'https://ui.tiny11options/index.html'
+    [void]$window.ShowDialog()
+}
+
+Export-ModuleMember -Function Get-Tiny11WebView2SdkPath, Test-Tiny11WebView2SdkPresent, Test-Tiny11WebView2RuntimeInstalled, Show-Tiny11Wizard, Set-Tiny11WizardWindow, Get-Tiny11WizardWindow, Get-Tiny11WizardWebView
