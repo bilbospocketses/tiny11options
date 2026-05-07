@@ -61,6 +61,26 @@ Describe "Get-Tiny11Catalog" {
         Set-Content -Path $path -Value $catalog -Encoding UTF8
         { Get-Tiny11Catalog -Path $path } | Should -Throw "*ghost*"
     }
+
+    It "throws when version is unsupported (e.g. 2)" {
+        $path = Join-Path $script:tmp 'badversion.json'
+        Set-Content -Path $path -Value '{"version":2,"categories":[],"items":[]}' -Encoding UTF8
+        { Get-Tiny11Catalog -Path $path } | Should -Throw "*version*2*"
+    }
+
+    It "throws when item default is invalid (e.g. 'maybe')" {
+        $path = Join-Path $script:tmp 'baddefault.json'
+        $catalog = @{
+            version = 1
+            categories = @(@{ id='c1'; displayName='C1'; description='' })
+            items = @(@{
+                id='i1'; category='c1'; displayName='X'; description='';
+                default='maybe'; runtimeDepsOn=@(); actions=@()
+            })
+        } | ConvertTo-Json -Depth 5
+        Set-Content -Path $path -Value $catalog -Encoding UTF8
+        { Get-Tiny11Catalog -Path $path } | Should -Throw "*default*maybe*"
+    }
 }
 
 Describe "Real catalog file" {

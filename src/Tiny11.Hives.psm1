@@ -24,9 +24,8 @@ function Get-Tiny11HiveMountKey {
 
 function Invoke-RegCommand {
     param([Parameter(ValueFromRemainingArguments)][string[]]$RegArgs)
-    $exit = (& reg.exe @RegArgs) 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "reg.exe failed (exit $LASTEXITCODE): $($RegArgs -join ' ')`n$exit" }
-    $LASTEXITCODE
+    $captured = (& reg.exe @RegArgs) 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "reg.exe failed (exit $LASTEXITCODE): $($RegArgs -join ' ')`n$captured" }
 }
 
 function Mount-Tiny11Hive {
