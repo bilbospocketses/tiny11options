@@ -65,6 +65,7 @@ body {
 /* Breadcrumb */
 .breadcrumb {
     display: flex;
+    align-items: center;
     gap: var(--gap-lg);
     padding: var(--gap) var(--gap-lg);
     background: var(--bg-alt);
@@ -82,6 +83,23 @@ body {
     color: var(--accent);
     border-bottom-color: var(--accent);
     font-weight: 600;
+}
+
+.theme-toggle {
+    margin-left: auto;
+    padding: 4px 8px;
+    font-size: 16px;
+    line-height: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    cursor: pointer;
+    color: var(--fg);
+}
+
+.theme-toggle:hover {
+    background: var(--bg-card);
+    border-color: var(--border);
 }
 
 /* Main content area */

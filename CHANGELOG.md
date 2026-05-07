@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+UX polish on `feat/v0.2.0` branch. Built directly on top of v0.1.0; the v0.2.x infrastructure polish batch was reverted after empirical builds proved one of its changes (Sysprep autounattend write removal) caused dism.exe to hang in the apply phase. Mechanism unknown; the safer move is to ship UX polish without re-touching the build pipeline at all. 72/72 Pester tests green.
+
+### Added
+- Light/dark theme support in the wizard UI. On first launch the theme follows the system `prefers-color-scheme` setting; a toggle button in the top-right corner of the breadcrumb header lets the user override this. The override is persisted in `localStorage` (which lives in `%LOCALAPPDATA%\tiny11options\webview2-userdata\`) so it survives across sessions until cleared.
+
 ## [0.1.0] - 2026-05-07
 
 Initial public release. Catalog-driven Windows 11 image trimmer with interactive WebView2 + WPF wizard, scripted mode via `-Source`/`-Config`/`-ImageIndex`/`-OutputPath`/`-NonInteractive`, 74-item catalog across 10 categories, profile save/load, runtime guard against the pwsh-from-pwsh invocation that produces broken ISOs on Win11 25H2 Setup product-key validation. Smoke-tested in Hyper-V Gen2 + VirtualBox across all three example profiles (`tiny11-classic.json`, `keep-edge.json`, `minimal-removal.json`). 72/72 Pester tests covering catalog parsing + selections + reconcile + hive helpers + four action handlers + dispatcher + ISO mounting + autounattend templating + drift + worker dispatch + bridge protocol + WebView2 SDK detection + Runtime detection.

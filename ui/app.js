@@ -3,6 +3,30 @@
 const ps   = (msg) => window.chrome.webview.postMessage(msg);
 const onPs = (cb)  => window.chrome.webview.addEventListener('message', e => cb(JSON.parse(e.data)));
 
+// Theme — stored in localStorage (key 'tiny11-theme'). On first run, read system preference.
+// Persistence lives in the WebView2 userdata folder under %LOCALAPPDATA%\tiny11options\webview2-userdata\.
+function detectSystemTheme() {
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    const btn = document.getElementById('theme-toggle');
+    if (btn) {
+        btn.textContent = theme === 'dark' ? '\u{1F319}' : '\u{2600}\u{FE0F}';
+        btn.title = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+    }
+}
+function initTheme() {
+    const stored = localStorage.getItem('tiny11-theme');
+    const theme = (stored === 'light' || stored === 'dark') ? stored : detectSystemTheme();
+    applyTheme(theme);
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('tiny11-theme', next);
+        applyTheme(next);
+    });
+}
+
 // DOM construction helper. children may be strings (textContent) or DOM nodes.
 function el(tag, attrs, ...children) {
     const e = document.createElement(tag);
@@ -423,7 +447,7 @@ function renderSourceStep() {
     return section;
 }
 
-document.addEventListener('DOMContentLoaded', renderStep);
+document.addEventListener('DOMContentLoaded', () => { initTheme(); renderStep(); });
 
 onPs(msg => {
     if (msg.type === 'iso-validated') {
