@@ -2,6 +2,37 @@ Set-StrictMode -Version Latest
 
 $PinnedVersion = '1.0.2535.41'
 
+# Minimum sizes must match the XAML MinWidth/MinHeight below; clamping prevents loading a
+# stale settings.json from a previous build whose minimums were smaller.
+$script:MinWindowWidth  = 1000
+$script:MinWindowHeight = 750
+
+function Get-Tiny11UserSettingsPath {
+    Join-Path $env:LOCALAPPDATA 'tiny11options\settings.json'
+}
+
+function Get-Tiny11UserSettings {
+    $path = Get-Tiny11UserSettingsPath
+    if (-not (Test-Path $path)) { return [pscustomobject]@{} }
+    try {
+        Get-Content -Path $path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        # Corrupt or unreadable settings file: ignore silently. Returning an empty object
+        # means defaults take over; the next save will overwrite.
+        [pscustomobject]@{}
+    }
+}
+
+function Save-Tiny11UserSettings {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$Settings)
+    $path = Get-Tiny11UserSettingsPath
+    $dir  = Split-Path -Parent $path
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $json = $Settings | ConvertTo-Json -Depth 4
+    [System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
+}
+
 function Get-Tiny11WebView2SdkPath {
     [CmdletBinding()]
     param([string]$RepoRoot)
@@ -70,9 +101,9 @@ function Show-Tiny11Wizard {
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        Title="tiny11options" Width="900" Height="700"
+        Title="tiny11options" Width="1200" Height="900"
         WindowStartupLocation="CenterScreen"
-        MinWidth="700" MinHeight="500">
+        MinWidth="1000" MinHeight="750">
     <Grid>
         <wv2:WebView2 x:Name="WV"/>
     </Grid>
@@ -83,6 +114,29 @@ function Show-Tiny11Wizard {
     $window = [Windows.Markup.XamlReader]::Load($reader)
     $wv = $window.FindName('WV')
     Set-Tiny11WizardWindow $window $wv
+
+    # Restore previous window size if persisted. Clamp at MinWidth/MinHeight so an old/manual
+    # settings file can't open the window smaller than today's minimums.
+    $userSettings = Get-Tiny11UserSettings
+    if ($userSettings.PSObject.Properties['windowWidth']  -and $userSettings.windowWidth) {
+        $window.Width  = [Math]::Max($script:MinWindowWidth,  [double]$userSettings.windowWidth)
+    }
+    if ($userSettings.PSObject.Properties['windowHeight'] -and $userSettings.windowHeight) {
+        $window.Height = [Math]::Max($script:MinWindowHeight, [double]$userSettings.windowHeight)
+    }
+
+    # Persist user-resized dimensions on close. WPF reports the restore size in Width/Height
+    # even when the window is maximized, so this captures the user's intended size.
+    $window.add_Closing({
+        try {
+            Save-Tiny11UserSettings -Settings @{
+                windowWidth  = [int]$window.Width
+                windowHeight = [int]$window.Height
+            }
+        } catch {
+            # Settings save failures must never block the window from closing.
+        }
+    }.GetNewClosure())
 
     $userdata = Join-Path $env:LOCALAPPDATA 'tiny11options\webview2-userdata'
     New-Item -ItemType Directory -Path $userdata -Force | Out-Null
@@ -132,4 +186,4 @@ function Show-Tiny11Wizard {
     [void]$window.ShowDialog()
 }
 
-Export-ModuleMember -Function Get-Tiny11WebView2SdkPath, Test-Tiny11WebView2SdkPresent, Test-Tiny11WebView2RuntimeInstalled, Show-Tiny11Wizard, Set-Tiny11WizardWindow, Get-Tiny11WizardWindow, Get-Tiny11WizardWebView
+Export-ModuleMember -Function Get-Tiny11WebView2SdkPath, Test-Tiny11WebView2SdkPresent, Test-Tiny11WebView2RuntimeInstalled, Show-Tiny11Wizard, Set-Tiny11WizardWindow, Get-Tiny11WizardWindow, Get-Tiny11WizardWebView, Get-Tiny11UserSettingsPath, Get-Tiny11UserSettings, Save-Tiny11UserSettings
