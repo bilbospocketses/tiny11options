@@ -1,122 +1,137 @@
-# tiny11builder
-*Scripts to build a trimmed-down Windows 11 image - now in **PowerShell**!*
+# tiny11options
 
-## Introduction :
-Tiny11 builder, now completely overhauled. <br> After more than a year (for which I am so sorry) of no updates, tiny11 builder is now a much more complete and flexible solution - one script fits all. Also, it is a steppingstone for an even more fleshed-out solution.
+A catalog-driven Windows 11 image trimmer with an interactive WebView2 + WPF wizard. Build your own customized Win11 ISO by picking what to keep and what to remove from a curated list of ~74 items across 10 categories.
 
-You can now use it on ANY Windows 11 release (not just a specific build), as well as ANY language or architecture.
-This is made possible thanks to the much-improved scripting capabilities of PowerShell, compared to the older Batch release.
+This is a hard fork of [ntdevlabs/tiny11builder](https://github.com/ntdevlabs/tiny11builder). It is standalone — no upstream contributions are planned.
 
-This is a script created to automate the build of a streamlined Windows 11 image, similar to tiny10.
-The script has also been updated to use DISM's recovery compression, resulting in a much smaller final ISO size, and no utilities from external sources. The only other executable included is **oscdimg.exe**, which is provided in the Windows ADK and it is used to create bootable ISO images. 
-Also included is an unattended answer file, which is used to bypass the Microsoft Account on OOBE and to deploy the image with the `/compact` flag.
-It's open-source, **so feel free to add or remove anything you want!** Feedback is also much appreciated.
+## What's different from upstream
 
-Also, for the very first time, **introducing tiny11 core builder**! A more powerful script, designed for a quick and dirty development testbed. Just the bare minimum, none of the fluff. 
-This script generates a significantly reduced Windows 11 image. However, **it's not suitable for regular use due to its lack of serviceability - you can't add languages, updates, or features post-creation**. tiny11 Core is not a full Windows 11 substitute but a rapid testing or development tool, potentially useful for VM environments.
+| | Upstream tiny11builder | tiny11options |
+|---|---|---|
+| Removal list | Fixed | You choose, item-by-item, via wizard or JSON profile |
+| Interface | Linear PS script | 3-step WebView2 + WPF wizard, OR scripted via `-Source` / `-Config` |
+| Catalog | Hardcoded in script | Single source of truth in `catalog/catalog.json` |
+| Re-running with same selections | Re-edit script | `-Config <profile>.json` |
+| Edge removal | Yes | Yes — but WebView2 Runtime is **explicitly preserved** (see below) |
 
----
+## Two modes
 
-## ⚠️ Script versions:
-- **tiny11maker.ps1** : The regular script, which removes a lot of bloat but keeps the system serviceable. You can add languages, updates, and features post-creation. This is the recommended script for regular use.
-- ⚠️ **tiny11coremaker.ps1** : The core script, which removes even more bloat but also removes the ability to service the image. You cannot add languages, updates, or features post-creation. This is recommended for quick testing or development use.
+### Interactive (default)
 
-## Instructions:
-1. Download Windows 11 from the [Microsoft website](https://www.microsoft.com/software-download/windows11) or [Rufus](https://github.com/pbatard/rufus)
-2. Mount the downloaded ISO image using Windows Explorer.
-3. Open **PowerShell 5.1** as Administrator. 
-5. Change the script execution policy :
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process
+# from cmd.exe or Windows PowerShell 5.1 (NOT from a pwsh terminal — see "Known caveat" below)
+pwsh -NoProfile -File tiny11maker.ps1
 ```
-> Using `-Scope Process` you keep your original policy intact as this change only lasts for the current PowerShell session. 
 
-6. Start the script :
+Opens a 900×700 wizard window:
+1. **Source** — pick your Win11 ISO + edition, scratch directory, output path.
+2. **Customize** — browse 10 categories of removable items + tweaks; drill into any category to fine-tune; Save / Load profile JSON.
+3. **Build** — confirm the summary and click Build. Progress streams live; cancel button works mid-build.
+
+### Scripted
+
 ```powershell
-C:/path/to/your/tiny11/script.ps1 -ISO <letter> -SCRATCH <letter>
-``` 
-> You can see of the script by running the `get-help` command.
+pwsh -NoProfile -File tiny11maker.ps1 `
+    -Source 'C:\path\to\Win11.iso' `
+    -Config 'config\examples\tiny11-classic.json' `
+    -ImageIndex 6 `
+    -OutputPath 'C:\out\tiny11.iso' `
+    -NonInteractive
+```
 
-6. Select the drive letter where the image is mounted (only the letter, no colon (:))
-7. Select the SKU that you want the image to be based.
-8. Sit back and relax :)
-9. When the image is completed, you will see it in the folder where the script was extracted, with the name tiny11.iso
+`-Source` accepts an `.iso` path or a drive letter (`E:`, `E:\`, just `E`).
+`-ImageIndex` is the edition index inside `install.wim` (typically 6 for Pro on consumer ISOs).
+`-Config` is one of the example profiles or your own.
+`-NonInteractive` suppresses the GUI; implied when both `-Source` and `-Config` are present.
 
----
+## WebView2 boundary
 
-## What is removed:
-<table>
-  <tbody>
-    <tr>
-      <th>Tiny11maker</th>
-      <th>Tiny11coremaker</th>
-    </tr>
-    <tr>
-      <td>
-        <ul>
-          <li>Clipchamp</li>
-          <li>News</li>
-          <li>Weather</li>
-          <li>Xbox</li>
-          <li>GetHelp</li>
-          <li>GetStarted</li>
-          <li>Office Hub</li>
-          <li>Solitaire</li>
-          <li>PeopleApp</li>
-          <li>PowerAutomate</li>
-          <li>ToDo</li>
-          <li>Alarms</li>
-          <li>Mail and Calendar</li>
-          <li>Feedback Hub</li>
-          <li>Maps</li>
-          <li>Sound Recorder</li>
-          <li>Your Phone</li>
-          <li>Media Player</li>
-          <li>QuickAssist</li>
-          <li>Internet Explorer</li>
-          <li>Tablet PC Math</li>
-          <li>Edge</li>
-          <li>OneDrive</li>
-        </ul>
-      </td>
-      <td>
-        <ul>
-          <li>all from regular tiny +</li>
-          <li>Windows Component Store (WinSxS)</li>
-          <li>Windows Defender (only disabled, can be enabled back if needed)</li>
-          <li>Windows Update (wouldn't work without WinSxS, enabling it would put the system in a state of failure)</li>
-          <li>WinRE</li>
-        </ul>
-      </td>
-    </tr>
-  </tbody>
-</table>
+This is **not** a generic "remove all Edge stuff" script. We strip the Edge **browser** binary, but leave the **WebView2 Runtime** alone.
 
-Keep in mind that **you cannot add back features in tiny11 core**! <br>
-You will be asked during image creation if you want to enable .net 3.5 support!
+Why: the WebView2 Runtime is the rendering engine behind the Start menu's web-results pane, the Widgets surface, the Settings app's payment pages, and several other Win11 shell surfaces. Removing it leaves the system functional-but-broken in subtle ways (no Start search results, blank Widgets panel, etc.). Upstream tiny11builder removes both; tiny11options keeps the Runtime so the resulting OS still feels "stock Win11" minus the bloat.
 
----
+The catalog item `remove-edge` controls Edge browser; `remove-edge-webview` (if you check it) removes the WebView2 *binary* but leaves the Runtime registry entries intact. Choose carefully.
 
-## Known issues:
-- Although Edge is removed, there are some remnants in the Settings, but the app in itself is deleted. 
-- You might have to update Winget before being able to install any apps, using Microsoft Store.
-- Outlook and Dev Home might reappear after some time. This is an ongoing battle, though the latest script update tries to prevent this more aggressively.
-- If you are using this script on arm64, you might see a glimpse of an error while running the script. This is caused by the fact that the arm64 image doesn't have OneDriveSetup.exe included in the System32 folder.
+## Catalog
 
----
+Single source of truth: [`catalog/catalog.json`](catalog/catalog.json). 10 categories, ~74 items, every item traceable to the legacy upstream removal list.
 
-## Features to be implemented:
-- ~~disabling telemetry~~ (Implemented in the 04-29-24 release!)
-- ~~more ad suppression~~ (Partially implemented in the 09-06-25 release!)
-- improved language and arch detection
-- more flexibility in what to keep and what to delete
-- maybe a GUI???
+Each item has:
+- `id` — stable identifier used in profile JSONs
+- `category` — one of the 10 categories (`store-apps`, `xbox-and-gaming`, `communication`, `edge-and-webview`, `onedrive`, `telemetry`, `sponsored`, `copilot-ai`, `hardware-bypass`, `oobe`)
+- `displayName` / `description`
+- `default` — `apply` (remove/tweak) or `skip` (keep)
+- `actions` — one or more typed action records (`registry`, `provisioned-appx`, `filesystem`, `scheduled-task`)
+- `runtimeDepsOn` — array of other item ids this item *requires* to also be applied (locks them when the parent is kept)
 
-And that's pretty much it for now!
-## ❤️ Support the Project
+To add a new removal: append a new item to `catalog.json` matching the schema, run `pwsh -File tests/Run-Tests.ps1` (the catalog-loader tests will validate the schema), and submit a PR or just commit on your own fork.
 
-If this project has helped you, please consider showing your support! A small donation helps me dedicate more time to projects like this.
-Thank you!
+## Profile examples
 
-**[Patreon](http://patreon.com/ntdev) | [PayPal](http://paypal.me/ntdev2) | [Ko-fi](http://ko-fi.com/ntdev)**
-Thanks for trying it and let me know how you like it!
+Three profiles are provided in [`config/examples/`](config/examples/):
+
+| Profile | Purpose |
+|---|---|
+| `tiny11-classic.json` | Mirrors the upstream tiny11builder removal list — the closest analog to "what tiny11builder produces" |
+| `keep-edge.json` | Like classic, but keeps Microsoft Edge (still removes everything else) |
+| `minimal-removal.json` | Conservative — removes only obvious bloat (Xbox, Solitaire, Teams chat icon), keeps everything else |
+
+A profile JSON has shape `{ "version": 1, "selections": { "<item-id>": "apply"|"skip", ... } }` and only needs to list items that diverge from the catalog defaults.
+
+## System requirements
+
+- Windows 11 host (10 may work for scripted builds; GUI requires WebView2 Runtime, which is preinstalled on Win11)
+- PowerShell 7 (`pwsh.exe`) on PATH for the GUI; PowerShell 5.1 (`powershell.exe`) is sufficient for scripted mode
+- Microsoft Edge WebView2 Runtime (preinstalled on Win11; on Win10, install from https://developer.microsoft.com/microsoft-edge/webview2/)
+- ~10 GB free in the scratch directory
+- A retail / consumer Win11 ISO (Microsoft media-creation-tool, direct ISO download). VL / MSDN multi-edition ISOs are not supported in v1.0.0 — they trip Setup's stricter VL key validator.
+
+The build process self-elevates via UAC; no need to launch as admin manually.
+
+## Known caveat — pwsh-from-pwsh invocation
+
+`pwsh.exe` invoked from another `pwsh.exe` terminal (`pwsh → pwsh -File tiny11maker.ps1`) **deterministically produces ISOs that fail Win11 25H2 Setup product-key validation**, even though the build output is content-identical to working invocations. Mechanism is unknown; full investigation 2026-05-04 → 2026-05-06 confirmed every byte of the produced ISO matches a working build except for `reg.exe` timestamp/sequence noise inside hives.
+
+The script blocks this combination at runtime with a clear error message. **Workaround**: launch `tiny11maker.ps1` from a `cmd.exe` or Windows PowerShell 5.1 terminal. The full bundled `.exe` launcher (Path C, post-v1.0.0) eliminates this caveat by always running under a controlled host.
+
+Five working invocation patterns:
+- `cmd → powershell -File tiny11maker.ps1` ✅
+- `cmd → pwsh -File tiny11maker.ps1` ✅
+- `powershell → powershell -File tiny11maker.ps1` ✅
+- `powershell → pwsh -File tiny11maker.ps1` ✅
+- `pwsh → powershell -File tiny11maker.ps1` ✅
+
+One blocked:
+- `pwsh → pwsh -File tiny11maker.ps1` ❌ (rejected at startup with workaround instructions)
+
+## Running tests
+
+```powershell
+pwsh -NoProfile -File tests/Run-Tests.ps1
+```
+
+72 Pester tests covering catalog parsing + schema validation, selection model + reconcile/lock logic, registry hive helpers, four action handlers (registry / provisioned-appx / filesystem / scheduled-task), action dispatcher, ISO mounting + edition enumeration, autounattend templating + 3-tier acquisition + drift detection, worker dispatch, bridge protocol, WebView2 SDK detection.
+
+GUI behavior is verified manually (Task 24 in the implementation plan); no headless GUI tests in v1.0.0.
+
+## VM testing recommendations
+
+Built ISOs target Hyper-V Generation 2 + VirtualBox + VMware. Hybrid BIOS+UEFI bootable.
+
+Recommended verification after install:
+- Reach OOBE; complete with the local-account workaround if `tweak-bypass-nro` is applied.
+- Boot to desktop; open Start menu and search for "edge" — expect web results to render (proves WebView2 Runtime is intact).
+- Open Widgets via the taskbar — expect content to load (also WebView2-dependent).
+- Verify the apps you removed are gone and the apps you kept (e.g., Edge if `keep-edge.json`) are present.
+
+For headless validation, `dism /Get-WimInfo /WimFile:<your-iso>\sources\install.wim` shows what made it through.
+
+## Contribution / fork boundary
+
+This is a standalone hard fork. Issues and PRs filed here will not be propagated upstream. If you'd like changes to land in the upstream `ntdevlabs/tiny11builder`, file there separately.
+
+## License / credits
+
+Originally based on [`ntdevlabs/tiny11builder`](https://github.com/ntdevlabs/tiny11builder) by NTDEV. The upstream project's removal lists, registry tweaks, and overall approach inform the v1.0.0 catalog. Refer to the upstream repository for license and contributor history.
+
+Fork additions (catalog schema, selection/reconcile model, WebView2 + WPF wizard, Pester test suite, runspace-based progress streaming) by the tiny11options maintainers.

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "selections": {
+    "remove-clipchamp": "skip",
+    "remove-windowsterminal": "skip",
+    "remove-msteams": "skip",
+    "remove-onedrive-setup": "skip"
+  }
+}
