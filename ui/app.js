@@ -73,7 +73,19 @@ const state = {
     building: false,
     completed: null,
     progress: null,
+    buildDetailsOpen: false,
 };
+
+// When the user picks or types a scratch directory, prefill the output ISO path with
+// "<scratchDir>\tiny11.iso" — but only if outputPath is empty so we never clobber a
+// custom value. Output goes alongside scratchDir's tiny11/ source folder, not inside it,
+// so oscdimg never sees its own output as input.
+function prefillOutputIfEmpty() {
+    if (state.outputPath || !state.scratchDir) return;
+    const trimmed = state.scratchDir.replace(/[\\/]+$/, '');
+    const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
+    state.outputPath = trimmed + sep + 'tiny11.iso';
+}
 
 function renderStep() {
     // Preserve focus + cursor position on the search input across re-renders, so typing isn't disrupted.
@@ -186,7 +198,11 @@ function renderProgress() {
         el('p', null, `Phase: ${p.phase || '—'}`),
         el('p', null, `Step: ${p.step || '—'}`),
         el('button', { onclick: () => ps({ type: 'cancel' }) }, 'Cancel build'),
-        el('details', { class: 'build-details' },
+        el('details', {
+            class: 'build-details',
+            open: state.buildDetailsOpen,
+            ontoggle: ev => { state.buildDetailsOpen = ev.target.open; }
+        },
             el('summary', null, 'Show build details'),
             el('dl', { class: 'build-details-summary' },
                 el('dt', null, 'Edition'),     el('dd', null, editionLabel),
@@ -451,7 +467,7 @@ function renderSourceStep() {
         el('div', { class: 'row' },
             el('input', {
                 id: 'scratch-input', type: 'text', value: state.scratchDir || '',
-                onchange: e => state.scratchDir = e.target.value
+                onchange: e => { state.scratchDir = e.target.value; prefillOutputIfEmpty(); }
             }),
             el('button', { onclick: () => ps({ type: 'browse-scratch' }) }, 'Browse...')
         ),
@@ -498,7 +514,7 @@ onPs(msg => {
         }
     } else if (msg.type === 'browse-result') {
         if (msg.field === 'source')  { state.source = msg.path; renderStep(); ps({ type: 'validate-iso', path: msg.path }); }
-        if (msg.field === 'scratch') { state.scratchDir = msg.path; renderStep(); }
+        if (msg.field === 'scratch') { state.scratchDir = msg.path; prefillOutputIfEmpty(); renderStep(); }
         if (msg.field === 'output')  { state.outputPath = msg.path; renderStep(); }
     } else if (msg.type === 'profile-loaded') {
         state.selections = {};

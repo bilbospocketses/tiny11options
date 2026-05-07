@@ -14,9 +14,12 @@ UX polish on `feat/v0.2.0` branch. Built directly on top of v0.1.0; the v0.2.x i
 - Window size persistence. The default size is now 1200×900 (up from 900×700) so the four-by-three category grid on Step 2 fits without scrolling, and the minimum is 1000×750 (up from 700×500). When the user resizes the window, the new dimensions are written to `%LOCALAPPDATA%\tiny11options\settings.json` on close and restored on the next launch (clamped at the minimums). New helper functions `Get-Tiny11UserSettingsPath`, `Get-Tiny11UserSettings`, and `Save-Tiny11UserSettings` in `src/Tiny11.WebView2.psm1`.
 - Smart "Check all / Uncheck all" button at the top of the Step 2 category drill-in view and the search-results view. Acts only on the items currently visible (the category's items in the drill-in, the matching items in search results) and skips locked ones. The label flips to "Uncheck all" when every unlocked visible item is already applied.
 - Whole-row click-to-toggle on Step 2 item lists. Clicking anywhere on an unlocked item row now toggles its checkbox (previously only the 16-pixel checkbox itself was a click target). Locked rows are unaffected. Hover gets a subtle background tint so the affordance is visible.
+- Output ISO path autofill on Step 3. When the scratch directory is set or changed (typed or picked) and the output path is still empty, the output path is prefilled with `<scratchDir>\tiny11.iso`. The user can still override; once the user types anything custom, scratch-directory changes leave it alone. The ISO is written alongside the `tiny11/` source folder oscdimg reads from (sibling, not nested), so there is no risk of oscdimg recursively including its own output.
 
 ### Changed
 - `ui/style.css` `.card-grid` now pins to four equal columns (`repeat(4, minmax(0, 1fr))`) instead of `auto-fill, minmax(220px, 1fr)`. With the new default window size the ten-category grid renders as four-by-three with no scrolling; pinning to four columns also prevents a wider window from reflowing to five columns and visually fragmenting the categories.
+### Fixed
+- The "Show build details" panel on the build-progress screen no longer collapses on every phase update. The expanded/collapsed state is now tracked in `state.buildDetailsOpen` and re-applied on each `renderProgress()` call (which currently runs on every `build-progress` message). Native `<details>` `toggle` events keep the state in sync with user clicks.
 
 ## [0.1.0] - 2026-05-07
 
