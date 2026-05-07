@@ -23,6 +23,17 @@
     <DebugType>embedded</DebugType>
   </PropertyGroup>
 
+  <!-- Tests/ is a separate sibling project; exclude its files from the launcher's
+       default cs-glob to avoid double-compilation and missing-xunit errors. -->
+  <ItemGroup>
+    <Compile Remove="Tests/**" />
+    <Page Remove="Tests/**" />
+    <Resource Remove="Tests/**" />
+    <ApplicationDefinition Remove="Tests/**" />
+    <None Remove="Tests/**" />
+    <EmbeddedResource Remove="Tests/**" />
+  </ItemGroup>
+
   <ItemGroup>
     <Reference Include="Microsoft.Web.WebView2.Core">
       <HintPath>..\dependencies\webview2\1.0.2535.41\Microsoft.Web.WebView2.Core.dll</HintPath>
