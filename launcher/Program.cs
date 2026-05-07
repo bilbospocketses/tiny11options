@@ -1,5 +1,4 @@
 using System;
-using System.Windows;
 
 namespace Tiny11Options.Launcher;
 
@@ -14,7 +13,6 @@ internal static class Program
         }
 
         var app = new App();
-        app.Run();
-        return 0;
+        return app.Run();
     }
 }

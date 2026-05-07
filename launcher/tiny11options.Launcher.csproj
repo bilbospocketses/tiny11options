@@ -12,6 +12,10 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
+    <!-- Override WPF SDK's auto-generated Main() so our Program.Main is the entry point.
+         Without this, the App.xaml-derived auto-generated Main collides with Program.Main
+         and the build fails with CS0017 (multiple entry points defined). -->
+    <StartupObject>Tiny11Options.Launcher.Program</StartupObject>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
