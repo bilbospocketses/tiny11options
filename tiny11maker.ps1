@@ -157,7 +157,7 @@ $handlers = @{
         try {
             $r = Mount-Tiny11Source -InputPath $msg.path
             $editions = Get-Tiny11Editions -DriveLetter $r.DriveLetter | ForEach-Object {
-                @{ index = $_.ImageIndex; name = $_.ImageName; architecture = $_.Architecture; languageCode = ($_.Languages -join ',') }
+                @{ index = $_.ImageIndex; name = $_.ImageName }
             }
             Dismount-Tiny11Source -IsoPath $r.IsoPath -MountedByUs:$r.MountedByUs -ForceUnmount:$true
             ConvertTo-Tiny11BridgeMessage -Type 'iso-validated' -Payload @{ editions = $editions; path = $msg.path }
@@ -241,6 +241,7 @@ $handlers = @{
                     -Source $__msg.source -ImageIndex $__msg.imageIndex `
                     -ScratchDir $scratch -OutputPath $__msg.outputPath `
                     -UnmountSource ([bool]$__msg.unmountSource) `
+                    -FastBuild ([bool]$__msg.fastBuild) `
                     -Catalog $__catalog -ResolvedSelections $__resolved `
                     -ProgressCallback $cb -CancellationToken $__token
                 $j = ConvertTo-Tiny11BridgeMessage -Type 'build-complete' -Payload @{ outputPath = $__msg.outputPath }

@@ -68,6 +68,7 @@ function Show-Tiny11Wizard {
 
     $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="tiny11options" Width="900" Height="700"
         WindowStartupLocation="CenterScreen"
@@ -85,22 +86,14 @@ function Show-Tiny11Wizard {
 
     $userdata = Join-Path $env:LOCALAPPDATA 'tiny11options\webview2-userdata'
     New-Item -ItemType Directory -Path $userdata -Force | Out-Null
-    $envTask = [Microsoft.Web.WebView2.Core.CoreWebView2Environment]::CreateAsync($null, $userdata)
-    $coreEnv = $envTask.GetAwaiter().GetResult()
-    $wv.EnsureCoreWebView2Async($coreEnv).GetAwaiter().GetResult()
 
-    $wv.CoreWebView2.SetVirtualHostNameToFolderMapping(
-        'ui.tiny11options', $UiDir,
-        [Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind]::DenyCors
-    )
-
-    $initScript = "window.__tinyCatalog = $CatalogJson;"
-    $wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync($initScript) | Out-Null
-
+    # Register WebMessageReceived on the WPF control BEFORE init. The control queues the subscription
+    # and forwards events once CoreWebView2 init completes. Registering inside CoreWebView2InitializationCompleted
+    # leaves the handler in a closure context that doesn't reliably wire up when the runspace is busy in ShowDialog.
     $wv.add_WebMessageReceived({
         param($msgSender, $eventArgs)
-        $msg = $eventArgs.WebMessageAsJson | ConvertFrom-Json
         try {
+            $msg = $eventArgs.WebMessageAsJson | ConvertFrom-Json
             $reply = Invoke-Tiny11BridgeHandler -Registry $MessageHandlers -Message $msg
             if ($reply) {
                 $window.Dispatcher.Invoke([action]{ $wv.CoreWebView2.PostWebMessageAsString($reply) })
@@ -109,9 +102,33 @@ function Show-Tiny11Wizard {
             $errReply = ConvertTo-Tiny11BridgeMessage -Type 'handler-error' -Payload @{ message = "$_" }
             $window.Dispatcher.Invoke([action]{ $wv.CoreWebView2.PostWebMessageAsString($errReply) })
         }
-    })
+    }.GetNewClosure())
 
-    $wv.Source = [Uri]'https://ui.tiny11options/index.html'
+    # Post-init setup: virtual host mapping, catalog injection, IsWebMessageEnabled defensive set, navigation.
+    $wv.add_CoreWebView2InitializationCompleted({
+        param($initSender, $initEventArgs)
+        if (-not $initEventArgs.IsSuccess) {
+            Write-Warning "WebView2 initialization failed: $($initEventArgs.InitializationException)"
+            return
+        }
+        $wv.CoreWebView2.Settings.IsWebMessageEnabled = $true
+        $wv.CoreWebView2.SetVirtualHostNameToFolderMapping(
+            'ui.tiny11options', $UiDir,
+            [Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind]::DenyCors
+        )
+        $injectScript = "window.__tinyCatalog = $CatalogJson;"
+        $wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync($injectScript) | Out-Null
+        $wv.Source = [Uri]'https://ui.tiny11options/index.html'
+    }.GetNewClosure())
+
+    # Defer EnsureCoreWebView2Async until the WPF dispatcher is running (after Loaded fires).
+    # Calling it earlier throws "EnsureCoreWebView2Async cannot be used before the application's event loop has started running."
+    $window.add_Loaded({
+        $envTask = [Microsoft.Web.WebView2.Core.CoreWebView2Environment]::CreateAsync($null, $userdata)
+        $coreEnv = $envTask.GetAwaiter().GetResult()
+        $wv.EnsureCoreWebView2Async($coreEnv) | Out-Null
+    }.GetNewClosure())
+
     [void]$window.ShowDialog()
 }
 

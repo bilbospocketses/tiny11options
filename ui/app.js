@@ -1,6 +1,6 @@
 "use strict";
 
-const ps   = (msg) => window.chrome.webview.postMessage(JSON.stringify(msg));
+const ps   = (msg) => window.chrome.webview.postMessage(msg);
 const onPs = (cb)  => window.chrome.webview.addEventListener('message', e => cb(JSON.parse(e.data)));
 
 // DOM construction helper. children may be strings (textContent) or DOM nodes.
@@ -43,13 +43,19 @@ const state = {
     scratchDir: null,
     outputPath: null,
     unmountSource: true,
+    fastBuild: false,
     drilledCategory: null,
+    search: '',
     building: false,
     completed: null,
     progress: null,
 };
 
 function renderStep() {
+    // Preserve focus + cursor position on the search input across re-renders, so typing isn't disrupted.
+    const wasFocusedSearch = document.activeElement && document.activeElement.id === 'search';
+    const cursorPos = wasFocusedSearch ? document.activeElement.selectionStart : 0;
+
     const root = document.getElementById('content');
     clear(root);
     document.querySelectorAll('.breadcrumb span').forEach(s => {
@@ -59,6 +65,14 @@ function renderStep() {
     if (state.step === 'customize') root.appendChild(renderCustomizeStep());
     if (state.step === 'build')     root.appendChild(renderBuildStep());
     updateNav();
+
+    if (wasFocusedSearch) {
+        const restored = document.getElementById('search');
+        if (restored) {
+            restored.focus();
+            restored.setSelectionRange(cursorPos, cursorPos);
+        }
+    }
 }
 
 function updateNav() {
@@ -120,6 +134,7 @@ function renderBuildStep() {
                     scratchDir: state.scratchDir,
                     outputPath: state.outputPath,
                     unmountSource: state.unmountSource,
+                    fastBuild: state.fastBuild,
                     selections: state.selections,
                 });
             }
@@ -130,12 +145,35 @@ function renderBuildStep() {
 function renderProgress() {
     const p = state.progress || {};
     const progressBar = el('progress', { max: 100, value: p.percent || 0 });
+
+    const editionEntry = (state.editions || []).find(e => e.index === state.edition);
+    const editionLabel = editionEntry
+        ? `${editionEntry.name} (index ${editionEntry.index})`
+        : (state.edition !== null ? `index ${state.edition}` : '—');
+    const buildMode = state.fastBuild
+        ? 'Fast build (no recovery compression — output ISO typically 7–8 GB)'
+        : 'Standard (with recovery compression — output ISO roughly 2 GB smaller)';
+    const resolved = reconcile();
+    const appliedItems = state.catalog.items.filter(i => resolved[i.id].effective === 'apply');
+
     return el('section', { class: 'progress' },
         el('h2', null, 'Building tiny11 image...'),
         progressBar,
         el('p', null, `Phase: ${p.phase || '—'}`),
         el('p', null, `Step: ${p.step || '—'}`),
-        el('button', { onclick: () => ps({ type: 'cancel' }) }, 'Cancel build')
+        el('button', { onclick: () => ps({ type: 'cancel' }) }, 'Cancel build'),
+        el('details', { class: 'build-details' },
+            el('summary', null, 'Show build details'),
+            el('dl', { class: 'build-details-summary' },
+                el('dt', null, 'Edition'),     el('dd', null, editionLabel),
+                el('dt', null, 'Build mode'),  el('dd', null, buildMode),
+                el('dt', null, 'Output ISO'),  el('dd', null, state.outputPath || '—')
+            ),
+            el('h3', null, `Items being removed (${appliedItems.length}):`),
+            el('ul', { class: 'build-details-items' },
+                appliedItems.map(it => el('li', null, it.displayName))
+            )
+        )
     );
 }
 
@@ -194,6 +232,9 @@ function renderCustomizeStep() {
     const resolved = reconcile();
     if (state.drilledCategory) return renderDrillin(state.drilledCategory, resolved);
 
+    const term = (state.search || '').trim().toLowerCase();
+    if (term) return renderSearchResults(term, resolved);
+
     const counts = countsByCategory(resolved);
     const totalApplied = state.catalog.items.filter(i => resolved[i.id].effective === 'apply').length;
 
@@ -213,7 +254,12 @@ function renderCustomizeStep() {
 
     return el('section', { class: 'customize' },
         el('div', { class: 'row' },
-            el('input', { id: 'search', type: 'text', placeholder: 'Search...' }),
+            el('input', {
+                id: 'search', type: 'text', value: state.search || '',
+                placeholder: 'Search across all items...',
+                oninput: ev => { state.search = ev.target.value; renderStep(); },
+                onkeydown: ev => { if (ev.key === 'Escape') { state.search = ''; renderStep(); } }
+            }),
             el('span', { class: 'counter' }, `Items applied: ${totalApplied}/${state.catalog.items.length}`)
         ),
         el('div', { class: 'row' },
@@ -222,6 +268,58 @@ function renderCustomizeStep() {
             el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
         ),
         el('div', { class: 'card-grid' }, cards)
+    );
+}
+
+function renderSearchResults(term, resolved) {
+    const matchingItems = state.catalog.items.filter(it =>
+        (it.displayName + ' ' + (it.description || '')).toLowerCase().includes(term)
+    );
+    const totalApplied = matchingItems.filter(it => resolved[it.id].effective === 'apply').length;
+
+    const itemElements = matchingItems.map(it => {
+        const r = resolved[it.id];
+        const cat = state.catalog.categories.find(c => c.id === it.category);
+        const liChildren = [
+            el('input', {
+                type: 'checkbox',
+                checked: r.effective === 'apply',
+                disabled: r.locked,
+                data: { id: it.id },
+                onchange: ev => {
+                    state.selections[it.id] = ev.target.checked ? 'apply' : 'skip';
+                    renderStep();
+                }
+            }),
+            el('span', { class: 'item-name' }, it.displayName),
+            el('span', { class: 'cat-badge' }, cat ? cat.displayName : it.category),
+            el('p', { class: 'item-desc' }, it.description)
+        ];
+        if (r.locked) {
+            liChildren.push(el('p', { class: 'lock' }, `🔒 Locked — kept because: ${r.lockedBy.join(', ')}`));
+        }
+        return el('li', { class: r.locked ? 'locked' : '' }, ...liChildren);
+    });
+
+    return el('section', { class: 'customize' },
+        el('div', { class: 'row' },
+            el('input', {
+                id: 'search', type: 'text', value: state.search || '',
+                placeholder: 'Search across all items...',
+                oninput: ev => { state.search = ev.target.value; renderStep(); },
+                onkeydown: ev => { if (ev.key === 'Escape') { state.search = ''; renderStep(); } }
+            }),
+            el('span', { class: 'counter' }, `Items matching: ${matchingItems.length} (${totalApplied} applied)`)
+        ),
+        el('div', { class: 'row' },
+            el('button', { onclick: () => { state.search = ''; renderStep(); } }, '< Back to categories'),
+            el('button', { onclick: () => ps({ type: 'save-profile-request', selections: state.selections }) }, 'Save profile...'),
+            el('button', { onclick: () => ps({ type: 'load-profile-request' }) }, 'Load profile...'),
+            el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
+        ),
+        matchingItems.length === 0
+            ? el('p', { class: 'hint' }, `No items match "${state.search}".`)
+            : el('ul', { class: 'item-list' }, itemElements)
     );
 }
 
@@ -272,7 +370,7 @@ function renderSourceStep() {
         el('div', { class: 'row' },
             el('input', {
                 id: 'src-input', type: 'text', value: state.source || '',
-                placeholder: 'C:\\path\\to\\Win11.iso or drive letter (E:)',
+                placeholder: 'C:\\path\\to\\Win11.iso or drive letter where Windows 11 DVD or ISO are mounted (ex. E:)',
                 onchange: e => {
                     state.source = e.target.value;
                     state.editions = null;
@@ -305,6 +403,21 @@ function renderSourceStep() {
                 onchange: e => state.unmountSource = e.target.checked
             }),
             'Unmount source ISO when build finishes'
+        ),
+        el('label', { class: 'checkbox-label' },
+            el('input', {
+                id: 'fast-build', type: 'checkbox',
+                checked: state.fastBuild,
+                onchange: e => state.fastBuild = e.target.checked
+            }),
+            'Fast build (skip recovery compression)'
+        ),
+        el('p', { class: 'hint' },
+            'Skips DISM /Cleanup-Image and /Export-Image /Compress:recovery. ' +
+            'Saves 25–40 minutes per build. With fast build the output ISO is typically ' +
+            '7–8 GB; leaving fast build off enables recovery compression and shrinks the ' +
+            'ISO by roughly 2 GB. Both produce functionally identical installs. Recommended ' +
+            'for VM testing or iterative builds where ISO size doesn’t matter.'
         )
     );
     return section;

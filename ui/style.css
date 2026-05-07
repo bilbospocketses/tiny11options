@@ -193,6 +193,13 @@ section.form {
     max-width: 720px;
 }
 
+.hint {
+    color: var(--fg-muted);
+    font-size: 12px;
+    margin: 4px 0 0 24px;
+    line-height: 1.4;
+}
+
 /* Customize step (Step 2) */
 section.customize .row {
     margin-bottom: var(--gap);
@@ -277,6 +284,17 @@ section.drill h2 {
     font-weight: 600;
 }
 
+.cat-badge {
+    display: inline-block;
+    background: var(--bg-alt);
+    color: var(--fg-muted);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
 .item-desc {
     grid-column: 2;
     margin: 4px 0 0 0;
@@ -344,6 +362,72 @@ section.progress p {
 section.complete h2,
 section.progress h2 {
     color: var(--accent);
+}
+
+.build-details {
+    margin-top: var(--gap-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--gap);
+    text-align: left;
+}
+
+.build-details summary {
+    cursor: pointer;
+    font-weight: 600;
+    user-select: none;
+    padding: 4px 0;
+}
+
+.build-details summary:hover {
+    color: var(--accent);
+}
+
+.build-details-summary {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    column-gap: var(--gap);
+    row-gap: 4px;
+    margin: var(--gap) 0;
+}
+
+.build-details-summary dt {
+    font-weight: 600;
+    color: var(--fg-muted);
+    font-size: 13px;
+}
+
+.build-details-summary dd {
+    margin: 0;
+    font-size: 13px;
+}
+
+.build-details h3 {
+    margin: var(--gap) 0 4px 0;
+    font-size: 13px;
+}
+
+.build-details-items {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 240px;
+    overflow-y: auto;
+    font-size: 12px;
+    color: var(--fg-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+}
+
+.build-details-items li {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.build-details-items li:last-child {
+    border-bottom: 0;
 }
 
 /* Error banner */
