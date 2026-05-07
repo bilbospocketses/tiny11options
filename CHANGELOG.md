@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-UX polish on `feat/v0.2.0` branch. Built directly on top of v0.1.0; the v0.2.x infrastructure polish batch was reverted after empirical builds proved one of its changes (Sysprep autounattend write removal) caused dism.exe to hang in the apply phase. Mechanism unknown; the safer move is to ship UX polish without re-touching the build pipeline at all. 72/72 Pester tests green.
+v0.2.0 polish on `feat/v0.2.0` branch — UX wizard improvements, scripted-mode CLI additions, small cleanups, expanded test coverage. 82/82 Pester tests green.
 
 ### Added
 - Light/dark theme support in the wizard UI. On first launch the theme follows the system `prefers-color-scheme` setting; a toggle button in the top-right corner of the breadcrumb header lets the user override this. The override is persisted in `localStorage` (which lives in `%LOCALAPPDATA%\tiny11options\webview2-userdata\`) so it survives across sessions until cleared.
@@ -15,11 +15,22 @@ UX polish on `feat/v0.2.0` branch. Built directly on top of v0.1.0; the v0.2.x i
 - Smart "Check all / Uncheck all" button at the top of the Step 2 category drill-in view and the search-results view. Acts only on the items currently visible (the category's items in the drill-in, the matching items in search results) and skips locked ones. The label flips to "Uncheck all" when every unlocked visible item is already applied.
 - Whole-row click-to-toggle on Step 2 item lists. Clicking anywhere on an unlocked item row now toggles its checkbox (previously only the 16-pixel checkbox itself was a click target). Locked rows are unaffected. Hover gets a subtle background tint so the affordance is visible.
 - Output ISO path autofill on Step 3. When the scratch directory is set or changed (typed or picked) and the output path is still empty, the output path is prefilled with `<scratchDir>\tiny11.iso`. The user can still override; once the user types anything custom, scratch-directory changes leave it alone. The ISO is written alongside the `tiny11/` source folder oscdimg reads from (sibling, not nested), so there is no risk of oscdimg recursively including its own output.
+- `-Edition` parameter to `tiny11maker.ps1` for scripted mode. Resolves an edition name (case-insensitive exact match) to its `ImageIndex` by enumerating the source via `Get-Tiny11Editions`. Cleaner alternative to `-ImageIndex` (which varies between consumer ISOs and VL/MSDN ISOs). `-ImageIndex` stays as an override for repro/scripting; the two are mutually exclusive.
+- `-AllowVLSource` switch on `tiny11maker.ps1` for opting into VL/MSDN multi-edition source ISOs. Default behavior rejects them with a clear error explaining the Setup product-key failure.
+- `Test-Tiny11SourceIsConsumer` in `src/Tiny11.Iso.psm1` — heuristic returning `$true` if the source has 4 or fewer editions and contains no Enterprise/Education/Server variants. Used by the orchestrator preflight.
+- `Resolve-Tiny11ImageIndex` in `src/Tiny11.Iso.psm1` — case-insensitive edition-name → image-index resolution with helpful error listing known editions on miss; rejects ambiguous matches.
 
 ### Changed
 - `ui/style.css` `.card-grid` now pins to four equal columns (`repeat(4, minmax(0, 1fr))`) instead of `auto-fill, minmax(220px, 1fr)`. With the new default window size the ten-category grid renders as four-by-three with no scrolling; pinning to four columns also prevents a wider window from reflowing to five columns and visually fragmenting the categories.
+- `catalog/catalog.json` `remove-edge-webview` displayName clarified to "Microsoft Edge System32 WebView host" with a description note distinguishing it from the actual WebView2 Runtime that powers Start menu search and Widgets (which we never touch).
+- `src/Tiny11.Hives.psm1` `Invoke-RegCommand` no longer returns `$LASTEXITCODE` (was dead data on success and leaked visible "0" lines via PostMessage paths in interactive use).
+- `docs/superpowers/plans/2026-05-01-interactive-variant-builder.md` Tasks 16, 18, 21, 23 now have post-shipment notes documenting where shipped code differs from the original plan (vendored DLLs vs runtime fetch, XAML namespace fix, `EnsureCoreWebView2Async` deferred to `Loaded`, `WebMessageReceived` registered on the WPF wrapper top-level, search filter implementation, `(Get-Tiny11WizardWindow)` lazy-fetch). Original plan code preserved as historical reference.
+
 ### Fixed
 - The "Show build details" panel on the build-progress screen no longer collapses on every phase update. The expanded/collapsed state is now tracked in `state.buildDetailsOpen` and re-applied on each `renderProgress()` call (which currently runs on every `build-progress` message). Native `<details>` `toggle` events keep the state in sync with user clicks.
+
+### Tests
+- 10 new Pester tests: catalog `version=2` and `default='maybe'` rejection (2); `Test-Tiny11SourceIsConsumer` 5 scenarios (2-edition consumer, 4-edition with N variants, Enterprise present, >4 editions, Education present); `Resolve-Tiny11ImageIndex` exact match, case-insensitive, unknown-edition error (3). `tests/Tiny11.Hives.Tests.ps1` unknown-hive test tightened from `Should -Throw` to assert the helpful "Unknown hive" message via `-ExpectedMessage`.
 
 ## [0.1.0] - 2026-05-07
 
