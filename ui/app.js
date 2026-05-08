@@ -534,9 +534,17 @@ onPs(msg => {
             banner.textContent = p.message;
         }
     } else if (msg.type === 'browse-result') {
-        if (p.field === 'source')  { state.source = p.path; renderStep(); ps({ type: 'validate-iso', path: p.path }); }
-        if (p.field === 'scratch') { state.scratchDir = p.path; prefillOutputIfEmpty(); renderStep(); }
-        if (p.field === 'output')  { state.outputPath = p.path; renderStep(); }
+        if (!p.path) return; // user cancelled the dialog
+        if (p.context === 'source')  { state.source = p.path; renderStep(); ps({ type: 'validate-iso', payload: { path: p.path } }); }
+        else if (p.context === 'scratch') { state.scratchDir = p.path; prefillOutputIfEmpty(); renderStep(); }
+        else if (p.context === 'output')  { state.outputPath = p.path; renderStep(); }
+        else if (p.context === 'profile-save') {
+            ps({ type: 'save-profile', payload: { path: p.path, selections: pendingSaveProfileSelections } });
+            pendingSaveProfileSelections = null;
+        }
+        else if (p.context === 'profile-load') {
+            ps({ type: 'load-profile', payload: { path: p.path } });
+        }
     } else if (msg.type === 'profile-loaded') {
         state.selections = {};
         for (const [k, v] of Object.entries(p.selections || {})) state.selections[k] = v;
