@@ -44,7 +44,6 @@ pwsh -NoProfile -File tiny11maker.ps1 `
 `-ImageIndex` is the edition index inside `install.wim` (typically 6 for Pro on consumer ISOs). Mutually exclusive with `-Edition`; use whichever you prefer.
 `-Config` is one of the example profiles or your own.
 `-NonInteractive` suppresses the GUI; implied when both `-Source` and `-Config` are present.
-`-AllowVLSource` overrides the VL/MSDN ISO preflight rejection (see [System requirements](#system-requirements)).
 
 ## WebView2 boundary
 
@@ -86,7 +85,7 @@ A profile JSON has shape `{ "version": 1, "selections": { "<item-id>": "apply"|"
 - PowerShell 7 (`pwsh.exe`) on PATH for the GUI; PowerShell 5.1 (`powershell.exe`) is sufficient for scripted mode
 - Microsoft Edge WebView2 Runtime (preinstalled on Win11; on Win10, install from https://developer.microsoft.com/microsoft-edge/webview2/)
 - ~10 GB free in the scratch directory
-- A retail / consumer Win11 ISO (Microsoft media-creation-tool, direct ISO download). VL / MSDN multi-edition ISOs are rejected at preflight by default (they trip Setup's stricter VL key validator); pass `-AllowVLSource` to override at your own risk.
+- A Windows 11 ISO (Microsoft media-creation-tool, direct ISO download, or VL/MSDN multi-edition).
 
 The build process self-elevates via UAC; no need to launch as admin manually.
 

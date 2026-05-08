@@ -76,7 +76,6 @@ public class BuildHandlers : IBridgeHandler
         var scratchDir = payload?["scratchDir"]?.ToString() ?? "";
         var unmountSource = payload?["unmountSource"]?.GetValue<bool>() ?? false;
         var fastBuild = payload?["fastBuild"]?.GetValue<bool>() ?? false;
-        var allowVLSource = payload?["allowVLSource"]?.GetValue<bool>() ?? false;
 
         // JS-side `state.edition` is the integer ImageIndex (set in app.js:527
         // from p.editions[0].index). Treat it as ImageIndex by default; only fall
@@ -104,7 +103,6 @@ public class BuildHandlers : IBridgeHandler
         if (!string.IsNullOrEmpty(scratchDir)) args.Append(" -ScratchDir \"").Append(scratchDir).Append('"');
         if (unmountSource) args.Append(" -UnmountSource");
         if (fastBuild) args.Append(" -FastBuild");
-        if (allowVLSource) args.Append(" -AllowVLSource");
 
         var psi = new ProcessStartInfo
         {

@@ -20,7 +20,6 @@ param(
     [int]$ImageIndex = 0,
     [string]$Edition,
     [string]$ScratchDir,
-    [switch]$AllowVLSource,
     [switch]$FastBuild,
     [switch]$UnmountSource
 )
@@ -72,24 +71,13 @@ try {
     $rawSelections      = New-Tiny11Selections -Catalog $catalog -Overrides $overrides
     $resolvedSelections = Resolve-Tiny11Selections -Catalog $catalog -Selections $rawSelections
 
-    # PORTED: tiny11maker.ps1:131-157 — non-interactive preflight is UNCONDITIONAL.
-    # Mount, enumerate, run VL/MSDN check, resolve -Edition to -ImageIndex if needed.
-    # Path C scaffold gated this on `-Edition` being set, which silently skipped VL
-    # detection when the launcher passed -ImageIndex directly. VL ISOs would then
-    # fail Setup product-key validation at install time with no upstream warning.
-    Write-Marker 'build-progress' @{ phase = 'preflight'; step = 'Mounting source for edition + VL check'; percent = 0 }
+    # Preflight: mount the source, enumerate its editions, and resolve -Edition to
+    # -ImageIndex if the caller passed an edition name. Uses -ForceUnmount:$true on
+    # cleanup so a second run against the same source doesn't trip mount-locking.
+    Write-Marker 'build-progress' @{ phase = 'preflight'; step = 'Mounting source for edition enumeration'; percent = 0 }
     $preflightMount = Mount-Tiny11Source -InputPath $Source
     try {
         $editions = @(Get-Tiny11Editions -DriveLetter $preflightMount.DriveLetter)
-        $isConsumer = Test-Tiny11SourceIsConsumer -Editions $editions
-        if (-not $isConsumer) {
-            $editionsList = ($editions | ForEach-Object { $_.ImageName }) -join '; '
-            $vlMsg = "Source ISO appears to be VL/MSDN (more than 4 editions or contains Enterprise/Education/Server variants). tiny11 targets the consumer Win11 ISO; build will probably fail at install time with `"Setup has failed to validate the product key`". Editions found: $editionsList"
-            if (-not $AllowVLSource) {
-                throw "$vlMsg`nOverride with -AllowVLSource to proceed anyway."
-            }
-            Write-Marker 'build-progress' @{ phase = 'preflight'; step = "VL/MSDN source allowed by override: $vlMsg"; percent = 0 }
-        }
         if ($Edition -and $ImageIndex -le 0) {
             $ImageIndex = Resolve-Tiny11ImageIndex -Editions $editions -Edition $Edition
         }
