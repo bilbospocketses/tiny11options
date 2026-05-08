@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
@@ -11,6 +12,20 @@ public class BuildHandlers : IBridgeHandler
 {
     private readonly Bridge.Bridge _bridge;
     private readonly string _resourcesDir;
+
+    // SMOKE DIAGNOSTIC — REVERT BEFORE RELEASE. Passthrough log of every line
+    // received from the pwsh build subprocess + every forward outcome. Lets us
+    // see whether the wrapper emitted markers, whether they parsed, and whether
+    // SendToJs threw silently inside the unobserved Task.Run reader.
+    private static readonly string SmokeBuildLog = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "tiny11options", "smoke-build.log");
+
+    private static void LogSmoke(string text)
+    {
+        try { File.AppendAllText(SmokeBuildLog, $"[{DateTime.Now:HH:mm:ss.fff}] {text}\n"); }
+        catch { /* diagnostic must never crash the bridge */ }
+    }
 
     public BuildHandlers(Bridge.Bridge bridge, string resourcesDir)
     {
@@ -105,15 +120,26 @@ public class BuildHandlers : IBridgeHandler
         _activeBuild = Process.Start(psi);
         if (_activeBuild is null) return Error("Failed to spawn pwsh for build");
 
+        LogSmoke($"=== build subprocess started PID={_activeBuild.Id} args={args} ===");
+
         // Stream stdout line-by-line. The wrapper writes ALL bridge traffic
         // (build-progress, build-complete, build-error) to STDOUT — single forwarder
         // routes everything by `type`.
         _ = Task.Run(async () =>
         {
-            string? line;
-            while ((line = await _activeBuild.StandardOutput.ReadLineAsync()) is not null)
+            try
             {
-                ForwardJsonLine(line);
+                string? line;
+                while ((line = await _activeBuild.StandardOutput.ReadLineAsync()) is not null)
+                {
+                    LogSmoke($"STDOUT: {line}");
+                    ForwardJsonLine(line);
+                }
+                LogSmoke("STDOUT closed (subprocess pipe ended)");
+            }
+            catch (Exception ex)
+            {
+                LogSmoke($"STDOUT reader threw: {ex.GetType().Name}: {ex.Message}");
             }
         });
 
@@ -154,14 +180,35 @@ public class BuildHandlers : IBridgeHandler
             if (t is "build-progress" or "build-complete" or "build-error")
             {
                 if (t is "build-complete" or "build-error") _terminalMarkerSeen = true;
-                _bridge.SendToJs(new Bridge.BridgeMessage
+                // DeepClone the payload so the new BridgeMessage owns it cleanly.
+                // Without the clone, node["payload"] is still parented under `node`
+                // and System.Text.Json would throw "node already has a parent" when
+                // re-serializing inside Bridge.SendToJs — and the throw is swallowed
+                // by the unobserved Task.Run reader, which made the build markers
+                // disappear silently into the same async-push black hole that hid
+                // the update badge in the previous smoke (fixed in 81f8880 by
+                // refactoring UpdateNotifier to pull-based; here we keep push and
+                // fix the parent-ownership bug instead).
+                var payloadClone = node!["payload"]?.DeepClone() as JsonObject;
+                try
                 {
-                    Type = t,
-                    Payload = node!["payload"]?.AsObject(),
-                });
+                    _bridge.SendToJs(new Bridge.BridgeMessage { Type = t, Payload = payloadClone });
+                    LogSmoke($"FORWARDED: type={t}");
+                }
+                catch (Exception ex)
+                {
+                    LogSmoke($"SendToJs threw: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+            else
+            {
+                LogSmoke($"IGNORED non-marker JSON: type={t ?? "<null>"}");
             }
         }
-        catch { /* non-JSON lines ignored */ }
+        catch (Exception ex)
+        {
+            LogSmoke($"ForwardJsonLine threw on '{line}': {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private static Bridge.BridgeMessage Error(string msg)

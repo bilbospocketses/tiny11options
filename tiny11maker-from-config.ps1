@@ -51,8 +51,11 @@ try {
     Import-Module (Join-Path $ModulesDir 'Tiny11.Iso.psm1')        -Force
     Import-Module (Join-Path $ModulesDir 'Tiny11.Worker.psm1')     -Force
 
-    # PORTED: tiny11maker.ps1:127 — load catalog from bundled catalog/ directory.
-    $catalogPath = Join-Path $RepoRoot 'catalog'
+    # PORTED: tiny11maker.ps1:126 — Get-Tiny11Catalog expects the catalog.json
+    # FILE PATH, not the directory. Round 1 audit (A4) rewrote this to point at
+    # the directory, and Get-Content -Raw on a directory throws "Access to the
+    # path '...' is denied." with no further hint that it's a path-shape bug.
+    $catalogPath = Join-Path $RepoRoot 'catalog\catalog.json'
     $catalog = Get-Tiny11Catalog -Path $catalogPath
 
     # PORTED: tiny11maker.ps1:242-248 (legacy `build` handler) — selections shape.
