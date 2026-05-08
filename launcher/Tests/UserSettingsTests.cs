@@ -52,6 +52,29 @@ public class UserSettingsTests
     }
 
     [Fact]
+    public void LastProfilePath_RoundTrips()
+    {
+        var path = TempPath();
+        try
+        {
+            var original = new UserSettings { LastProfilePath = "C:\\foo\\bar.json" };
+            original.Save(path);
+
+            var loaded = UserSettings.Load(path);
+            Assert.Equal("C:\\foo\\bar.json", loaded.LastProfilePath);
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public void LastProfilePath_DefaultsToEmpty_WhenFileMissing()
+    {
+        var path = TempPath();
+        var s = UserSettings.Load(path);
+        Assert.Equal("", s.LastProfilePath);
+    }
+
+    [Fact]
     public void Load_ClampsBelowMinimumWindowSize()
     {
         var path = TempPath();

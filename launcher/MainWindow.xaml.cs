@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
@@ -79,12 +80,34 @@ public partial class MainWindow : Window
                 // gives us the serialized JSON. TryGetWebMessageAsString throws if the JS
                 // side didn't pre-stringify, which it doesn't. JS passing the object is
                 // idiomatic and round-trips cleanly through WebView2's serializer.
-                string json;
-                try { json = e.WebMessageAsJson; }
-                catch { return; }
-                if (string.IsNullOrEmpty(json)) return;
-                var resp = await _bridge.DispatchJsonAsync(json);
-                if (!string.IsNullOrEmpty(resp)) SendJsonToJs(resp);
+                //
+                // Outer try/catch: Bridge.DispatchJsonAsync wraps handler dispatch errors
+                // internally and returns a handler-error JSON, but anything thrown OUTSIDE
+                // that path (Serialize failures inside SendToJs, MessageToJs subscriber
+                // throws, WebView2 disposal mid-dispatch) would land here as an unobserved
+                // event-handler exception. Surfacing it to JS as handler-error keeps the
+                // failure visible instead of disappearing into the WebView2 event pump.
+                try
+                {
+                    string json;
+                    try { json = e.WebMessageAsJson; }
+                    catch { return; }
+                    if (string.IsNullOrEmpty(json)) return;
+                    var resp = await _bridge.DispatchJsonAsync(json);
+                    if (!string.IsNullOrEmpty(resp)) SendJsonToJs(resp);
+                }
+                catch (Exception ex)
+                {
+                    var errJson = System.Text.Json.JsonSerializer.Serialize(new BridgeMessage
+                    {
+                        Type = "handler-error",
+                        Payload = new System.Text.Json.Nodes.JsonObject
+                        {
+                            ["message"] = $"WebMessageReceived top-level: {ex.GetType().Name}: {ex.Message}",
+                        },
+                    });
+                    SendJsonToJs(errJson);
+                }
             };
 
             // PORTED: Tiny11.WebView2.psm1:173-175 — inject the catalog as a
@@ -135,8 +158,8 @@ public partial class MainWindow : Window
 
         var pwshRunner = new PwshRunner();
 
-        bridge.Register(new BrowseHandlers(new WpfFilePicker()));
-        bridge.Register(new ProfileHandlers());
+        bridge.Register(new BrowseHandlers(new WpfFilePicker(), _settings));
+        bridge.Register(new ProfileHandlers(_settings, pwshRunner, _resourcesDir!));
         bridge.Register(new WindowHandlers());
         // SelectionHandlers + reconcile-selections type intentionally not
         // registered — JS does its own client-side reconcile() at app.js:249
@@ -173,16 +196,68 @@ public partial class MainWindow : Window
     }
 
     private static void ExtractUiResourcesIfNeeded(string targetDir)
+        => ExtractIfManifestChanged(targetDir, n => n.StartsWith("ui/", StringComparison.OrdinalIgnoreCase),
+            n => n.Substring("ui/".Length));
+
+    /// Extract PS scripts + modules + catalog + autounattend template to the runtime
+    /// resources cache so the GUI handlers (IsoHandlers, BuildHandlers) can spawn pwsh
+    /// against on-disk paths. Excludes ui/* — that has its own cache dir.
+    private static void ExtractRuntimeResourcesIfNeeded(string targetDir)
+        => ExtractIfManifestChanged(targetDir,
+            n => !n.StartsWith("ui/", StringComparison.OrdinalIgnoreCase)
+                 && !n.Equals("test-fixture.txt", StringComparison.OrdinalIgnoreCase),
+            n => n);
+
+    /// Hash-based extraction: marker file contains a SHA256 of the sorted resource-name
+    /// list filtered by `include`. If the hash matches, skip extraction. If it differs
+    /// (new resource added, resource removed, first run), wipe the dir contents and
+    /// re-extract everything. This means adding a new embedded resource (like the new
+    /// tiny11-profile-validate.ps1) automatically refreshes the cache on next launch
+    /// without manual intervention — no more "you also need to delete %LOCALAPPDATA%\..."
+    /// in dev workflows. Content changes to existing resources still need a version
+    /// bump to invalidate (caught at release time, not at dev time — acceptable trade
+    /// since per-build content hashing would slow every launch).
+    private static void ExtractIfManifestChanged(string targetDir, Func<string, bool> include, Func<string, string> mapDestRelPath)
     {
-        var marker = Path.Combine(targetDir, ".extracted");
-        if (File.Exists(marker)) return;
-
         var asm = typeof(MainWindow).Assembly;
-        foreach (var name in asm.GetManifestResourceNames())
-        {
-            if (!name.StartsWith("ui/", StringComparison.OrdinalIgnoreCase)) continue;
+        var marker = Path.Combine(targetDir, ".extracted");
+        var names = asm.GetManifestResourceNames().Where(include).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        var currentHash = ComputeManifestHash(names);
 
-            var relPath = name.Substring("ui/".Length);
+        if (File.Exists(marker))
+        {
+            try
+            {
+                var existing = File.ReadAllText(marker).Trim();
+                if (existing == currentHash) return;
+            }
+            catch { /* fall through to re-extract */ }
+        }
+
+        // Stale or missing marker. Wipe everything in targetDir except the marker file
+        // (the marker gets rewritten at the end). Best-effort — locked files are skipped
+        // and overwritten in the loop below.
+        if (Directory.Exists(targetDir))
+        {
+            foreach (var path in Directory.EnumerateFileSystemEntries(targetDir))
+            {
+                try
+                {
+                    if (string.Equals(path, marker, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+                    else File.Delete(path);
+                }
+                catch { /* best effort */ }
+            }
+        }
+        else
+        {
+            Directory.CreateDirectory(targetDir);
+        }
+
+        foreach (var name in names)
+        {
+            var relPath = mapDestRelPath(name);
             var dest = Path.Combine(targetDir, relPath);
             var destDir = Path.GetDirectoryName(dest);
             if (!string.IsNullOrEmpty(destDir)) Directory.CreateDirectory(destDir);
@@ -192,32 +267,14 @@ public partial class MainWindow : Window
             stream.CopyTo(fs);
         }
 
-        File.WriteAllText(marker, "");
+        File.WriteAllText(marker, currentHash);
     }
 
-    /// Extract PS scripts + modules + catalog + autounattend template to the runtime
-    /// resources cache so the GUI handlers (IsoHandlers, BuildHandlers) can spawn pwsh
-    /// against on-disk paths. Excludes ui/* — that has its own cache dir.
-    private static void ExtractRuntimeResourcesIfNeeded(string targetDir)
+    private static string ComputeManifestHash(string[] sortedNames)
     {
-        var marker = Path.Combine(targetDir, ".extracted");
-        if (File.Exists(marker)) return;
-
-        var asm = typeof(MainWindow).Assembly;
-        foreach (var name in asm.GetManifestResourceNames())
-        {
-            if (name.StartsWith("ui/", StringComparison.OrdinalIgnoreCase)) continue;
-            if (name.Equals("test-fixture.txt", StringComparison.OrdinalIgnoreCase)) continue;
-
-            var dest = Path.Combine(targetDir, name);
-            var destDir = Path.GetDirectoryName(dest);
-            if (!string.IsNullOrEmpty(destDir)) Directory.CreateDirectory(destDir);
-
-            using var stream = asm.GetManifestResourceStream(name)!;
-            using var fs = File.Create(dest);
-            stream.CopyTo(fs);
-        }
-
-        File.WriteAllText(marker, "");
+        var joined = string.Join("\n", sortedNames);
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(joined));
+        return Convert.ToHexString(bytes);
     }
 }

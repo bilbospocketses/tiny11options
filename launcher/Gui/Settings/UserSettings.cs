@@ -14,6 +14,14 @@ public class UserSettings
     public int WindowHeight { get; set; } = 900;
     public string Theme { get; set; } = "system";
 
+    /// Last full path the user saved or loaded a profile from. Used by BrowseHandlers
+    /// to set the initial directory of profile-save / profile-load dialogs so the
+    /// user lands where they last worked. Empty string = never persisted; falls
+    /// back to MyDocuments. PORTED: tiny11maker.ps1:225 (legacy initial-dir was
+    /// <repo>/config/examples; not portable to Path C since the dir isn't extracted,
+    /// so we track per-user state instead — strictly an upgrade in UX).
+    public string LastProfilePath { get; set; } = "";
+
     [JsonIgnore]
     public static string DefaultPath =>
         Path.Combine(

@@ -78,6 +78,7 @@
     <EmbeddedResource Include="..\tiny11maker.ps1"><LogicalName>tiny11maker.ps1</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\tiny11maker-from-config.ps1"><LogicalName>tiny11maker-from-config.ps1</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\tiny11-iso-validate.ps1"><LogicalName>tiny11-iso-validate.ps1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\tiny11-profile-validate.ps1"><LogicalName>tiny11-profile-validate.ps1</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\autounattend.template.xml"><LogicalName>autounattend.template.xml</LogicalName></EmbeddedResource>
   </ItemGroup>
 
