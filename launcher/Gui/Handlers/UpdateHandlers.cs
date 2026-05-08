@@ -21,10 +21,24 @@ public class UpdateHandlers : IBridgeHandler
     {
         if (type == "request-update-check")
         {
-            // Fire-and-forget. CheckAsync swallows its own exceptions and posts
-            // update-available / update-error directly through the bridge.
-            _ = System.Threading.Tasks.Task.Run(() => _notifier.CheckAsync());
-            return null; // no synchronous response
+            // Pull-based: CheckAsync returns the BridgeMessage (or null on no-update).
+            // Routes through DispatchJsonAsync's return-value path -> SendJsonToJs,
+            // the same delivery path validate-iso uses successfully. Avoids the
+            // async-push path (Task.Run -> SendToJs -> MessageToJs event ->
+            // Dispatcher.Invoke -> PostWebMessageAsString) that silently dropped
+            // update-available on the prior smoke session.
+            try
+            {
+                return await _notifier.CheckAsync();
+            }
+            catch (System.Exception ex)
+            {
+                return new BridgeMessage
+                {
+                    Type = "update-error",
+                    Payload = new JsonObject { ["message"] = ex.Message },
+                };
+            }
         }
 
         try

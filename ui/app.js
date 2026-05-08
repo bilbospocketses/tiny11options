@@ -618,4 +618,11 @@ document.addEventListener('DOMContentLoaded', () => {
             ps({ type: 'apply-update', payload: {} });
         }
     });
+
+    // JS-initiated update-check handshake. C# UpdateHandlers receives this and
+    // fires UpdateNotifier.CheckAsync; the response comes back as update-available
+    // (or update-error) through the bridge. This guarantees the JS-side listener
+    // is wired before C# sends, eliminating the post-Navigation race that hid
+    // the badge in the prior smoke session.
+    ps({ type: 'request-update-check', payload: {} });
 });

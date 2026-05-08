@@ -5,7 +5,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSCommandPath
-Import-Module (Join-Path $RepoRoot 'src' 'Tiny11.Iso.psm1') -Force
+Import-Module (Join-Path $RepoRoot 'src\Tiny11.Iso.psm1') -Force
 
 try {
     if (-not (Test-Path $IsoPath)) { throw "ISO not found: $IsoPath" }
