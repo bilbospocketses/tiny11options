@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
+using Tiny11Options.Launcher.Gui.Bridge;
 using Tiny11Options.Launcher.Gui.Settings;
 
 namespace Tiny11Options.Launcher;
@@ -11,6 +13,7 @@ public partial class MainWindow : Window
 {
     private string? _uiCacheDir;
     private readonly UserSettings _settings;
+    private Bridge? _bridge;
 
     public MainWindow()
     {
@@ -50,6 +53,17 @@ public partial class MainWindow : Window
                 CoreWebView2HostResourceAccessKind.Allow);
 
             WebView.CoreWebView2.Settings.IsWebMessageEnabled = true;
+
+            _bridge = BuildBridge();
+            _bridge.MessageToJs += SendJsonToJs;
+            WebView.CoreWebView2.WebMessageReceived += async (_, e) =>
+            {
+                var json = e.TryGetWebMessageAsString();
+                if (string.IsNullOrEmpty(json)) return;
+                var resp = await _bridge.DispatchJsonAsync(json);
+                if (!string.IsNullOrEmpty(resp)) SendJsonToJs(resp);
+            };
+
             WebView.Source = new Uri("http://app.local/index.html");
         }
         catch (Exception ex)
@@ -62,6 +76,20 @@ public partial class MainWindow : Window
                 MessageBoxImage.Error);
             Close();
         }
+    }
+
+    private void SendJsonToJs(string json)
+    {
+        if (WebView?.CoreWebView2 is null) return;
+        Dispatcher.Invoke(() => WebView.CoreWebView2.PostWebMessageAsString(json));
+    }
+
+    private Bridge BuildBridge()
+    {
+        // Handlers are registered as Tasks 16-22 land. Empty for now means JS calls
+        // get a 'handler-error: Unknown message type' response.
+        var handlers = new List<IBridgeHandler>();
+        return new Bridge(handlers);
     }
 
     private static string ResolveUiCacheDir()
