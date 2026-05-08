@@ -79,6 +79,10 @@ public partial class MainWindow : Window
             };
 
             WebView.Source = new Uri("http://app.local/index.html");
+
+            // Fire-and-forget update check. UpdateNotifier.CheckAsync swallows its own
+            // exceptions and posts update-error / update-available through the bridge.
+            _ = System.Threading.Tasks.Task.Run(() => _updateNotifier!.CheckAsync());
         }
         catch (Exception ex)
         {

@@ -501,36 +501,38 @@ function renderSourceStep() {
 document.addEventListener('DOMContentLoaded', () => { initTheme(); renderStep(); });
 
 onPs(msg => {
+    const p = msg.payload || {};
     if (msg.type === 'iso-validated') {
-        state.editions = msg.editions;
-        state.edition = (msg.editions[0] && msg.editions[0].index) || null;
-        state.source = msg.path || state.source;
+        state.editions = p.editions;
+        state.edition = (p.editions && p.editions[0] && p.editions[0].index) || null;
+        state.source = p.path || state.source;
         renderStep();
     } else if (msg.type === 'iso-error') {
         const banner = document.getElementById('src-error');
         if (banner) {
             banner.classList.remove('hidden');
-            banner.textContent = msg.message;
+            banner.textContent = p.message;
         }
     } else if (msg.type === 'browse-result') {
-        if (msg.field === 'source')  { state.source = msg.path; renderStep(); ps({ type: 'validate-iso', path: msg.path }); }
-        if (msg.field === 'scratch') { state.scratchDir = msg.path; prefillOutputIfEmpty(); renderStep(); }
-        if (msg.field === 'output')  { state.outputPath = msg.path; renderStep(); }
+        if (p.field === 'source')  { state.source = p.path; renderStep(); ps({ type: 'validate-iso', path: p.path }); }
+        if (p.field === 'scratch') { state.scratchDir = p.path; prefillOutputIfEmpty(); renderStep(); }
+        if (p.field === 'output')  { state.outputPath = p.path; renderStep(); }
     } else if (msg.type === 'profile-loaded') {
         state.selections = {};
-        for (const [k, v] of Object.entries(msg.selections)) state.selections[k] = v;
+        for (const [k, v] of Object.entries(p.selections || {})) state.selections[k] = v;
         renderStep();
     }
 });
 
 // Extended onPs handler — Task 22 build-progress/complete/error + profile-saved + handler-error.
 onPs(msg => {
+    const p = msg.payload || {};
     if (msg.type === 'build-progress') {
-        state.progress = msg;
+        state.progress = p;
         renderStep();
     } else if (msg.type === 'build-complete') {
         state.building = false;
-        state.completed = msg;
+        state.completed = p;
         renderStep();
     } else if (msg.type === 'build-error') {
         state.building = false;
@@ -538,13 +540,54 @@ onPs(msg => {
         clear(root);
         root.appendChild(el('section', { class: 'error' },
             el('h2', null, 'Build failed'),
-            el('p', null, msg.message || 'Unknown error'),
+            el('p', null, p.message || 'Unknown error'),
             el('button', { onclick: () => ps({ type: 'close' }) }, 'Close')
         ));
     } else if (msg.type === 'profile-saved') {
         // v1: log only; future: transient toast.
-        console.log('Profile saved:', msg.path);
+        console.log('Profile saved:', p.path);
     } else if (msg.type === 'handler-error') {
-        console.error('Handler error:', msg.message);
+        console.error('Handler error:', p.message);
     }
+});
+
+// Velopack update indicator — Task 25.
+// update-available -> stash {version, changelog}, un-hide pulsing dot.
+// Click -> confirm() with version + truncated changelog -> ps({type:'apply-update'}).
+// update-applying -> log + disable badge while Velopack downloads.
+// update-error    -> log + re-show badge so the user can retry.
+let pendingUpdate = null;
+onPs(msg => {
+    const p = msg.payload || {};
+    const badge = document.getElementById('update-badge');
+    if (!badge) return;
+    if (msg.type === 'update-available') {
+        pendingUpdate = { version: p.version || '', changelog: p.changelog || '' };
+        badge.classList.remove('hidden');
+        badge.disabled = false;
+        badge.title = `Update available: v${pendingUpdate.version} — click to install`;
+    } else if (msg.type === 'update-applying') {
+        // v1: log only; future: transient toast. UpdateHandlers ApplyAndRestartAsync
+        // will tear down the process, so this state is brief.
+        console.info('Update applying — process will restart.');
+        badge.disabled = true;
+        badge.title = 'Update downloading...';
+    } else if (msg.type === 'update-error') {
+        console.error('Update error:', p.message);
+        if (pendingUpdate) badge.classList.remove('hidden');
+        badge.disabled = false;
+    }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    const badge = document.getElementById('update-badge');
+    if (!badge) return;
+    badge.addEventListener('click', () => {
+        if (!pendingUpdate) return;
+        const notes = (pendingUpdate.changelog || '').slice(0, 400);
+        const trail = pendingUpdate.changelog && pendingUpdate.changelog.length > 400 ? '\n...' : '';
+        if (confirm(`Install tiny11options v${pendingUpdate.version}?\n\n${notes}${trail}`)) {
+            ps({ type: 'apply-update' });
+        }
+    });
 });

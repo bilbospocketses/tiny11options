@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Path C — bundled `.exe` launcher implementation in progress on `feat/path-c-launcher`. Phases 1-3 complete + Phase 4 partial (Tasks 23-24). 38 xUnit tests green; 82 Pester tests still green. Not yet released.
+Path C — bundled `.exe` launcher implementation in progress on `feat/path-c-launcher`. Phases 1-4 complete (update infrastructure end-to-end, including the JS-side update-available indicator). 38 xUnit tests green; 82 Pester tests still green. Not yet released.
 
 ### Added
 - `tiny11options.sln` solution file at repo root.
@@ -31,6 +31,7 @@ Path C — bundled `.exe` launcher implementation in progress on `feat/path-c-la
 - `tiny11maker-from-config.ps1` (repo root) — non-interactive build wrapper. Reads `-ConfigPath` JSON (selections array + options), invokes `Get-Tiny11Catalog` → `New-Tiny11Selections` → `Resolve-Tiny11Selections` → `Invoke-Tiny11BuildPipeline`, emits `build-progress` / `build-complete` / `build-error` JSON markers on stdout.
 - `tiny11-iso-validate.ps1` (repo root) — wrapper that mounts an ISO via `Mount-Tiny11Source`, enumerates editions via `Get-Tiny11Editions`, dismounts, returns JSON.
 - `Velopack` NuGet package (0.0.1298). `VelopackApp.Build().WithFirstRun().Run()` hook in `Program.Main` (must run before any other startup so install/update events fire).
+- Update-available pulsing-dot indicator in the wizard chrome (next to the theme toggle). On launch, `MainWindow.InitializeWebViewAsync` fires `_updateNotifier.CheckAsync()` on a background task once the WebView2 navigation starts; if a release newer than the running version is available, the bridge posts `update-available` with the new version + changelog and the JS un-hides the badge. Clicking the dot opens a `confirm()` showing the version + first 400 chars of changelog; OK posts `apply-update` to the bridge, which calls `Velopack.UpdateManager.DownloadUpdates` + `ApplyUpdatesAndRestart`. Pulse animation respects `prefers-reduced-motion`.
 - `.gitignore` entries for `**/bin/`, `**/obj/`, `dist/` (`.NET` build artifacts).
 - `.claude/settings.json` — project-level allowlist for `vpk` / Velopack CLI (Phase 6 prep).
 - 38 xUnit tests across `EmbeddedResources`, `HeadlessRunner`, `UserSettings`, `ThemeManager`, `Bridge`, `BrowseHandlers`, `ProfileHandlers`, `SelectionHandlers`, `IsoHandlers`, `PwshRunner`, `BuildHandlers`, `ThemeHandlers`, `UpdateNotifier`.
@@ -43,6 +44,7 @@ Path C — bundled `.exe` launcher implementation in progress on `feat/path-c-la
 - `Program.Main` now calls `app.InitializeComponent()` before `app.Run()`. Without it, `App.xaml`'s `StartupUri` was never set and the process sat invisible with no window.
 - `tiny11maker-from-config.ps1` was committed with the implementation plan's sketch function names (`Import-Tiny11Catalog`, `Resolve-Tiny11Selections -Catalog/-Selected`, `Get-Tiny11VolumeForImage -ImagePath`, `Test-Tiny11SourceIsConsumer -ImageInfo/-ImageIndex`, `Resolve-Tiny11ImageIndex -ImageInfo/-EditionName`, `Invoke-Tiny11Build`). None of these names exist in the actual modules. Rewrote against real exports: `Get-Tiny11Catalog`, `New-Tiny11Selections` + `Resolve-Tiny11Selections -Selections [hashtable]`, `Mount-Tiny11Source` / `Get-Tiny11Editions` / `Dismount-Tiny11Source`, `Test-Tiny11SourceIsConsumer -Editions`, `Resolve-Tiny11ImageIndex -Editions/-Edition`, `Invoke-Tiny11BuildPipeline`. Scaffold-correct only — runtime-validated end-to-end in Phase 7 manual smoke against a real ISO.
 - Namespace collisions in handlers + UpdateNotifier (some types fully qualified `global::Tiny11Options.Launcher.Gui.Catalog.Catalog`, others used short names) consolidated.
+- Bridge payload-shape mismatch in `ui/app.js`. `BridgeMessage` serializes as `{"type": "...", "payload": {...}}` (per `Bridge.cs` + `BridgeMessage.cs` `[JsonPropertyName]` decorations), but the existing JS handlers for `iso-validated` / `iso-error` / `browse-result` / `profile-loaded` / `build-progress` / `build-complete` / `build-error` / `profile-saved` / `handler-error` were reading their fields directly off `msg` (e.g. `msg.editions`, `msg.message`). Every read was returning `undefined`. Fix: each `onPs` callback now destructures `const p = msg.payload || {}` and reads from `p.<field>`. `state.progress` and `state.completed` now stash `msg.payload` (not the wrapper) so the existing `renderProgress` / `renderComplete` field accesses keep working unchanged. Bug never surfaced in v0.1.0 / v0.2.0 because Path C's bridge buttons hadn't been smoke-tested end-to-end yet.
 
 ## [0.2.0] - 2026-05-07
 

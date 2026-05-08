@@ -86,7 +86,6 @@ body {
 }
 
 .theme-toggle {
-    margin-left: auto;
     padding: 4px 8px;
     font-size: 16px;
     line-height: 1;
@@ -100,6 +99,33 @@ body {
 .theme-toggle:hover {
     background: var(--bg-card);
     border-color: var(--border);
+}
+
+/* Update-available indicator. Sits left-of theme-toggle when visible, takes
+   the right-anchor margin-left:auto. When hidden (display:none) the sibling
+   rule below puts the auto back on theme-toggle so it stays right-aligned. */
+.update-badge {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    margin-left: auto;
+    margin-right: 8px;
+    padding: 0;
+    cursor: pointer;
+    animation: badge-pulse 2s ease-in-out infinite;
+}
+.update-badge.hidden { display: none; }
+.update-badge:hover { background: var(--accent-hover); }
+.update-badge.hidden ~ .theme-toggle { margin-left: auto; }
+
+@keyframes badge-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 var(--accent); opacity: 1; }
+    50%      { box-shadow: 0 0 0 6px transparent; opacity: 0.6; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .update-badge { animation: none; }
 }
 
 /* Main content area */
