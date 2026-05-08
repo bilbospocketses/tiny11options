@@ -3,16 +3,29 @@ using System.IO;
 using System.Reflection;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
+using Tiny11Options.Launcher.Gui.Settings;
 
 namespace Tiny11Options.Launcher;
 
 public partial class MainWindow : Window
 {
     private string? _uiCacheDir;
+    private readonly UserSettings _settings;
 
     public MainWindow()
     {
+        _settings = UserSettings.Load();
         InitializeComponent();
+        Width = _settings.WindowWidth;
+        Height = _settings.WindowHeight;
+
+        Closing += (_, _) =>
+        {
+            _settings.WindowWidth = (int)Width;
+            _settings.WindowHeight = (int)Height;
+            _settings.Save();
+        };
+
         Loaded += async (_, _) => await InitializeWebViewAsync();
     }
 
