@@ -9,10 +9,10 @@ namespace Tiny11Options.Launcher.Gui.Handlers;
 
 public class BuildHandlers : IBridgeHandler
 {
-    private readonly Bridge _bridge;
+    private readonly Bridge.Bridge _bridge;
     private readonly string _resourcesDir;
 
-    public BuildHandlers(Bridge bridge, string resourcesDir)
+    public BuildHandlers(Bridge.Bridge bridge, string resourcesDir)
     {
         _bridge = bridge;
         _resourcesDir = resourcesDir;
@@ -22,12 +22,12 @@ public class BuildHandlers : IBridgeHandler
 
     private Process? _activeBuild;
 
-    public async Task<BridgeMessage?> HandleAsync(string type, JsonObject? payload)
+    public async Task<Bridge.BridgeMessage?> HandleAsync(string type, JsonObject? payload)
     {
         if (type == "cancel-build")
         {
             _activeBuild?.Kill(entireProcessTree: true);
-            return new BridgeMessage { Type = "build-cancelled", Payload = new JsonObject() };
+            return new Bridge.BridgeMessage { Type = "build-cancelled", Payload = new JsonObject() };
         }
 
         if (_activeBuild is { HasExited: false })
@@ -72,7 +72,7 @@ public class BuildHandlers : IBridgeHandler
             if (_activeBuild.ExitCode != 0)
             {
                 var err = await _activeBuild.StandardError.ReadToEndAsync();
-                _bridge.SendToJs(new BridgeMessage
+                _bridge.SendToJs(new Bridge.BridgeMessage
                 {
                     Type = "build-error",
                     Payload = new JsonObject { ["message"] = err.Trim() },
@@ -80,7 +80,7 @@ public class BuildHandlers : IBridgeHandler
             }
         });
 
-        return new BridgeMessage { Type = "build-started", Payload = new JsonObject() };
+        return new Bridge.BridgeMessage { Type = "build-started", Payload = new JsonObject() };
     }
 
     private void ForwardJsonLine(string line)
@@ -90,7 +90,7 @@ public class BuildHandlers : IBridgeHandler
             var node = JsonNode.Parse(line) as JsonObject;
             if (node?["type"]?.ToString() is string t && (t == "build-progress" || t == "build-complete"))
             {
-                _bridge.SendToJs(new BridgeMessage
+                _bridge.SendToJs(new Bridge.BridgeMessage
                 {
                     Type = t,
                     Payload = node["payload"]?.AsObject(),
@@ -100,6 +100,6 @@ public class BuildHandlers : IBridgeHandler
         catch { /* non-JSON lines ignored */ }
     }
 
-    private static BridgeMessage Error(string msg)
+    private static Bridge.BridgeMessage Error(string msg)
         => new() { Type = "handler-error", Payload = new JsonObject { ["message"] = msg } };
 }

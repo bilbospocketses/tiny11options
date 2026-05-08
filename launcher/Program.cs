@@ -9,9 +9,7 @@ internal static class Program
     public static int Main(string[] args)
     {
         // Velopack hooks: must run BEFORE any other startup code so install/update events fire.
-        VelopackApp.Build()
-            .WithFirstRun(_ => { /* nothing on first run yet */ })
-            .Run();
+        VelopackApp.Build().Run();
 
         if (args.Length > 0)
         {

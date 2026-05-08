@@ -18,7 +18,7 @@ public class SelectionHandlers : IBridgeHandler
         if (string.IsNullOrEmpty(catalogJson))
             return Task.FromResult<BridgeMessage?>(Error("catalog required"));
 
-        var catalog = JsonSerializer.Deserialize<Catalog>(catalogJson) ?? new Catalog();
+        var catalog = JsonSerializer.Deserialize<global::Tiny11Options.Launcher.Gui.Catalog.Catalog>(catalogJson) ?? new global::Tiny11Options.Launcher.Gui.Catalog.Catalog();
 
         var selected = (payload?["selected"]?.AsArray() ?? new JsonArray())
             .Select(n => n!.ToString())
@@ -48,13 +48,13 @@ public class SelectionHandlers : IBridgeHandler
         var resultArr = new JsonArray();
         foreach (var id in selected) resultArr.Add(id);
 
-        return Task.FromResult<BridgeMessage?>(new BridgeMessage
+        return Task.FromResult<BridgeMessage?>(new Bridge.BridgeMessage
         {
             Type = "selections-reconciled",
             Payload = new JsonObject { ["effective"] = resultArr },
         });
     }
 
-    private static BridgeMessage Error(string msg)
+    private static Bridge.BridgeMessage Error(string msg)
         => new() { Type = "handler-error", Payload = new JsonObject { ["message"] = msg } };
 }
