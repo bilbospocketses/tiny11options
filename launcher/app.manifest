@@ -14,4 +14,20 @@
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
     </application>
   </compatibility>
+
+  <!--
+    requireAdministrator: tiny11 build pipeline (Mount-DiskImage, DISM mount,
+    registry hive load, package removal) requires admin. The legacy v0.2.0 PS
+    GUI inherited admin from the user's already-admin pwsh shell; the .exe
+    launched outside an admin shell defaults to asInvoker and the spawned
+    powershell.exe child inherits non-admin, so Mount-DiskImage fails with
+    "The requested operation requires elevation". Self-elevate at launch.
+  -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
 </assembly>

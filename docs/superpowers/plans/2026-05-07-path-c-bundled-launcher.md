@@ -20,7 +20,8 @@
 | 2 — GUI shell | 8-13 | WPF window with WebView2 rendering the existing `ui/` HTML |
 | 3 — Bridge + handlers | 14-22 | C# bridge dispatch + all 5 handler classes wired |
 | 4 — Updates | 23-26 | Velopack integration with passive notification + apply flow |
-| 5 — PS cleanup | 27-29 | Delete retired modules + tests; update orchestrator |
+| **4.5 — Audit pass (NEW)** | **A1-A10** | **Diff every Path C scaffold against its v0.1.0 inline-handler counterpart in `tiny11maker.ps1` + legacy modules; reconcile every drift.** |
+| 5 — PS cleanup | ~~27-28~~, 29 | ~~Delete retired modules + tests~~ **CANCELLED — legacy modules retained as canonical reference (binding decision 2026-05-08)**. Drift test (29) kept. |
 | 6 — Build pipeline | 30-34 | Single-file publish + drift test + GitHub Actions release.yml |
 | 7 — Smoke + release | 35-38 | Manual smoke 1-5, CHANGELOG, cut release |
 
@@ -3100,100 +3101,52 @@ git commit -m "feat(launcher): fire update check on app launch (background)"
 
 ---
 
-## Phase 5 — PowerShell module cleanup
+## Phase 4.5 — Audit pass (added 2026-05-08)
 
-### Task 27: Delete Tiny11.Bridge.psm1 + tests
+**Why this phase exists:** Phase 3 was built by 4 parallel agents working from plan slices in isolation. The plan named handlers and described responsibilities, but **never told the agents to read the v0.1.0 inline handlers in `tiny11maker.ps1:186-end` (the polished handler dispatch table) or in the polished modules**. Result: every scaffold was written against the abstract spec, not against the working implementation. Polish-bundle fixes from `cf80091` (Architecture-property drop, type-name correctness, displayName clarification, return-value cleanup, Hives error-message tightening) were quietly reintroduced as bugs and surfaced at smoke time.
 
-**Files:**
-- Delete: `src/Tiny11.Bridge.psm1`
-- Delete: `tests/Tiny11.Bridge.Tests.ps1`
+**Scope:** for each Path C scaffold (PS scripts in repo root + C# handlers in `launcher/Gui/Handlers/` + C# settings/theme classes), diff against its legacy v0.1.0 counterpart and reconcile every drift. Sequential audit, NOT parallel — parallel agents are exactly what produced these regressions.
 
-- [ ] **Step 1: Verify nothing else imports the module**
+**Audit targets:**
 
-```powershell
-Select-String -Path src/*.psm1, tests/*.ps1, tiny11maker.ps1 -Pattern 'Tiny11\.Bridge' -List
-```
+| ID | Path C scaffold | Legacy reference | Notes |
+|---|---|---|---|
+| A1 | `tiny11-iso-validate.ps1` | `tiny11maker.ps1:187-199` (validate-iso handler) | Already started — Architecture drop applied |
+| A2 | `launcher/Gui/Handlers/IsoHandlers.cs` | `tiny11maker.ps1:187-199` + handler shell-out semantics | C# wrapper layer for A1 |
+| A3 | `launcher/Gui/Handlers/BrowseHandlers.cs` | `tiny11maker.ps1:200-225` (browse-iso/scratch/output) | Already saw `field` -> `context` drift |
+| A4 | `tiny11maker-from-config.ps1` | `tiny11maker.ps1` orchestration (`-Edition`, `-AllowVLSource`, `-FastBuild`, `-ImageIndex`) | Active TODO #5 — scaffold-only, never run |
+| A5 | `launcher/Gui/Handlers/ProfileHandlers.cs` | legacy save-profile / load-profile handlers | |
+| A6 | `launcher/Gui/Handlers/SelectionHandlers.cs` | `Tiny11.Selections.psm1` reconcile + legacy selection handler | Active TODO #7 — known semantic divergence; verify intentional |
+| A7 | `launcher/Gui/Handlers/BuildHandlers.cs` | legacy build-orchestration logic | |
+| A8 | `launcher/Gui/Handlers/ThemeHandlers.cs` | `Tiny11.WebView2.psm1` theme handling | |
+| A9 | `launcher/Gui/Settings/UserSettings.cs` | `Get-/Save-Tiny11UserSettings` in `Tiny11.WebView2.psm1` | |
+| A10 | `launcher/Gui/Theme/ThemeManager.cs` | theme detect logic in `Tiny11.WebView2.psm1` | |
 
-Expected: only matches in the file being deleted and its test. Otherwise STOP and address the consumer first.
+**Methodology per target:**
+1. Read legacy reference (full file or section).
+2. Read scaffold.
+3. Catalog every drift (field shape, type name, error format, return semantics, omission).
+4. Patch each drift with inline `// PORTED: <legacy_path>:<line> — <rationale>` comment.
+5. Run `dotnet build && dotnet test && Invoke-Pester tests/` after every batch.
+6. Commit per handler with a descriptive message naming the legacy reference and findings.
 
-- [ ] **Step 2: Delete the files**
-
-```powershell
-git rm src/Tiny11.Bridge.psm1 tests/Tiny11.Bridge.Tests.ps1
-```
-
-- [ ] **Step 3: Run Pester to confirm no regressions**
-
-```powershell
-Invoke-Pester tests/
-```
-
-Expected: green (count is 4 lower than before).
-
-- [ ] **Step 4: Commit**
-
-```powershell
-git commit -m "chore: remove Tiny11.Bridge.psm1 (superseded by C# Bridge in launcher)"
-```
+**Audit findings ledger:** per-handler findings live in commit messages on `feat/path-c-launcher` and inline `PORTED:` comments. No separate doc — git log is the audit log.
 
 ---
 
-### Task 28: Delete Tiny11.WebView2.psm1 + tests + remove Show-Tiny11Wizard call
+## Phase 5 — Drift test (legacy modules retained)
 
-**Files:**
-- Delete: `src/Tiny11.WebView2.psm1`
-- Delete: `tests/Tiny11.WebView2.Tests.ps1`
-- Modify: `tiny11maker.ps1` (remove Show-Tiny11Wizard branch; keep CLI/headless paths intact)
+**Binding decision 2026-05-08:** Tasks 27 + 28 (delete `Tiny11.Bridge.psm1` + `Tiny11.WebView2.psm1`) are **CANCELLED**. Today's smoke surfaced 3+ polish-bundle regressions because Path C scaffolds were written without reference to the legacy code. Retaining the legacy modules makes the canonical v0.1.0 behavior available indefinitely as a porting reference. Cost is trivial (~210 lines retained, tests already green). Phase 4.5 audit replaces the deletion work.
 
-- [ ] **Step 1: Read tiny11maker.ps1 to find the Show-Tiny11Wizard call site**
+### Task 27: ~~Delete Tiny11.Bridge.psm1 + tests~~ — CANCELLED
 
-Open `tiny11maker.ps1` and locate the section that conditionally calls `Show-Tiny11Wizard`. Replace that branch with an explicit error if the script is invoked with no CLI args:
+Legacy bridge primitives (`ConvertTo-Tiny11BridgeMessage`, `Invoke-Tiny11BridgeHandler`) retained as reference. The C# launcher's `Bridge.cs` is the production code path; the PS module is reference-only.
 
-```powershell
-# Interactive (no-args) mode is now handled by tiny11options.exe, NOT this script.
-# This script remains the orchestrator for CLI / headless invocation.
-if ($PSBoundParameters.Count -eq 0 -and -not $Source) {
-    Write-Error @"
-tiny11maker.ps1 no longer ships an interactive wizard. Use the GUI launcher:
+### Task 28: ~~Delete Tiny11.WebView2.psm1 + tests + remove Show-Tiny11Wizard~~ — CANCELLED
 
-  tiny11options.exe                              (interactive wizard)
-  tiny11options.exe -Source X -Edition 'Pro' -OutputIso Y    (headless)
+Legacy WebView2 host (`Show-Tiny11Wizard`, settings helpers, theme detection) retained as reference. The C# launcher is the production code path; the PS module is reference-only.
 
-To invoke this script directly with positional/named params, supply at least
--Source. See README.md for the full parameter list.
-"@
-    exit 64
-}
-```
-
-(Adjust the exact location based on the existing structure of tiny11maker.ps1 — the engineer reading this plan should grep for `Show-Tiny11Wizard` and replace its surrounding control flow.)
-
-- [ ] **Step 2: Verify no other module references WebView2 module**
-
-```powershell
-Select-String -Path src/*.psm1, tests/*.ps1, tiny11maker.ps1 -Pattern 'Tiny11\.WebView2' -List
-```
-
-Expected: only matches in the files being deleted.
-
-- [ ] **Step 3: Delete the files**
-
-```powershell
-git rm src/Tiny11.WebView2.psm1 tests/Tiny11.WebView2.Tests.ps1
-```
-
-- [ ] **Step 4: Run Pester**
-
-Expected: green; total count is 8 lower.
-
-- [ ] **Step 5: Commit**
-
-```powershell
-git add tiny11maker.ps1
-git commit -m "chore: remove Tiny11.WebView2.psm1; tiny11maker.ps1 no longer hosts wizard"
-```
-
----
+`tiny11maker.ps1`'s no-args branch may still be updated to error pointing users at the .exe, but that's optional UX work — not required for v1.0.0.
 
 ### Task 29: Drift test for embedded resources
 

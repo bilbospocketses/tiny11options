@@ -8,7 +8,6 @@ using Tiny11Options.Launcher.Gui.Bridge;
 using Tiny11Options.Launcher.Gui.Handlers;
 using Tiny11Options.Launcher.Gui.Settings;
 using Tiny11Options.Launcher.Gui.Subprocess;
-using Tiny11Options.Launcher.Gui.Theme;
 using Tiny11Options.Launcher.Gui.Updates;
 
 namespace Tiny11Options.Launcher;
@@ -23,14 +22,16 @@ public partial class MainWindow : Window
     private string? _uiCacheDir;
     private string? _resourcesDir;
     private readonly UserSettings _settings;
-    private readonly ThemeManager _themeManager;
     private Bridge? _bridge;
     private UpdateNotifier? _updateNotifier;
 
     public MainWindow()
     {
+        // Theme handling is JS-owned (localStorage 'tiny11-theme' in
+        // ui/app.js + CSS data-theme attribute). C# does not coordinate.
+        // _settings.Theme field is retained for back-compat with old
+        // settings.json files but no longer consumed.
         _settings = UserSettings.Load();
-        _themeManager = new ThemeManager(_settings.Theme);
         InitializeComponent();
         Width = _settings.WindowWidth;
         Height = _settings.WindowHeight;
@@ -126,9 +127,14 @@ public partial class MainWindow : Window
 
         bridge.Register(new BrowseHandlers(new WpfFilePicker()));
         bridge.Register(new ProfileHandlers());
-        bridge.Register(new SelectionHandlers());
+        // SelectionHandlers + reconcile-selections type intentionally not
+        // registered — JS does its own client-side reconcile() at app.js:249
+        // mirroring Tiny11.Selections.psm1 skip-cascade semantics. C# handler
+        // was scaffolded with inverted (apply-cascade) semantics and never
+        // wired from JS. Audit 2026-05-08 confirmed dead code; deleted.
         bridge.Register(new IsoHandlers(pwshRunner, _resourcesDir!));
-        bridge.Register(new ThemeHandlers(_themeManager, _settings));
+        // ThemeHandlers + apply-theme/get-theme types intentionally not
+        // registered — JS owns theme via localStorage. Audit 2026-05-08.
         bridge.Register(new BuildHandlers(bridge, _resourcesDir!));
         bridge.Register(new UpdateHandlers(notifier));
 

@@ -32,18 +32,55 @@ public class IsoHandlers : IBridgeHandler
         var script = Path.Combine(_resourcesDir, "tiny11-iso-validate.ps1");
         var result = await _runner.RunAsync(script, new[] { "-IsoPath", iso }, _resourcesDir);
 
-        if (result.ExitCode != 0)
+        // The script writes a structured JSON object to STDOUT in BOTH branches:
+        //   success: {"ok": true,  "editions": [...]}
+        //   failure: {"ok": false, "message": "..."}
+        // Parse stdout first; only fall back to stderr/exit-code text if stdout
+        // isn't parseable (script crashed before writing JSON, e.g. Import-Module
+        // error, syntax error, etc.).
+        JsonObject? parsed = null;
+        try { parsed = JsonNode.Parse(result.Stdout.Trim()) as JsonObject; }
+        catch { /* fall through to stderr fallback */ }
+
+        if (parsed is not null)
+        {
+            var ok = parsed["ok"]?.GetValue<bool>() ?? false;
+            if (ok)
+            {
+                // PORTED: tiny11maker.ps1:195 (legacy validate-iso) — emits
+                // {editions, path}. JS-side reads p.path with `|| state.source`
+                // fallback (app.js:528), so the path round-trip is defensive
+                // rather than load-bearing, but match legacy contract for parity.
+                return new BridgeMessage
+                {
+                    Type = "iso-validated",
+                    Payload = new JsonObject
+                    {
+                        ["editions"] = parsed["editions"]?.DeepClone(),
+                        ["path"] = iso,
+                    },
+                };
+            }
             return new BridgeMessage
             {
                 Type = "iso-error",
-                Payload = new JsonObject { ["message"] = result.Stderr.Trim() },
+                Payload = new JsonObject
+                {
+                    ["message"] = parsed["message"]?.ToString() ?? "Validation failed (no message)",
+                },
             };
+        }
 
-        var parsed = JsonNode.Parse(result.Stdout) as JsonObject ?? new JsonObject();
+        // Stdout unparseable — script crashed before writing its JSON contract.
+        // Surface stderr if present, otherwise stdout-as-text, otherwise exit code.
+        var fallback =
+            !string.IsNullOrWhiteSpace(result.Stderr) ? result.Stderr.Trim() :
+            !string.IsNullOrWhiteSpace(result.Stdout) ? result.Stdout.Trim() :
+            $"Script failed with exit code {result.ExitCode} and no output";
         return new BridgeMessage
         {
-            Type = "iso-validated",
-            Payload = new JsonObject { ["editions"] = parsed["editions"]?.DeepClone() },
+            Type = "iso-error",
+            Payload = new JsonObject { ["message"] = fallback },
         };
     }
 
