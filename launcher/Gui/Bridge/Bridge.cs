@@ -12,9 +12,14 @@ public class Bridge
 
     public Bridge(IEnumerable<IBridgeHandler> handlers)
     {
-        foreach (var h in handlers)
-            foreach (var t in h.HandledTypes)
-                _handlers[t] = h;
+        foreach (var h in handlers) Register(h);
+    }
+
+    /// Register a handler after construction. Needed when handlers and Bridge
+    /// have a circular dependency (e.g. BuildHandlers needs Bridge for SendToJs).
+    public void Register(IBridgeHandler handler)
+    {
+        foreach (var t in handler.HandledTypes) _handlers[t] = handler;
     }
 
     public event Action<string>? MessageToJs;

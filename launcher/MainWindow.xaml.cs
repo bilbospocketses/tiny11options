@@ -5,19 +5,30 @@ using System.Reflection;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
 using Tiny11Options.Launcher.Gui.Bridge;
+using Tiny11Options.Launcher.Gui.Handlers;
 using Tiny11Options.Launcher.Gui.Settings;
+using Tiny11Options.Launcher.Gui.Subprocess;
+using Tiny11Options.Launcher.Gui.Theme;
+using Tiny11Options.Launcher.Gui.Updates;
 
 namespace Tiny11Options.Launcher;
 
 public partial class MainWindow : Window
 {
+    // GitHub repo Velopack queries for update manifests.
+    private const string GithubRepoForUpdates = "bilbospocketses/tiny11options";
+
     private string? _uiCacheDir;
+    private string? _resourcesDir;
     private readonly UserSettings _settings;
+    private readonly ThemeManager _themeManager;
     private Bridge? _bridge;
+    private UpdateNotifier? _updateNotifier;
 
     public MainWindow()
     {
         _settings = UserSettings.Load();
+        _themeManager = new ThemeManager(_settings.Theme);
         InitializeComponent();
         Width = _settings.WindowWidth;
         Height = _settings.WindowHeight;
@@ -39,6 +50,9 @@ public partial class MainWindow : Window
             _uiCacheDir = ResolveUiCacheDir();
             ExtractUiResourcesIfNeeded(_uiCacheDir);
 
+            _resourcesDir = ResolveResourcesDir();
+            ExtractRuntimeResourcesIfNeeded(_resourcesDir);
+
             var userDataDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "tiny11options", "webview2-userdata");
@@ -54,7 +68,7 @@ public partial class MainWindow : Window
 
             WebView.CoreWebView2.Settings.IsWebMessageEnabled = true;
 
-            _bridge = BuildBridge();
+            (_bridge, _updateNotifier) = BuildBridge();
             _bridge.MessageToJs += SendJsonToJs;
             WebView.CoreWebView2.WebMessageReceived += async (_, e) =>
             {
@@ -84,12 +98,27 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() => WebView.CoreWebView2.PostWebMessageAsString(json));
     }
 
-    private Bridge BuildBridge()
+    private (Bridge bridge, UpdateNotifier notifier) BuildBridge()
     {
-        // Handlers are registered as Tasks 16-22 land. Empty for now means JS calls
-        // get a 'handler-error: Unknown message type' response.
-        var handlers = new List<IBridgeHandler>();
-        return new Bridge(handlers);
+        // Construct empty Bridge first so handlers that need a Bridge reference
+        // (BuildHandlers, UpdateNotifier) can capture it.
+        var bridge = new Bridge(Array.Empty<IBridgeHandler>());
+
+        var notifier = new UpdateNotifier(
+            new VelopackUpdateSource(GithubRepoForUpdates),
+            bridge);
+
+        var pwshRunner = new PwshRunner();
+
+        bridge.Register(new BrowseHandlers(new WpfFilePicker()));
+        bridge.Register(new ProfileHandlers());
+        bridge.Register(new SelectionHandlers());
+        bridge.Register(new IsoHandlers(pwshRunner, _resourcesDir!));
+        bridge.Register(new ThemeHandlers(_themeManager, _settings));
+        bridge.Register(new BuildHandlers(bridge, _resourcesDir!));
+        bridge.Register(new UpdateHandlers(notifier));
+
+        return (bridge, notifier);
     }
 
     private static string ResolveUiCacheDir()
@@ -98,6 +127,16 @@ public partial class MainWindow : Window
         var dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "tiny11options", "ui-cache", version);
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    private static string ResolveResourcesDir()
+    {
+        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "dev";
+        var dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "tiny11options", "resources-cache", version);
         Directory.CreateDirectory(dir);
         return dir;
     }
@@ -114,6 +153,32 @@ public partial class MainWindow : Window
 
             var relPath = name.Substring("ui/".Length);
             var dest = Path.Combine(targetDir, relPath);
+            var destDir = Path.GetDirectoryName(dest);
+            if (!string.IsNullOrEmpty(destDir)) Directory.CreateDirectory(destDir);
+
+            using var stream = asm.GetManifestResourceStream(name)!;
+            using var fs = File.Create(dest);
+            stream.CopyTo(fs);
+        }
+
+        File.WriteAllText(marker, "");
+    }
+
+    /// Extract PS scripts + modules + catalog + autounattend template to the runtime
+    /// resources cache so the GUI handlers (IsoHandlers, BuildHandlers) can spawn pwsh
+    /// against on-disk paths. Excludes ui/* — that has its own cache dir.
+    private static void ExtractRuntimeResourcesIfNeeded(string targetDir)
+    {
+        var marker = Path.Combine(targetDir, ".extracted");
+        if (File.Exists(marker)) return;
+
+        var asm = typeof(MainWindow).Assembly;
+        foreach (var name in asm.GetManifestResourceNames())
+        {
+            if (name.StartsWith("ui/", StringComparison.OrdinalIgnoreCase)) continue;
+            if (name.Equals("test-fixture.txt", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var dest = Path.Combine(targetDir, name);
             var destDir = Path.GetDirectoryName(dest);
             if (!string.IsNullOrEmpty(destDir)) Directory.CreateDirectory(destDir);
 
