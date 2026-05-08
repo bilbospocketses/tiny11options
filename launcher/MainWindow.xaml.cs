@@ -142,8 +142,18 @@ public partial class MainWindow : Window
 
     private void SendJsonToJs(string json)
     {
-        if (WebView?.CoreWebView2 is null) return;
-        Dispatcher.Invoke(() => WebView.CoreWebView2.PostWebMessageAsString(json));
+        // The WebView field is a generated XAML name pointing at a WPF DependencyObject.
+        // Touching .CoreWebView2 here is a property access on the DependencyObject which
+        // checks thread affinity and throws "The calling thread cannot access this object
+        // because a different thread owns it" when called from any non-UI thread (e.g.
+        // BuildHandlers' stdout forwarder Task.Run, UpdateNotifier's old async push path,
+        // etc). Move the entire property+method-call chain INSIDE Dispatcher.Invoke so
+        // the marshal happens before we dereference the DependencyObject.
+        Dispatcher.Invoke(() =>
+        {
+            if (WebView?.CoreWebView2 is null) return;
+            WebView.CoreWebView2.PostWebMessageAsString(json);
+        });
     }
 
     private (Bridge bridge, UpdateNotifier notifier) BuildBridge()
