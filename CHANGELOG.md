@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Path C — bundled `.exe` launcher implementation in progress on `feat/path-c-launcher`. Phases 1-3 complete + Phase 4 partial (Tasks 23-24). 38 xUnit tests green; 82 Pester tests still green. Not yet released.
+
+### Added
+- `tiny11options.sln` solution file at repo root.
+- `launcher/` C# project (`tiny11options.Launcher.csproj`, `app.manifest`) targeting `net10.0-windows` (LTS through Nov 2028), self-contained single-file publish, vendored WebView2 SDK references at `dependencies/webview2/1.0.2535.41/`. WPF enabled, WinForms disabled. Per-monitor V2 DPI awareness.
+- `launcher/Program.cs` arg-mode detection: zero args → GUI mode (`App.Run()`), any args → headless mode (`HeadlessRunner.Run()`). `<StartupObject>` override so our custom `Main` wins over WPF SDK's auto-generated entry point.
+- `launcher/Tests/` xUnit + Moq test project (`net10.0-windows`); `<InternalsVisibleTo>` exposes internals to tests.
+- `launcher/Headless/EmbeddedResources.cs` — extracts named manifest resources to a target directory; throws `FileNotFoundException` with a `<EmbeddedResource>`-glob-miss hint on unknown name.
+- MSBuild `<EmbeddedResource>` globs for `ui/**/*`, `catalog/**/*`, the 11 retained `src/Tiny11.*.psm1` modules, `tiny11maker.ps1`, `autounattend.template.xml`, and the new `tiny11maker-from-config.ps1` + `tiny11-iso-validate.ps1` wrappers.
+- `launcher/Headless/HeadlessRunner.cs` + `launcher/Interop/ConsoleAttach.cs` — extracts runtime resources to `%TEMP%\tiny11options-<pid>\` (with `%LOCALAPPDATA%` fallback when `%TEMP%` isn't writable), spawns `powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File tiny11maker.ps1 <args>`, attaches to the parent console via `AttachConsole(ATTACH_PARENT_PROCESS)` so child stdout/stderr stream to the calling shell, passes through child exit code. Distinct exit codes for extraction failure (10) and missing pwsh (11).
+- `launcher/MainWindow.xaml` + `MainWindow.xaml.cs` — WPF window hosting `Microsoft.Web.WebView2.Wpf`. UI extracted to `%LOCALAPPDATA%\tiny11options\ui-cache\<version>\` on first launch and served via `SetVirtualHostNameToFolderMapping` at `app.local`. WebView2 user data at `%LOCALAPPDATA%\tiny11options\webview2-userdata\`. WebView2-runtime-missing case shows a `MessageBox` with install link.
+- `launcher/Gui/Settings/UserSettings.cs` — JSON persistence at `%LOCALAPPDATA%\tiny11options\settings.json` for window size + theme. Clamps below-minimum dimensions to 1000×750. Returns defaults on missing/corrupt JSON.
+- `launcher/Gui/Theme/ThemeManager.cs` — `system`/`light`/`dark` preference. `system` reads `HKCU\…\Personalize\AppsUseLightTheme`. Fires `ThemeChanged` on user-preference change.
+- `launcher/Gui/Bridge/{IBridgeHandler,BridgeMessage,Bridge}.cs` — JSON `{type, payload}` dispatch. `Register()` for late handler registration (needed when handlers capture a `Bridge` reference). `MessageToJs` event for unsolicited outbound messages (build progress, update available).
+- `launcher/Gui/Handlers/BrowseHandlers.cs` — `IFilePicker` interface + `WpfFilePicker` impl. Handles `browse-file`, `browse-folder`, `browse-save-file`; returns `browse-result` with the selected path or `null` on cancel.
+- `launcher/Gui/Handlers/ProfileHandlers.cs` — `save-profile` / `load-profile` JSON round-trip with error responses for missing files.
+- `launcher/Gui/Handlers/SelectionHandlers.cs` + `launcher/Gui/Catalog/CatalogModel.cs` — `reconcile-selections` handler computing the effective selection (always-include locked items + transitive `runtimeDepsOn`). 6 tests covering deps, locked items, transitive cycles, missing catalog, and unknown-dep handling.
+- `launcher/Gui/Subprocess/PwshRunner.cs` + `launcher/Gui/Handlers/IsoHandlers.cs` — async wrapper around `Process.Start("powershell.exe", ...)` with stdout/stderr capture. `IsoHandlers` invokes `tiny11-iso-validate.ps1` to enumerate ISO editions, returns `iso-validated` or `iso-error`.
+- `launcher/Gui/Handlers/BuildHandlers.cs` — `start-build` / `cancel-build` handler. Spawns pwsh against `tiny11maker-from-config.ps1`, streams stdout line-by-line, parses `{type:"build-progress",…}` and `{type:"build-complete",…}` JSON markers and forwards via `Bridge.SendToJs`. Process-tree kill on cancel.
+- `launcher/Gui/Handlers/ThemeHandlers.cs` — `get-theme` / `apply-theme`. Persists user preference via `UserSettings`.
+- `launcher/Gui/Updates/{IUpdateSource,UpdateInfo,UpdateNotifier,VelopackUpdateSource}.cs` + `launcher/Gui/Handlers/UpdateHandlers.cs` — Velopack-backed update infrastructure. `UpdateNotifier.CheckAsync()` queries `bilbospocketses/tiny11options` releases via Velopack `GithubSource`; on hit sends `update-available` to JS. `UpdateHandlers.HandleAsync("apply-update")` triggers download + restart.
+- `tiny11maker-from-config.ps1` (repo root) — non-interactive build wrapper. Reads `-ConfigPath` JSON (selections array + options), invokes `Get-Tiny11Catalog` → `New-Tiny11Selections` → `Resolve-Tiny11Selections` → `Invoke-Tiny11BuildPipeline`, emits `build-progress` / `build-complete` / `build-error` JSON markers on stdout.
+- `tiny11-iso-validate.ps1` (repo root) — wrapper that mounts an ISO via `Mount-Tiny11Source`, enumerates editions via `Get-Tiny11Editions`, dismounts, returns JSON.
+- `Velopack` NuGet package (0.0.1298). `VelopackApp.Build().WithFirstRun().Run()` hook in `Program.Main` (must run before any other startup so install/update events fire).
+- `.gitignore` entries for `**/bin/`, `**/obj/`, `dist/` (`.NET` build artifacts).
+- `.claude/settings.json` — project-level allowlist for `vpk` / Velopack CLI (Phase 6 prep).
+- 38 xUnit tests across `EmbeddedResources`, `HeadlessRunner`, `UserSettings`, `ThemeManager`, `Bridge`, `BrowseHandlers`, `ProfileHandlers`, `SelectionHandlers`, `IsoHandlers`, `PwshRunner`, `BuildHandlers`, `ThemeHandlers`, `UpdateNotifier`.
+
+### Changed
+- `launcher/MainWindow.xaml.cs` `BuildBridge()` registers all 7 `IBridgeHandler` implementations (Browse, Profile, Selection, Iso, Theme, Build, Update). Construction order uses `Bridge.Register()` for late binding because `BuildHandlers` and `UpdateNotifier` capture a `Bridge` reference. New `_resourcesDir` (mirrors `_uiCacheDir` for PS scripts/modules/catalog at `%LOCALAPPDATA%\tiny11options\resources-cache\<version>\`). `ThemeManager` constructed from persisted `_settings.Theme`.
+
+### Fixed
+- WPF SDK's auto-generated `Main` collided with `Program.Main` (CS0017). Resolved with `<StartupObject>Tiny11Options.Launcher.Program</StartupObject>` in csproj.
+- `Program.Main` now calls `app.InitializeComponent()` before `app.Run()`. Without it, `App.xaml`'s `StartupUri` was never set and the process sat invisible with no window.
+- `tiny11maker-from-config.ps1` was committed with the implementation plan's sketch function names (`Import-Tiny11Catalog`, `Resolve-Tiny11Selections -Catalog/-Selected`, `Get-Tiny11VolumeForImage -ImagePath`, `Test-Tiny11SourceIsConsumer -ImageInfo/-ImageIndex`, `Resolve-Tiny11ImageIndex -ImageInfo/-EditionName`, `Invoke-Tiny11Build`). None of these names exist in the actual modules. Rewrote against real exports: `Get-Tiny11Catalog`, `New-Tiny11Selections` + `Resolve-Tiny11Selections -Selections [hashtable]`, `Mount-Tiny11Source` / `Get-Tiny11Editions` / `Dismount-Tiny11Source`, `Test-Tiny11SourceIsConsumer -Editions`, `Resolve-Tiny11ImageIndex -Editions/-Edition`, `Invoke-Tiny11BuildPipeline`. Scaffold-correct only — runtime-validated end-to-end in Phase 7 manual smoke against a real ISO.
+- Namespace collisions in handlers + UpdateNotifier (some types fully qualified `global::Tiny11Options.Launcher.Gui.Catalog.Catalog`, others used short names) consolidated.
+
 ## [0.2.0] - 2026-05-07
 
 UX wizard improvements (theme detection + toggle, persistent window size, bulk-select, clickable rows, output-path autofill, locked build-details panel), scripted-mode CLI additions (`-Edition`, `-AllowVLSource`), small cleanups, and expanded test coverage. Built end-to-end ISO + Hyper-V install verified. 82/82 Pester tests green (72 prior + 10 new).
