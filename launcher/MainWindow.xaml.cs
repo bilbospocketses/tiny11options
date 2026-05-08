@@ -87,6 +87,16 @@ public partial class MainWindow : Window
                 if (!string.IsNullOrEmpty(resp)) SendJsonToJs(resp);
             };
 
+            // PORTED: Tiny11.WebView2.psm1:173-175 — inject the catalog as a
+            // document-created script so window.__tinyCatalog is set before any
+            // page script runs. Without this, ui/app.js:68 reads undefined into
+            // state.catalog and Step 2 throws on state.catalog.items the moment
+            // the user clicks Next. Must fire BEFORE WebView.Source = navigation.
+            var catalogPath = Path.Combine(_resourcesDir!, "catalog", "catalog.json");
+            var catalogJson = await File.ReadAllTextAsync(catalogPath);
+            await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                $"window.__tinyCatalog = {catalogJson};");
+
             WebView.Source = new Uri("http://app.local/index.html");
             // No post-navigation update-check fire here — JS sends `request-update-check`
             // on its DOMContentLoaded, UpdateHandlers receives that and triggers
@@ -127,6 +137,7 @@ public partial class MainWindow : Window
 
         bridge.Register(new BrowseHandlers(new WpfFilePicker()));
         bridge.Register(new ProfileHandlers());
+        bridge.Register(new WindowHandlers());
         // SelectionHandlers + reconcile-selections type intentionally not
         // registered — JS does its own client-side reconcile() at app.js:249
         // mirroring Tiny11.Selections.psm1 skip-cascade semantics. C# handler
