@@ -3,6 +3,13 @@
 const ps   = (msg) => window.chrome.webview.postMessage(msg);
 const onPs = (cb)  => window.chrome.webview.addEventListener('message', e => cb(JSON.parse(e.data)));
 
+// SMOKE DIAGNOSTIC — REVERT BEFORE COMMIT. Logs every inbound bridge message
+// so we can see what (if anything) reaches JS. Look for 'PS-MSG' in F12 console.
+window.chrome.webview.addEventListener('message', e => {
+    try { console.log('PS-MSG:', JSON.parse(e.data)); }
+    catch (err) { console.log('PS-MSG (raw):', e.data, 'parse err:', err); }
+});
+
 // Theme — stored in localStorage (key 'tiny11-theme'). On first run, read system preference.
 // Persistence lives in the WebView2 userdata folder under %LOCALAPPDATA%\tiny11options\webview2-userdata\.
 function detectSystemTheme() {
@@ -75,6 +82,11 @@ const state = {
     progress: null,
     buildDetailsOpen: false,
 };
+
+// Snapshot of selections taken when "Save profile..." is clicked, used after the
+// browse-save-file dialog returns a path. Decouples user click time from dialog
+// completion so concurrent state changes (rare) can't poison the saved profile.
+let pendingSaveProfileSelections = null;
 
 // When the user picks or types a scratch directory, prefill the output ISO path with
 // "<scratchDir>\tiny11.iso" — but only if outputPath is empty so we never clobber a
@@ -154,7 +166,7 @@ function renderBuildStep() {
                     id: 'out-input', type: 'text', value: state.outputPath || '',
                     onchange: e => state.outputPath = e.target.value
                 }),
-                el('button', { onclick: () => ps({ type: 'browse-output' }) }, 'Browse...')
+                el('button', { onclick: () => ps({ type: 'browse-save-file', payload: { context: 'output', title: 'Save tiny11 ISO as...', filter: 'ISO files|*.iso|All files|*.*', defaultName: 'tiny11.iso' } }) }, 'Browse...')
             ),
             el('dt', null, 'Changes'), el('dd', null, `${totalApplied} items applied`)
         ),
@@ -164,14 +176,16 @@ function renderBuildStep() {
                 state.building = true;
                 renderStep();
                 ps({
-                    type: 'build',
-                    source: state.source,
-                    imageIndex: state.edition,
-                    scratchDir: state.scratchDir,
-                    outputPath: state.outputPath,
-                    unmountSource: state.unmountSource,
-                    fastBuild: state.fastBuild,
-                    selections: state.selections,
+                    type: 'start-build',
+                    payload: {
+                        source: state.source,
+                        edition: state.edition,
+                        scratchDir: state.scratchDir,
+                        outputIso: state.outputPath,
+                        unmountSource: state.unmountSource,
+                        fastBuild: state.fastBuild,
+                        selections: state.selections,
+                    },
                 });
             }
         }, 'Build ISO')
@@ -197,7 +211,7 @@ function renderProgress() {
         progressBar,
         el('p', null, `Phase: ${p.phase || '—'}`),
         el('p', null, `Step: ${p.step || '—'}`),
-        el('button', { onclick: () => ps({ type: 'cancel' }) }, 'Cancel build'),
+        el('button', { onclick: () => ps({ type: 'cancel-build', payload: {} }) }, 'Cancel build'),
         el('details', {
             class: 'build-details',
             open: state.buildDetailsOpen,
@@ -222,8 +236,8 @@ function renderComplete() {
     return el('section', { class: 'complete' },
         el('h2', null, 'Build complete'),
         el('p', null, `Output: ${c.outputPath}`),
-        el('button', { onclick: () => ps({ type: 'open-folder', path: c.outputPath }) }, 'Open output folder'),
-        el('button', { onclick: () => ps({ type: 'close' }) }, 'Close')
+        el('button', { onclick: () => ps({ type: 'open-folder', payload: { path: c.outputPath } }) }, 'Open output folder'),
+        el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close')
     );
 }
 
@@ -332,8 +346,11 @@ function renderCustomizeStep() {
             el('span', { class: 'counter' }, `Items applied: ${totalApplied}/${state.catalog.items.length}`)
         ),
         el('div', { class: 'row' },
-            el('button', { onclick: () => ps({ type: 'save-profile-request', selections: state.selections }) }, 'Save profile...'),
-            el('button', { onclick: () => ps({ type: 'load-profile-request' }) }, 'Load profile...'),
+            el('button', { onclick: () => {
+                pendingSaveProfileSelections = JSON.parse(JSON.stringify(state.selections));
+                ps({ type: 'browse-save-file', payload: { context: 'profile-save', title: 'Save profile as...', filter: 'JSON|*.json', defaultName: 'profile.json' } });
+            } }, 'Save profile...'),
+            el('button', { onclick: () => ps({ type: 'browse-file', payload: { context: 'profile-load', title: 'Load profile...', filter: 'JSON|*.json|All files|*.*' } }) }, 'Load profile...'),
             el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
         ),
         el('div', { class: 'card-grid' }, cards)
@@ -384,8 +401,11 @@ function renderSearchResults(term, resolved) {
         el('div', { class: 'row' },
             el('button', { onclick: () => { state.search = ''; renderStep(); } }, '< Back to categories'),
             bulkSelectButton(matchingItems, resolved),
-            el('button', { onclick: () => ps({ type: 'save-profile-request', selections: state.selections }) }, 'Save profile...'),
-            el('button', { onclick: () => ps({ type: 'load-profile-request' }) }, 'Load profile...'),
+            el('button', { onclick: () => {
+                pendingSaveProfileSelections = JSON.parse(JSON.stringify(state.selections));
+                ps({ type: 'browse-save-file', payload: { context: 'profile-save', title: 'Save profile as...', filter: 'JSON|*.json', defaultName: 'profile.json' } });
+            } }, 'Save profile...'),
+            el('button', { onclick: () => ps({ type: 'browse-file', payload: { context: 'profile-load', title: 'Load profile...', filter: 'JSON|*.json|All files|*.*' } }) }, 'Load profile...'),
             el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
         ),
         matchingItems.length === 0
@@ -450,11 +470,11 @@ function renderSourceStep() {
                     state.source = e.target.value;
                     state.editions = null;
                     state.edition = null;
-                    ps({ type: 'validate-iso', path: state.source });
+                    ps({ type: 'validate-iso', payload: { path: state.source } });
                     renderStep();
                 }
             }),
-            el('button', { id: 'src-browse', onclick: () => ps({ type: 'browse-iso' }) }, 'Browse...')
+            el('button', { id: 'src-browse', onclick: () => ps({ type: 'browse-file', payload: { context: 'source', title: 'Select Win11 ISO', filter: 'ISO files|*.iso|All files|*.*' } }) }, 'Browse...')
         ),
         errorBanner,
         el('label', null, 'Edition'),
@@ -469,7 +489,7 @@ function renderSourceStep() {
                 id: 'scratch-input', type: 'text', value: state.scratchDir || '',
                 onchange: e => { state.scratchDir = e.target.value; prefillOutputIfEmpty(); }
             }),
-            el('button', { onclick: () => ps({ type: 'browse-scratch' }) }, 'Browse...')
+            el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
         ),
         el('label', { class: 'checkbox-label' },
             el('input', {
@@ -541,7 +561,7 @@ onPs(msg => {
         root.appendChild(el('section', { class: 'error' },
             el('h2', null, 'Build failed'),
             el('p', null, p.message || 'Unknown error'),
-            el('button', { onclick: () => ps({ type: 'close' }) }, 'Close')
+            el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close')
         ));
     } else if (msg.type === 'profile-saved') {
         // v1: log only; future: transient toast.
@@ -587,7 +607,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const notes = (pendingUpdate.changelog || '').slice(0, 400);
         const trail = pendingUpdate.changelog && pendingUpdate.changelog.length > 400 ? '\n...' : '';
         if (confirm(`Install tiny11options v${pendingUpdate.version}?\n\n${notes}${trail}`)) {
-            ps({ type: 'apply-update' });
+            ps({ type: 'apply-update', payload: {} });
         }
     });
 });

@@ -22,9 +22,12 @@ public class IsoHandlers : IBridgeHandler
 
     public async Task<BridgeMessage?> HandleAsync(string type, JsonObject? payload)
     {
-        var iso = payload?["isoPath"]?.ToString();
+        // JS posts {type:'validate-iso', path:'<...>'} per ui/app.js — the field
+        // is named `path`, not `isoPath`. Plan-document used isoPath; JS shipped
+        // with `path`; this handler now matches the JS-side contract.
+        var iso = payload?["path"]?.ToString();
         if (string.IsNullOrEmpty(iso))
-            return Error("isoPath required");
+            return Error("path required");
 
         var script = Path.Combine(_resourcesDir, "tiny11-iso-validate.ps1");
         var result = await _runner.RunAsync(script, new[] { "-IsoPath", iso }, _resourcesDir);

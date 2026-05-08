@@ -15,8 +15,10 @@ namespace Tiny11Options.Launcher;
 
 public partial class MainWindow : Window
 {
-    // GitHub repo Velopack queries for update manifests.
-    private const string GithubRepoForUpdates = "bilbospocketses/tiny11options";
+    // GitHub repo URL Velopack queries for update manifests. Velopack's GithubSource
+    // ctor calls new Uri(repoUrl) and enforces Host == "github.com" — must be a full
+    // https URL, NOT a "owner/repo" slug.
+    private const string GithubRepoForUpdates = "https://github.com/bilbospocketses/tiny11options";
 
     private string? _uiCacheDir;
     private string? _resourcesDir;
@@ -72,17 +74,25 @@ public partial class MainWindow : Window
             _bridge.MessageToJs += SendJsonToJs;
             WebView.CoreWebView2.WebMessageReceived += async (_, e) =>
             {
-                var json = e.TryGetWebMessageAsString();
+                // JS calls window.chrome.webview.postMessage(<object>) — WebMessageAsJson
+                // gives us the serialized JSON. TryGetWebMessageAsString throws if the JS
+                // side didn't pre-stringify, which it doesn't. JS passing the object is
+                // idiomatic and round-trips cleanly through WebView2's serializer.
+                string json;
+                try { json = e.WebMessageAsJson; }
+                catch { return; }
                 if (string.IsNullOrEmpty(json)) return;
                 var resp = await _bridge.DispatchJsonAsync(json);
                 if (!string.IsNullOrEmpty(resp)) SendJsonToJs(resp);
             };
 
             WebView.Source = new Uri("http://app.local/index.html");
-
-            // Fire-and-forget update check. UpdateNotifier.CheckAsync swallows its own
-            // exceptions and posts update-error / update-available through the bridge.
-            _ = System.Threading.Tasks.Task.Run(() => _updateNotifier!.CheckAsync());
+            // No post-navigation update-check fire here — JS sends `request-update-check`
+            // on its DOMContentLoaded, UpdateHandlers receives that and triggers
+            // _updateNotifier.CheckAsync. JS-initiated handshake guarantees the JS-side
+            // chrome.webview message listener is registered before update-available
+            // is posted. Avoids the WebView2 race where PostWebMessageAsString lands
+            // before addEventListener is wired.
         }
         catch (Exception ex)
         {
