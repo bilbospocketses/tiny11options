@@ -52,3 +52,28 @@ Describe 'Get-Tiny11CoreSystemPackagePatterns' {
         $patterns | Should -Contain 'Windows-Defender-Client-Package~31bf3856ad364e35~'
     }
 }
+
+Describe 'Get-Tiny11CoreFilesystemTargets' {
+    It 'returns 5 filesystem deletion targets' {
+        $targets = Get-Tiny11CoreFilesystemTargets
+        $targets.Count | Should -Be 5
+    }
+
+    It 'includes Edge, EdgeUpdate, EdgeCore, OneDriveSetup, Microsoft-Edge-Webview' {
+        $targets = Get-Tiny11CoreFilesystemTargets
+        $rels = $targets | ForEach-Object { $_.RelPath }
+        $rels | Should -Contain 'Program Files (x86)\Microsoft\Edge'
+        $rels | Should -Contain 'Program Files (x86)\Microsoft\EdgeUpdate'
+        $rels | Should -Contain 'Program Files (x86)\Microsoft\EdgeCore'
+        $rels | Should -Contain 'Windows\System32\OneDriveSetup.exe'
+        $rels | Should -Contain 'Windows\System32\Microsoft-Edge-Webview'
+    }
+
+    It 'every target has RelPath and Recurse fields' {
+        $targets = Get-Tiny11CoreFilesystemTargets
+        foreach ($t in $targets) {
+            $t.PSObject.Properties.Name | Should -Contain 'RelPath'
+            $t.PSObject.Properties.Name | Should -Contain 'Recurse'
+        }
+    }
+}

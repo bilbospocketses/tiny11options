@@ -76,4 +76,24 @@ function Get-Tiny11CoreSystemPackagePatterns {
     )
 }
 
-Export-ModuleMember -Function Get-Tiny11CoreAppxPrefixes, Get-Tiny11CoreSystemPackagePatterns
+# Filesystem paths Core deletes (relative to mounted scratchdir root).
+# Each entry has RelPath (relative path from scratchdir) and Recurse
+# (whether to recurse into directories — false for single-file targets).
+# Ported from upstream tiny11Coremaker.ps1 lines 183-220.
+# WinSxS architecture-specific WebView dir is handled separately by
+# Invoke-Tiny11CoreWinSxsWipe (it's part of the WinSxS phase).
+# WinRE.wim replacement is handled separately (delete+recreate empty file).
+function Get-Tiny11CoreFilesystemTargets {
+    @(
+        [pscustomobject]@{ RelPath = 'Program Files (x86)\Microsoft\Edge';        Recurse = $true  }
+        [pscustomobject]@{ RelPath = 'Program Files (x86)\Microsoft\EdgeUpdate';  Recurse = $true  }
+        [pscustomobject]@{ RelPath = 'Program Files (x86)\Microsoft\EdgeCore';    Recurse = $true  }
+        [pscustomobject]@{ RelPath = 'Windows\System32\OneDriveSetup.exe';        Recurse = $false }
+        [pscustomobject]@{ RelPath = 'Windows\System32\Microsoft-Edge-Webview';   Recurse = $true  }
+    )
+}
+
+Export-ModuleMember -Function `
+    Get-Tiny11CoreAppxPrefixes, `
+    Get-Tiny11CoreSystemPackagePatterns, `
+    Get-Tiny11CoreFilesystemTargets
