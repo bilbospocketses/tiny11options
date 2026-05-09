@@ -93,7 +93,23 @@ function Get-Tiny11CoreFilesystemTargets {
     )
 }
 
+# Scheduled-task XML files Core deletes from the mounted image.
+# Paths relative to <scratchdir>\Windows\System32\Tasks\.
+# Each entry has RelPath (relative task XML path) and Recurse
+# (whether to recurse — true only for CEIP which is a folder containing multiple tasks).
+# Ported from upstream tiny11Coremaker.ps1 lines 422-438.
+function Get-Tiny11CoreScheduledTaskTargets {
+    @(
+        [pscustomobject]@{ RelPath = 'Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser'; Recurse = $false }
+        [pscustomobject]@{ RelPath = 'Microsoft\Windows\Customer Experience Improvement Program';                    Recurse = $true  }
+        [pscustomobject]@{ RelPath = 'Microsoft\Windows\Application Experience\ProgramDataUpdater';                  Recurse = $false }
+        [pscustomobject]@{ RelPath = 'Microsoft\Windows\Chkdsk\Proxy';                                                Recurse = $false }
+        [pscustomobject]@{ RelPath = 'Microsoft\Windows\Windows Error Reporting\QueueReporting';                     Recurse = $false }
+    )
+}
+
 Export-ModuleMember -Function `
     Get-Tiny11CoreAppxPrefixes, `
     Get-Tiny11CoreSystemPackagePatterns, `
-    Get-Tiny11CoreFilesystemTargets
+    Get-Tiny11CoreFilesystemTargets, `
+    Get-Tiny11CoreScheduledTaskTargets

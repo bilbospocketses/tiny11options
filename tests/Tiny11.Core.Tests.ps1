@@ -77,3 +77,26 @@ Describe 'Get-Tiny11CoreFilesystemTargets' {
         }
     }
 }
+
+Describe 'Get-Tiny11CoreScheduledTaskTargets' {
+    It 'returns 5 scheduled-task deletion targets' {
+        $targets = Get-Tiny11CoreScheduledTaskTargets
+        $targets.Count | Should -Be 5
+    }
+
+    It 'includes Compatibility Appraiser, CEIP, ProgramDataUpdater, Chkdsk Proxy, QueueReporting' {
+        $targets = Get-Tiny11CoreScheduledTaskTargets
+        $rels = $targets | ForEach-Object { $_.RelPath }
+        $rels | Should -Contain 'Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser'
+        $rels | Should -Contain 'Microsoft\Windows\Customer Experience Improvement Program'
+        $rels | Should -Contain 'Microsoft\Windows\Application Experience\ProgramDataUpdater'
+        $rels | Should -Contain 'Microsoft\Windows\Chkdsk\Proxy'
+        $rels | Should -Contain 'Microsoft\Windows\Windows Error Reporting\QueueReporting'
+    }
+
+    It 'CEIP entry is marked as a folder (recurse-delete the entire folder)' {
+        $targets = Get-Tiny11CoreScheduledTaskTargets
+        $ceip = $targets | Where-Object RelPath -eq 'Microsoft\Windows\Customer Experience Improvement Program'
+        $ceip.Recurse | Should -BeTrue
+    }
+}
