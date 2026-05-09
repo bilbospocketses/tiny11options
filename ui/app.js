@@ -3,13 +3,6 @@
 const ps   = (msg) => window.chrome.webview.postMessage(msg);
 const onPs = (cb)  => window.chrome.webview.addEventListener('message', e => cb(JSON.parse(e.data)));
 
-// SMOKE DIAGNOSTIC — REVERT BEFORE COMMIT. Logs every inbound bridge message
-// so we can see what (if anything) reaches JS. Look for 'PS-MSG' in F12 console.
-window.chrome.webview.addEventListener('message', e => {
-    try { console.log('PS-MSG:', JSON.parse(e.data)); }
-    catch (err) { console.log('PS-MSG (raw):', e.data, 'parse err:', err); }
-});
-
 // Theme — stored in localStorage (key 'tiny11-theme'). On first run, read system preference.
 // Persistence lives in the WebView2 userdata folder under %LOCALAPPDATA%\tiny11options\webview2-userdata\.
 function detectSystemTheme() {

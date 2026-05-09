@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Path C — bundled `.exe` launcher implementation in progress on `feat/path-c-launcher`. Phases 1-4 complete (update infrastructure end-to-end, including the JS-side update-available indicator). 38 xUnit tests green; 82 Pester tests still green. Not yet released.
+Path C — bundled `.exe` launcher implementation in progress on `feat/path-c-launcher`. Phases 1-4 complete + Phase 4.5 audit pass + audit rounds 2/3/4 + thread-affinity fix + VL heuristic empirically disproved + diagnostic-stub revert + smoke check 6 verified end-to-end. 35 xUnit tests green; 81 Pester tests green. Not yet released.
 
 ### Added
 - `tiny11options.sln` solution file at repo root.
@@ -104,6 +104,24 @@ Round 1 (Phase 4.5, `8d48db7`) was scoped only to handler files A1–A10 — cau
 - Round-1 audit's "two-axis enumeration" claim was overclaim — I'd only walked half the legacy entrypoint script. Round 3 walked `tiny11maker.ps1:1-303` end-to-end and the wrapper line-by-line against the cited audit-reference range.
 - "Empirically verified during the v0.1.0 investigation" in the v0.2.0 commit message was the lazy framing of "we hit an error during one VL session and stopped hitting it after changing ISOs," which is correlation under multi-bug confusion (the pwsh-from-pwsh bug was active during the same period). User-driven external validation against an actual VL ISO disproved the claim.
 - Smoke diagnostic (`%LOCALAPPDATA%\tiny11options\smoke-build.log` capturing every stdout line + every forward outcome) paid for itself in a single run by isolating the thread-affinity bug — the bug's silent-failure mode would have been impossible to debug from JS-side observation alone.
+
+### Diagnostic-stub revert + UpdateNotifier test refactor (2026-05-09)
+
+After smoke check 6 passed end-to-end against a real retail multi-edition Win11 25H2 ISO (full builds completed; cancellations behaved cleanly), the four smoke-only diagnostics introduced during the bridge-debugging session are now reverted to production shape.
+
+#### Removed
+- `launcher/App.xaml.cs` `OnStartup` crash logger — the `DispatcherUnhandledException` / `AppDomain.UnhandledException` / `TaskScheduler.UnobservedTaskException` handlers that funneled to `%LOCALAPPDATA%\tiny11options\smoke-crash.log` plus the `MessageBox` UI. WPF's default unhandled-exception handling is back.
+- `ui/app.js` global `console.log('PS-MSG:', …)` listener at top of file.
+- `launcher/Gui/Updates/UpdateNotifier.cs` `1.0.0-smoke` hardcoded `BridgeMessage` short-circuit. `CheckAsync` now calls `_source.CheckAsync()` (the real `VelopackUpdateSource`); returns `update-available` `BridgeMessage` on hit, `null` on no-update, propagates exceptions for `UpdateHandlers` to convert to `update-error`. The smoke stub's pull-based shape is preserved (this WAS the production design from `81f8880`'s pull-based refactor).
+- `launcher/Gui/Handlers/BuildHandlers.cs` `SmokeBuildLog` static field + `LogSmoke` method + every `LogSmoke(...)` call site (subprocess start banner, `STDOUT:` line dump, `FORWARDED:` confirmation, `IGNORED non-marker JSON`, `SendToJs threw`, `STDOUT closed`, `STDOUT reader threw`, `ForwardJsonLine threw`). Catch blocks that previously logged to smoke-build.log are now bare `catch { /* ... */ }` with intent-comments.
+- `launcher/Gui/Updates/UpdateNotifier.cs` `_bridge` field + constructor parameter — pull-based design has no use for it; `MainWindow.BuildBridge` now constructs `UpdateNotifier` with just the source.
+
+#### Changed
+- `launcher/Tests/UpdateNotifierTests.cs` rewritten for the pull-based `CheckAsync` contract. Old tests asserted side-effects on `Bridge.MessageToJs` (push-based shape from before the `81f8880` refactor); new tests assert on the returned `BridgeMessage`'s `Type` + `Payload` directly. Three tests: `ReturnsUpdateAvailableMessage_WhenNewerVersionFound`, `ReturnsNull_WhenNoUpdate`, `PropagatesException_WhenSourceThrows` (since the swallow-and-convert-to-error-message responsibility lives in `UpdateHandlers` now, not the notifier). xUnit total stays at 35 (was 34 green + 1 expected-fail before this commit).
+- BuildHandlers `ForwardJsonLine` `else { LogSmoke("IGNORED non-marker JSON: …"); }` branch dropped entirely — silently ignoring non-marker JSON is the production behavior; the diagnostic logging was the only reason for the branch to exist.
+
+#### Lessons
+- The "stray" non-JSON line in smoke-build.log (`'this is just a log line, not JSON'`) was traced to `BuildHandlersTests.ForwardJsonLine_IgnoresNonJsonLines` — the test calls `ForwardJsonLine` via reflection with a deliberately-malformed input, and the diagnostic `LogSmoke` was a static path under `%LOCALAPPDATA%`, so test runs and GUI runs cross-pollinated the same log file. With LogSmoke gone, the cross-pollination evaporates. No production code was emitting non-JSON.
 
 ## [0.2.0] - 2026-05-07
 

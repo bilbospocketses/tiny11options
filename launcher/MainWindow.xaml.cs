@@ -163,8 +163,7 @@ public partial class MainWindow : Window
         var bridge = new Bridge(Array.Empty<IBridgeHandler>());
 
         var notifier = new UpdateNotifier(
-            new VelopackUpdateSource(GithubRepoForUpdates),
-            bridge);
+            new VelopackUpdateSource(GithubRepoForUpdates));
 
         var pwshRunner = new PwshRunner();
 
