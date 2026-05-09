@@ -100,3 +100,31 @@ Describe 'Get-Tiny11CoreScheduledTaskTargets' {
         $ceip.Recurse | Should -BeTrue
     }
 }
+
+Describe 'Get-Tiny11CoreWinSxsKeepList' {
+    It 'returns the amd64 keep-list (31 entries after de-duping) when -Architecture amd64' {
+        $list = Get-Tiny11CoreWinSxsKeepList -Architecture 'amd64'
+        $list.Count | Should -Be 31
+    }
+
+    It 'returns the arm64 keep-list (33 entries) when -Architecture arm64' {
+        $list = Get-Tiny11CoreWinSxsKeepList -Architecture 'arm64'
+        $list.Count | Should -Be 33
+    }
+
+    It 'amd64 list contains servicingstack and Manifests' {
+        $list = Get-Tiny11CoreWinSxsKeepList -Architecture 'amd64'
+        $list | Should -Contain 'amd64_microsoft-windows-servicingstack_31bf3856ad364e35_*'
+        $list | Should -Contain 'Manifests'
+    }
+
+    It 'arm64 list contains arm64-specific servicingstack' {
+        $list = Get-Tiny11CoreWinSxsKeepList -Architecture 'arm64'
+        $list | Should -Contain 'arm64_microsoft-windows-servicingstack_31bf3856ad364e35_*'
+    }
+
+    It 'throws on unknown architecture with helpful message' {
+        { Get-Tiny11CoreWinSxsKeepList -Architecture 'mips' } |
+            Should -Throw -ExpectedMessage '*architecture*mips*'
+    }
+}

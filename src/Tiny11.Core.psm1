@@ -108,8 +108,108 @@ function Get-Tiny11CoreScheduledTaskTargets {
     )
 }
 
+# WinSxS subdirs preserved during Core's destructive WinSxS wipe.
+# Per architecture: amd64 (29 entries) or arm64 (28 entries).
+# Patterns are Get-ChildItem -Filter wildcards — most end in `_*` to match
+# version-suffixed dirs. Non-wildcarded entries (Catalogs, Manifests, etc.)
+# are exact directory names that exist verbatim under WinSxS.
+# Ported from upstream tiny11Coremaker.ps1 lines 235-316.
+# Note: upstream amd64 list has a duplicate entry; we de-dupe via Select-Object -Unique.
+# Note: upstream arm64 array uses non-comma syntax in places; we normalize.
+# Note: ValidateSet enforces architecture at parameter binding; the explicit
+#   throw at the bottom is unreachable for valid invocations but kept as a
+#   defensive guard if ValidateSet is ever loosened or the function is called
+#   from contexts that bypass parameter validation.
+function Get-Tiny11CoreWinSxsKeepList {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('amd64', 'arm64')]
+        [string]$Architecture
+    )
+
+    if ($Architecture -eq 'amd64') {
+        $list = @(
+            'x86_microsoft.windows.common-controls_6595b64144ccf1df_*',
+            'x86_microsoft.windows.gdiplus_6595b64144ccf1df_*',
+            'x86_microsoft.windows.i..utomation.proxystub_6595b64144ccf1df_*',
+            'x86_microsoft.windows.isolationautomation_6595b64144ccf1df_*',
+            'x86_microsoft-windows-s..ngstack-onecorebase_31bf3856ad364e35_*',
+            'x86_microsoft-windows-s..stack-termsrv-extra_31bf3856ad364e35_*',
+            'x86_microsoft-windows-servicingstack_31bf3856ad364e35_*',
+            'x86_microsoft-windows-servicingstack-inetsrv_*',
+            'x86_microsoft-windows-servicingstack-onecore_*',
+            'amd64_microsoft.vc80.crt_1fc8b3b9a1e18e3b_*',
+            'amd64_microsoft.vc90.crt_1fc8b3b9a1e18e3b_*',
+            'amd64_microsoft.windows.c..-controls.resources_6595b64144ccf1df_*',
+            'amd64_microsoft.windows.common-controls_6595b64144ccf1df_*',
+            'amd64_microsoft.windows.gdiplus_6595b64144ccf1df_*',
+            'amd64_microsoft.windows.i..utomation.proxystub_6595b64144ccf1df_*',
+            'amd64_microsoft.windows.isolationautomation_6595b64144ccf1df_*',
+            'amd64_microsoft-windows-s..stack-inetsrv-extra_31bf3856ad364e35_*',
+            'amd64_microsoft-windows-s..stack-msg.resources_31bf3856ad364e35_*',
+            'amd64_microsoft-windows-s..stack-termsrv-extra_31bf3856ad364e35_*',
+            'amd64_microsoft-windows-servicingstack_31bf3856ad364e35_*',
+            'amd64_microsoft-windows-servicingstack-inetsrv_31bf3856ad364e35_*',
+            'amd64_microsoft-windows-servicingstack-msg_31bf3856ad364e35_*',
+            'amd64_microsoft-windows-servicingstack-onecore_31bf3856ad364e35_*',
+            'Catalogs',
+            'FileMaps',
+            'Fusion',
+            'InstallTemp',
+            'Manifests',
+            'x86_microsoft.vc80.crt_1fc8b3b9a1e18e3b_*',
+            'x86_microsoft.vc90.crt_1fc8b3b9a1e18e3b_*',
+            'x86_microsoft.windows.c..-controls.resources_6595b64144ccf1df_*'
+        )
+        # de-dupe (upstream listed x86_microsoft.windows.c..-controls.resources twice at lines 267-268)
+        return $list | Select-Object -Unique
+    }
+
+    if ($Architecture -eq 'arm64') {
+        return @(
+            'arm64_microsoft-windows-servicingstack-onecore_31bf3856ad364e35_*',
+            'Catalogs',
+            'FileMaps',
+            'Fusion',
+            'InstallTemp',
+            'Manifests',
+            'SettingsManifests',
+            'Temp',
+            'x86_microsoft.vc80.crt_1fc8b3b9a1e18e3b_*',
+            'x86_microsoft.vc90.crt_1fc8b3b9a1e18e3b_*',
+            'x86_microsoft.windows.c..-controls.resources_6595b64144ccf1df_*',
+            'x86_microsoft.windows.common-controls_6595b64144ccf1df_*',
+            'x86_microsoft.windows.gdiplus_6595b64144ccf1df_*',
+            'x86_microsoft.windows.i..utomation.proxystub_6595b64144ccf1df_*',
+            'x86_microsoft.windows.isolationautomation_6595b64144ccf1df_*',
+            'arm_microsoft.windows.c..-controls.resources_6595b64144ccf1df_*',
+            'arm_microsoft.windows.common-controls_6595b64144ccf1df_*',
+            'arm_microsoft.windows.gdiplus_6595b64144ccf1df_*',
+            'arm_microsoft.windows.i..utomation.proxystub_6595b64144ccf1df_*',
+            'arm_microsoft.windows.isolationautomation_6595b64144ccf1df_*',
+            'arm64_microsoft.vc80.crt_1fc8b3b9a1e18e3b_*',
+            'arm64_microsoft.vc90.crt_1fc8b3b9a1e18e3b_*',
+            'arm64_microsoft.windows.c..-controls.resources_6595b64144ccf1df_*',
+            'arm64_microsoft.windows.common-controls_6595b64144ccf1df_*',
+            'arm64_microsoft.windows.gdiplus_6595b64144ccf1df_*',
+            'arm64_microsoft.windows.i..utomation.proxystub_6595b64144ccf1df_*',
+            'arm64_microsoft.windows.isolationautomation_6595b64144ccf1df_*',
+            'arm64_microsoft-windows-servicing-adm_31bf3856ad364e35_*',
+            'arm64_microsoft-windows-servicingcommon_31bf3856ad364e35_*',
+            'arm64_microsoft-windows-servicing-onecore-uapi_31bf3856ad364e35_*',
+            'arm64_microsoft-windows-servicingstack_31bf3856ad364e35_*',
+            'arm64_microsoft-windows-servicingstack-inetsrv_31bf3856ad364e35_*',
+            'arm64_microsoft-windows-servicingstack-msg_31bf3856ad364e35_*'
+        )
+    }
+
+    throw "Unknown architecture: $Architecture. Expected 'amd64' or 'arm64'."
+}
+
 Export-ModuleMember -Function `
     Get-Tiny11CoreAppxPrefixes, `
     Get-Tiny11CoreSystemPackagePatterns, `
     Get-Tiny11CoreFilesystemTargets, `
-    Get-Tiny11CoreScheduledTaskTargets
+    Get-Tiny11CoreScheduledTaskTargets, `
+    Get-Tiny11CoreWinSxsKeepList
