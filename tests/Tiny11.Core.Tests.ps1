@@ -24,3 +24,31 @@ Describe 'Get-Tiny11CoreAppxPrefixes' {
         $prefixes | Should -Contain 'Microsoft.OutlookForWindows_'
     }
 }
+
+Describe 'Get-Tiny11CoreSystemPackagePatterns' {
+    It 'returns 12 entries for any language code' {
+        $patterns = Get-Tiny11CoreSystemPackagePatterns -LanguageCode 'en-US'
+        $patterns.Count | Should -Be 12
+    }
+
+    It 'substitutes language code into LanguageFeatures templates' {
+        $patterns = Get-Tiny11CoreSystemPackagePatterns -LanguageCode 'en-US'
+        $patterns | Should -Contain 'Microsoft-Windows-LanguageFeatures-Handwriting-en-US-Package~31bf3856ad364e35'
+        $patterns | Should -Contain 'Microsoft-Windows-LanguageFeatures-OCR-en-US-Package~31bf3856ad364e35'
+        $patterns | Should -Contain 'Microsoft-Windows-LanguageFeatures-Speech-en-US-Package~31bf3856ad364e35'
+        $patterns | Should -Contain 'Microsoft-Windows-LanguageFeatures-TextToSpeech-en-US-Package~31bf3856ad364e35'
+    }
+
+    It 'substitutes a different language code correctly' {
+        $patterns = Get-Tiny11CoreSystemPackagePatterns -LanguageCode 'de-DE'
+        $patterns | Should -Contain 'Microsoft-Windows-LanguageFeatures-Handwriting-de-DE-Package~31bf3856ad364e35'
+        $patterns | Should -Not -Contain 'Microsoft-Windows-LanguageFeatures-Handwriting-en-US-Package~31bf3856ad364e35'
+    }
+
+    It 'passes through non-templated entries unchanged' {
+        $patterns = Get-Tiny11CoreSystemPackagePatterns -LanguageCode 'en-US'
+        $patterns | Should -Contain 'Microsoft-Windows-InternetExplorer-Optional-Package~31bf3856ad364e35'
+        $patterns | Should -Contain 'Microsoft-Windows-MediaPlayer-Package~31bf3856ad364e35'
+        $patterns | Should -Contain 'Windows-Defender-Client-Package~31bf3856ad364e35~'
+    }
+}

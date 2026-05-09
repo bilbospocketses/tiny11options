@@ -52,4 +52,28 @@ function Get-Tiny11CoreAppxPrefixes {
     )
 }
 
-Export-ModuleMember -Function Get-Tiny11CoreAppxPrefixes
+# DISM /Remove-Package patterns for Core's aggressive system-package removal.
+# 12 entries; 4 are language-code-templated (LanguageFeatures-* family).
+# Ported from upstream tiny11Coremaker.ps1 lines 135-149.
+function Get-Tiny11CoreSystemPackagePatterns {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$LanguageCode
+    )
+    @(
+        'Microsoft-Windows-InternetExplorer-Optional-Package~31bf3856ad364e35'
+        'Microsoft-Windows-Kernel-LA57-FoD-Package~31bf3856ad364e35~amd64'
+        "Microsoft-Windows-LanguageFeatures-Handwriting-$LanguageCode-Package~31bf3856ad364e35"
+        "Microsoft-Windows-LanguageFeatures-OCR-$LanguageCode-Package~31bf3856ad364e35"
+        "Microsoft-Windows-LanguageFeatures-Speech-$LanguageCode-Package~31bf3856ad364e35"
+        "Microsoft-Windows-LanguageFeatures-TextToSpeech-$LanguageCode-Package~31bf3856ad364e35"
+        'Microsoft-Windows-MediaPlayer-Package~31bf3856ad364e35'
+        'Microsoft-Windows-Wallpaper-Content-Extended-FoD-Package~31bf3856ad364e35'
+        'Windows-Defender-Client-Package~31bf3856ad364e35~'
+        'Microsoft-Windows-WordPad-FoD-Package~'
+        'Microsoft-Windows-TabletPCMath-Package~'
+        'Microsoft-Windows-StepsRecorder-Package~'
+    )
+}
+
+Export-ModuleMember -Function Get-Tiny11CoreAppxPrefixes, Get-Tiny11CoreSystemPackagePatterns
