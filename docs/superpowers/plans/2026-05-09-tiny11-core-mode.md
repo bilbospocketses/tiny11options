@@ -14,6 +14,29 @@
 
 ---
 
+## Source-of-truth pre-read — MANDATORY for every porting task
+
+**Why this section exists:** Path C Phase 3 was implemented by parallel agents writing against the abstract plan without reading `tiny11maker.ps1:186-end` (the legacy v0.1.0 polished inline handlers). That cost ~6 hours of audit-and-fix work in May 2026 to reconcile the drift. The lesson — *"Rewrites must list legacy file:line ranges; parallel-agent prompts embed them verbatim"* — is captured in `feedback_legacy_port_section.md` and is now a hard requirement for this plan.
+
+**Rule for every subagent / implementer of a porting task in this plan:** before writing any code, you MUST open `tiny11Coremaker.ps1` (or whatever source-of-truth is cited at the top of the task) and read the cited line ranges. Then implement. The inlined data in the task is convenience, NOT replacement for the upstream reference. Subtle behaviors that the inline data may miss include:
+
+- Exact argument order (dism / takeown / icacls accept args positionally + by switch — order can matter)
+- The literal "Y" answer to takeown's confirmation prompt (`/D Y`)
+- Edge cases in DISM `/Get-Packages` output parsing (skip header line, whitespace splits)
+- Architectural subtleties (e.g., the upstream amd64 keep-list has a duplicate entry that we de-dupe via `Select-Object -Unique` — see Task 5)
+- Hidden state changes (some upstream Write-Host messages double as state markers; ignoring them is fine but verify nothing else read them)
+- Error/control flow (does upstream throw, write-host and continue, or silently skip on a given failure mode?)
+
+**Required Step 0 in every porting task:**
+
+> - [ ] **Step 0: Read upstream source-of-truth** — open `tiny11Coremaker.ps1` lines `<X-Y>` (cited at task top); read the actual upstream code; note any behaviors not captured in this plan's inlined data and flag them BEFORE writing the implementation. If you find a discrepancy between upstream and the plan's inline data, STOP and surface it — do not silently choose either side.
+
+**For subagent-driven execution specifically:** when the lead dispatches a task to a subagent, the subagent's prompt MUST include the cited file:line ranges verbatim (per `feedback_legacy_port_section.md`). The lead reads the subagent's report and verifies the subagent actually performed Step 0 (e.g., quotes a line from upstream in their report) before approving the next task.
+
+Tasks that do NOT port upstream behavior (Tasks 14, 15, 22-25 — config / docs / smoke) skip Step 0 since there's no upstream to read.
+
+---
+
 ## Pre-flight
 
 Before starting Task 1, confirm working state:
@@ -33,6 +56,12 @@ If any of these fail, stop and fix before proceeding.
 **Files:**
 - Create: `src/Tiny11.Core.psm1`
 - Create: `tests/Tiny11.Core.Tests.ps1`
+
+**Source-of-truth:** `tiny11Coremaker.ps1` line 119 (the `$packagePrefixes` array literal).
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+Open `tiny11Coremaker.ps1` and read line 119 in full. The array contains 31 comma-separated string literals on a single physical line. Verify the count, the trailing-`_` convention (most entries end with `_` for prefix-match against DISM output, but `Microsoft.Windows.Copilot` is the documented exception with no trailing `_`). Note any cases the inline data below may have transcribed wrong.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -160,6 +189,12 @@ git commit -m "feat(core): scaffold Tiny11.Core module + Get-Tiny11CoreAppxPrefi
 - Modify: `src/Tiny11.Core.psm1` (append function + export)
 - Modify: `tests/Tiny11.Core.Tests.ps1` (append Describe block)
 
+**Source-of-truth:** `tiny11Coremaker.ps1` lines 135-149 (the `$packagePatterns` array assignment).
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+Open `tiny11Coremaker.ps1` and read lines 135-149. Note: 4 of the 12 entries embed `$languageCode` as a runtime substitution — those are the LanguageFeatures-{Handwriting,OCR,Speech,TextToSpeech} entries. Our function takes `-LanguageCode` as a parameter and uses string interpolation (`"...-$LanguageCode-..."`) to produce the same effect. Verify the inline data below matches upstream entry-for-entry.
+
 - [ ] **Step 1: Write the failing tests**
 
 Append to `tests/Tiny11.Core.Tests.ps1`:
@@ -261,6 +296,12 @@ git commit -m "feat(core): Get-Tiny11CoreSystemPackagePatterns with -LanguageCod
 - Modify: `src/Tiny11.Core.psm1`
 - Modify: `tests/Tiny11.Core.Tests.ps1`
 
+**Source-of-truth:** `tiny11Coremaker.ps1` lines 183-220 (Edge / WebView / OneDrive / WinRE removal block).
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+Open `tiny11Coremaker.ps1` and read lines 183-220. Note that upstream handles WinRE.wim differently (replaces with empty file rather than deleting — see lines 213-216), and the WebView WinSxS dir is architecture-specific (lines 187-208). Our `Get-Tiny11CoreFilesystemTargets` covers ONLY the simple takeown+rm targets — WinRE replacement and WinSxS WebView dir are handled by `Invoke-Tiny11CoreBuildPipeline` and `Invoke-Tiny11CoreWinSxsWipe` separately. Confirm the 5 entries in our inline list match the simple-rm subset of upstream's behavior.
+
 - [ ] **Step 1: Write the failing tests**
 
 Append to `tests/Tiny11.Core.Tests.ps1`:
@@ -355,6 +396,12 @@ git commit -m "feat(core): Get-Tiny11CoreFilesystemTargets — Edge/OneDrive/Web
 - Modify: `src/Tiny11.Core.psm1`
 - Modify: `tests/Tiny11.Core.Tests.ps1`
 
+**Source-of-truth:** `tiny11Coremaker.ps1` lines 422-438 (scheduled-task delete block).
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+Open `tiny11Coremaker.ps1` and read lines 422-438. Note that the CEIP entry (line 428) uses `-Recurse -Force` because it's a folder, while the others are single files using just `-Force`. Our `Recurse` field on the CEIP target captures this. Verify all 5 entries in inline data match upstream paths exactly (paths include exact spaces and capitalizations — Windows scheduled task names are case-insensitive but our path strings should be byte-identical to upstream for review clarity).
+
 - [ ] **Step 1: Write the failing tests**
 
 Append to `tests/Tiny11.Core.Tests.ps1`:
@@ -443,6 +490,14 @@ git commit -m "feat(core): Get-Tiny11CoreScheduledTaskTargets"
 **Files:**
 - Modify: `src/Tiny11.Core.psm1`
 - Modify: `tests/Tiny11.Core.Tests.ps1`
+
+**Source-of-truth:** `tiny11Coremaker.ps1` lines 235-316 (the `$dirsToCopy` arrays for amd64 and arm64).
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+Open `tiny11Coremaker.ps1` and read lines 235-316 in full. Two architecture-specific arrays: amd64 starts at line 236, arm64 starts at line 280-282. **Critical detail:** the upstream amd64 list has a duplicate entry at lines 267-268 (`x86_microsoft.windows.c..-controls.resources_6595b64144ccf1df_*` appears twice). Our function de-dupes via `Select-Object -Unique`. **Also note:** the arm64 array literal at lines 282-316 uses an unusual mix of comma-separated and newline-separated entries (lines 284-291 have NO commas — they're separate statements that PowerShell tolerates but is non-idiomatic). Our inline data normalizes this to a clean array with explicit commas.
+
+If the line counts in your reading differ from the test expectations (29 amd64, 28 arm64), STOP and reconcile — either the test count is wrong or the inline list is missing entries.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -613,11 +668,23 @@ git commit -m "feat(core): Get-Tiny11CoreWinSxsKeepList per architecture"
 
 ## Task 6: Get-Tiny11CoreRegistryTweaks (large data port)
 
-This is the biggest data accessor — ~60 registry operations across 6 categories. Data is ported from upstream `tiny11Coremaker.ps1` lines 340-470, plus boot.wim bypass-sysreqs from lines 503-514.
+This is the biggest data accessor — ~60 registry operations across 6 categories.
 
 **Files:**
 - Modify: `src/Tiny11.Core.psm1`
 - Modify: `tests/Tiny11.Core.Tests.ps1`
+
+**Source-of-truth:** `tiny11Coremaker.ps1` lines 340-470 (install.wim hive edits) + 503-514 (boot.wim bypass-sysreqs subset, which we DO NOT include in the install.wim tweaks list — those are applied separately by the boot-wim phase in Task 12 using the same bypass-sysreqs subset).
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+Open `tiny11Coremaker.ps1` and read lines 340-470 carefully. Categorize each `& 'reg' 'add' ...` or `& 'reg' 'delete' ...` line into one of: bypass-sysreqs (lines ~340-350), sponsored-apps (~351-380), local-account-OOBE / reserved-storage / bitlocker / chat (~381-390 — these go in `misc`), edge-uninstall / onedrive-backup (~391-395 — `misc`), telemetry (~396-406), DevHome/Outlook prevent (~407-411 — `misc`), Copilot/Teams/Outlook prevent (~412-419 — `misc`), update-disable (~440-456), defender-disable (~457-470).
+
+**Critical to verify:** every `& 'reg' add` or `& 'reg' delete` upstream line maps to exactly one inline entry. If you find an upstream `reg` invocation that doesn't appear in the inline data below, flag it. If you find an inline entry that doesn't appear upstream, flag it. The expected count is 60+ entries; if your count differs by more than ±2, STOP and reconcile entry-by-entry.
+
+Also note: lines 384-388 have a `Copy-Item ... autounattend.xml ... Sysprep` step. This is filesystem, NOT registry — DO NOT include it in the tweaks data. It belongs in `Tiny11.Autounattend.psm1` infrastructure (already exists) and gets called separately by `Invoke-Tiny11CoreBuildPipeline` if needed. The Core mode design defers autounattend handling to the same path the standard build uses.
+
+Verify lines 503-514 (boot.wim bypass-sysreqs subset, plus the `Setup\CmdLine X:\sources\setup.exe` extra at line 514) — these are applied to the boot.wim during phase 21 in Task 12, not as part of the install.wim tweaks here. The boot-wim phase RE-USES the bypass-sysreqs category from this same data array (filtered by `Where-Object Category -eq 'bypass-sysreqs'`) plus one additional CmdLine entry inlined in Task 12's orchestrator code.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -865,6 +932,12 @@ Confirm before continuing to Task 7:
 - Modify: `src/Tiny11.Core.psm1`
 - Modify: `tests/Tiny11.Core.Tests.ps1`
 
+**Source-of-truth:** `tiny11Coremaker.ps1` for the canonical args used to invoke each tool (e.g. lines 80, 113, 152, 164, 182, 209-210, 213-214, 218-219, 225-226, 480, 483, 485, 496, 522-523 invoke `dism`; lines 72, 187-191, 200-204, 209, 213, 218, 225 invoke `takeown`; lines 73, 187-191, 200-204, 210, 214, 219, 226 invoke `icacls`). The wrappers must accept the same arg shapes upstream uses so callers in Tasks 8-12 produce byte-identical command lines to upstream's behavior.
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+Sample at least 3 upstream invocations of each tool and confirm the arg patterns. For dism, the canonical pattern is `& 'dism' '/English' '/image:...' '/Operation:...' '/Param:value'` — the `/English` flag forces English output for parsing. For takeown, the pattern is `& 'takeown' '/F' '<path>' '/R' '/D' 'Y'` — the `/D Y` answers the prompt for inaccessible items. For icacls, the pattern is `& 'icacls' '<path>' '/grant' "$($adminGroup.Value):(F)" '/T' '/C'` — note the Administrators SID lookup; we simplify to `Administrators:F` since that's a well-known builtin name that resolves locale-independently.
+
 - [ ] **Step 1: Write the failing tests**
 
 Append to `tests/Tiny11.Core.Tests.ps1`:
@@ -1007,6 +1080,12 @@ DISM `/Remove-Package` loop — for each pattern from `Get-Tiny11CoreSystemPacka
 **Files:**
 - Modify: `src/Tiny11.Core.psm1`
 - Modify: `tests/Tiny11.Core.Tests.ps1`
+
+**Source-of-truth:** `tiny11Coremaker.ps1` lines 152-166 (the `Get-Packages` enumeration + per-pattern `Where-Object` filter + `Remove-Package` loop).
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+Open `tiny11Coremaker.ps1` and read lines 152-166. Note the upstream parsing pattern: line 152 captures `dism /Get-Packages /Format:Table` output, line 153 splits on `\n` and skips the header (`Select-Object -Skip 1`), line 161 extracts the first whitespace-delimited token as the package identity. The `-like "$packagePattern*"` match on line 157 is what makes this prefix-matching. Verify our implementation captures all of these behaviors. The non-fatal-on-empty-match behavior (no `throw` if zero packages match a pattern) is implicit in upstream — there's no error check. Our Write-Verbose log preserves the same intent but adds traceability.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1160,6 +1239,14 @@ Conditional .NET 3.5 enable via DISM `/enable-feature /featurename:NetFX3 /All /
 - Modify: `src/Tiny11.Core.psm1`
 - Modify: `tests/Tiny11.Core.Tests.ps1`
 
+**Source-of-truth:** `tiny11Coremaker.ps1` lines 168-181 (the .NET 3.5 prompt + `dism /enable-feature` invocation).
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+Open `tiny11Coremaker.ps1` and read lines 168-181. Upstream's exact DISM invocation (line 173) is `& 'dism' "/image:$scratchDir" '/enable-feature' '/featurename:NetFX3' '/All' "/source:$($env:SystemDrive)\tiny11\sources\sxs"`. Our wrapper takes `-SourcePath` as a parameter (since our scratch layout is `<scratchDir>\source\sources\sxs` not `$env:SystemDrive\tiny11\sources\sxs`), but the DISM args are identical. Note our function adds the `/English` flag (unlike upstream) to keep output parsing locale-independent — verify this is fine since we don't parse the output anyway.
+
+The "throw if sources\sxs is missing" failure mode is NEW in our implementation — upstream would fail at runtime with a DISM error. We surface it as a clearer, build-time error per spec §7.3. Verify this matches the user's expectation in spec §4.1 (.NET 3.5 checkbox copy mentions "Adds ~100 MB" — implies the source must exist).
+
 - [ ] **Step 1: Write the failing tests**
 
 Append to `tests/Tiny11.Core.Tests.ps1`:
@@ -1288,6 +1375,14 @@ DISM `/Export-Image` with `/Compress:max` or `/Compress:recovery`.
 **Files:**
 - Modify: `src/Tiny11.Core.psm1`
 - Modify: `tests/Tiny11.Core.Tests.ps1`
+
+**Source-of-truth:** `tiny11Coremaker.ps1` lines 484-487 (install.wim → install2.wim with /Compress:max) and 525-527 (install.wim → install.esd with /Compress:recovery).
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+Open `tiny11Coremaker.ps1` and read lines 484-487 (the first export, /Compress:max) and 525-527 (the second export, /Compress:recovery). Note that upstream's first export uses `/SourceIndex:$index` (the user-selected edition index, captured earlier), and the second export uses `/SourceIndex:1` (always index 1, because after the first export the WIM only has the one image). The caller in Task 12 will pass these index values explicitly. Our wrapper takes `-SourceIndex` as a parameter and doesn't second-guess the caller.
+
+Also note: upstream's first export is followed by `Remove-Item ...install.wim` + `Rename-Item ...install2.wim → install.wim` (lines 486-487). This rename-after-export is part of the orchestrator pipeline (Task 12), not this wrapper. Confirm the wrapper does NOT perform any rename — it only invokes DISM.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1420,6 +1515,21 @@ The destructive WinSxS wipe sequence. takeown → copy retained subdirs → dele
 **Files:**
 - Modify: `src/Tiny11.Core.psm1`
 - Modify: `tests/Tiny11.Core.Tests.ps1`
+
+**Source-of-truth:** `tiny11Coremaker.ps1` lines 224-332 (the entire WinSxS wipe sequence — takeown, icacls, create _edit, copy keep-list dirs, delete WinSxS, rename _edit).
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+Open `tiny11Coremaker.ps1` and read lines 224-332 in full. The sequence to verify:
+
+1. Lines 225-226: `takeown /f WinSxS /r` + `icacls WinSxS /grant Administrators:F /T /C` (recursive ownership transfer)
+2. Lines 230-234: prepare `WinSxS_edit` directory + `New-Item -ItemType Directory`
+3. Lines 235-279 (amd64) / 280-316 (arm64): the `$dirsToCopy` array literals
+4. Lines 318-325 (amd64-only-loop AND a generic loop just below — note the structure split: the foreach at line 318 runs only inside the `if ($architecture -eq "amd64")` block (closes at 279); but a SECOND foreach at lines 318-325 outside that block also runs, ostensibly for the arm64 case but actually for whichever `$dirsToCopy` was last assigned. **This is a structural bug in upstream** — the arm64 list isn't iterated through its own foreach, it falls through to the same shared foreach at 318. Our implementation puts the foreach INSIDE each architecture branch's loop body, fixing the upstream bug. Verify our test correctly exercises the arm64 path.
+5. Line 328-329: `Remove-Item WinSxS -Recurse -Force`
+6. Line 331: `Rename-Item WinSxS_edit -NewName WinSxS`
+
+If you read line 318 and the surrounding control flow and think the upstream behavior is intentional rather than a bug, STOP and surface that — our implementation differs in arm64 handling and that needs to be a deliberate decision.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1604,6 +1714,39 @@ The top-level orchestrator. Composes all Invoke-* functions plus calls to Tiny11
 
 **Files:**
 - Modify: `src/Tiny11.Core.psm1`
+
+**Source-of-truth:** `tiny11Coremaker.ps1` lines 27-571 (the entire main script body — every phase of our orchestrator maps to a contiguous range of upstream lines).
+
+Phase-to-line map (read each range when implementing the corresponding phase):
+
+| our phase | upstream lines | what to verify |
+|---|---|---|
+| preflight: copy + mount | 41-80 | source copy pattern, install.esd → install.wim conversion, takeown of wim, mount-image args |
+| preflight: detect language + arch | 82-104 | `dism /Get-Intl` parse for `Default system UI language : <code>`, image-info parse for architecture (x64 → amd64 mapping) |
+| appx-removal | 111-128 | `dism /Get-ProvisionedAppxPackages` parse + per-prefix removal loop |
+| system-package-removal | 130-166 | already covered in Task 8 source-read; verify caller invokes once with patterns from `Get-Tiny11CoreSystemPackagePatterns -LanguageCode <detected>` |
+| net35-enable | 168-181 | already covered in Task 9 source-read |
+| filesystem-removal | 182-220 | Edge / OneDrive / WinRE / WebView paths — note WinRE replacement (lines 213-216) is a DELETE-then-CREATE-empty pattern, NOT a simple delete |
+| winsxs-wipe | 222-332 | already covered in Task 11 source-read |
+| registry-load + registry-* + registry-unload | 334-477 | hive load/edit/unload sequence; categorized tweaks via `Get-Tiny11CoreRegistryTweaks` |
+| scheduled-task-cleanup | 420-438 | task XML path delete; note CEIP recurse vs others non-recurse |
+| cleanup-image | 478-480 | `dism /Cleanup-Image /StartComponentCleanup /ResetBase` |
+| unmount-install (commit) | 482-483 | `dism /unmount-image /commit` (or /discard on failure path) |
+| export-install + rename | 484-488 | export with /Compress:max, delete original, rename `install2.wim` → `install.wim` |
+| boot-wim | 491-523 | mount boot.wim index 2, takeown + icacls, hive load, bypass-sysreqs subset + the `Setup\CmdLine` extra at line 514, hive unload, unmount /commit |
+| export-install-esd | 525-527 | export with /Compress:recovery, delete `install.wim` |
+| iso-create | 529-559 | oscdimg invocation — REUSE existing `Tiny11.Worker.psm1` helper, do NOT reimplement |
+
+- [ ] **Step 0: Read upstream source-of-truth**
+
+This task spans the entire upstream main script. Read lines 27-571 in `tiny11Coremaker.ps1` end-to-end before writing any code. Use the phase-to-line map above as your reading order. While reading, validate each of these claims:
+
+1. Does upstream's mount-image error path matter? (Spoiler: upstream doesn't error-handle it; we wrap in try/finally with /discard on failure.)
+2. Are there any phases / steps in upstream that we DON'T capture in our 24-phase taxonomy? (e.g., the `$adminGroup` SID lookup at line 14, the `Start-Transcript` at line 27 — we deliberately skip both because the launcher's existing logging captures their output.)
+3. Does upstream's `Read-Host "Press Enter to continue"` (line 563) need replicating? (No — we exit cleanly via `build-complete` marker; the pause is only for users running upstream interactively.)
+4. Does upstream's cleanup at lines 564-566 (`Remove-Item -Path "$mainOSDrive\tiny11" -Recurse -Force`) apply to our scratch layout? (Conditionally — only if `-UnmountSource` is true and the scratch is auto-managed; the user's explicit `-ScratchDir` should NOT be auto-deleted by us.)
+
+If you find any phase that requires upstream behavior we haven't captured, STOP and surface it before writing code. Adding the missed behavior is fine; silently dropping it (or silently inferring our own version) is exactly the failure mode this Step 0 exists to prevent.
 
 - [ ] **Step 1: Write the implementation**
 
@@ -1896,6 +2039,14 @@ The next tasks complete the feature. Each follows the same TDD shape as Tasks 1-
 **Tasks 13-25 are intentionally outlined here rather than fully expanded** — the data-portion of the work (Tasks 1-12) is the bulk of the spec-to-code surface, and the remaining tasks each follow patterns already established in this codebase (csproj entries match existing style; UI changes match `renderSourceStep` / `renderProgress` patterns; CHANGELOG matches the previous polish-bundle entry shape; xUnit BuildHandlersTests match the existing test style).
 
 When the implementer reaches Task 13, **expand each remaining task in-place using the same TDD/verify-and-commit shape as Tasks 1-12**, referencing the spec doc (§3-9) for exact behaviors. Do NOT skip the failing-test step for Tasks 13 and 16; the others (config / UI / docs / smoke) follow the verify-and-commit pattern.
+
+**Source-of-truth pre-read still applies for Tasks 13, 16, 17-22:**
+
+- **Task 13 (`tiny11Coremaker-from-config.ps1`):** read existing `tiny11maker-from-config.ps1` for the wrapper-script template (param block, Write-Marker helper, try/catch envelope). Do NOT reinvent — the Path C polish session already established this template and any divergence is suspect.
+- **Task 16 (BuildHandlers C# routing):** read existing `launcher/Gui/Handlers/BuildHandlers.cs` for the script-path resolution, args-builder pattern, and the existing `coreMode=false` standard-build path (which must remain regression-locked). Read `launcher/Tests/BuildHandlersTests.cs` for the existing test style — the new tests must follow the same `Mock<...>` + reflection-into-private-method pattern the existing tests use.
+- **Tasks 17-22 (UI changes):** read existing `ui/app.js` for `renderSourceStep`, `renderProgress`, `renderBuildStep`, `renderComplete`, the `el()` helper, the `state` object, and the `onPs` handler patterns. Match style precisely. Read `ui/style.css` for the existing class naming (`.row`, `.form`, `.error`, `.cleanup-cmd` already exists from spec section 4.6 — verify it does and re-use it; do NOT introduce duplicate class names).
+
+For each of these tasks, the implementer should add their own Step 0 to read the cited existing-codebase files before writing code, following the same pattern as Tasks 1-11.
 
 ---
 
