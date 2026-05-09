@@ -149,6 +149,17 @@ Supersedes the round-4 caveat ("content changes to existing resources without na
 #### Behavior change
 - Editing `ui/app.js`, `ui/style.css`, any `Tiny11.*.psm1`, or any other embedded resource and rebuilding now invalidates the cache automatically on next launch. No more "you also need to clear `%LOCALAPPDATA%\tiny11options\ui-cache`" in dev. Same applies to release-time hotfixes that change content without bumping the assembly version.
 
+### Phase 5 drift test (Task 29, 2026-05-09)
+
+Closes the only remaining open task in Phase 5 (Tasks 27/28 are CANCELLED per binding decision 2026-05-08). Phase 5 is now done.
+
+#### Added
+- `tests/Tiny11.Launcher.EmbeddedResources.Drift.Tests.ps1` — Pester suite that parses `launcher/tiny11options.Launcher.csproj` for `<EmbeddedResource Include>` entries and asserts every `src/Tiny11.*.psm1`, every `tiny11*.ps1` wrapper at repo root, and `autounattend.template.xml` is listed (or explicitly excluded). Most-likely failure mode it catches: someone adds a new `Tiny11.Foo.psm1` for a new action handler and forgets the csproj line, so the file ships in the repo but doesn't end up embedded in the launcher .exe — the launcher then fails at runtime when it tries to extract the module.
+  - `ui/**` and `catalog/**` are covered by csproj glob includes; the test doesn't validate globs since they auto-pick-up new files.
+  - Intentional exclusions are captured in `$intentionallyNotEmbedded` with inline rationale comments. Current entries: `src\Tiny11.Bridge.psm1` + `src\Tiny11.WebView2.psm1` (legacy v0.1.0 PS modules retained as canonical reference per the 2026-05-08 binding decision; the C# launcher implements its own bridge + WebView2 host) and `tiny11Coremaker.ps1` (upstream `ntdevlabs/tiny11builder` Core-variant builder, never ported into our launcher's catalog/UI).
+  - Bidirectional drift catcher: a fourth test asserts every entry in `$intentionallyNotEmbedded` still exists on disk, so stale exclusions don't accumulate when a file gets deleted from the repo but stays in the exclusion list.
+- Pester total: 85 (was 81; +4 new).
+
 ## [0.2.0] - 2026-05-07
 
 UX wizard improvements (theme detection + toggle, persistent window size, bulk-select, clickable rows, output-path autofill, locked build-details panel), scripted-mode CLI additions (`-Edition`, `-AllowVLSource`), small cleanups, and expanded test coverage. Built end-to-end ISO + Hyper-V install verified. 82/82 Pester tests green (72 prior + 10 new).
