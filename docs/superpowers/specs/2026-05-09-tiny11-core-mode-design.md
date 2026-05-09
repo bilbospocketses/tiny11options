@@ -101,7 +101,7 @@ README.md                               ← updated (new "## Build modes" sectio
 
 ```powershell
 # Data accessors — pure functions, return static arrays
-Get-Tiny11CoreAppxPrefixes              # 31 entries, hardcoded
+Get-Tiny11CoreAppxPrefixes              # 32 entries, hardcoded
 Get-Tiny11CoreSystemPackagePatterns -LanguageCode <string>   # 12 entries, lang-templated
 Get-Tiny11CoreFilesystemTargets         # Edge dirs, OneDrive, WinRE, WebView paths
 Get-Tiny11CoreScheduledTaskTargets      # 5 task paths
@@ -451,7 +451,7 @@ var script = Path.Combine(_resourcesDir,
 | 1 | `preflight` | "Mounting source for edition enumeration" | 0 | `Tiny11.Iso` |
 | 2 | `preflight` | "Copying Windows image to scratch" | 5 | `Copy-Item` |
 | 3 | `preflight` | "Mounting install.wim for offline edit" | 10 | DISM `/mount-image` |
-| 4 | `appx-removal` | "Removing provisioned app: <name>" (×31 prefixes) | 15-20 | `Tiny11.Actions.ProvisionedAppx` |
+| 4 | `appx-removal` | "Removing provisioned app: <name>" (×32 prefixes) | 15-20 | `Tiny11.Actions.ProvisionedAppx` |
 | 5 | `system-package-removal` | "Removing package: <pattern>" (×12 patterns) | 20-25 | NEW — `Invoke-Tiny11CoreSystemPackageRemoval` |
 | 6 | `net35-enable` | "Enabling .NET 3.5 from offline source" | 25-30 | NEW — `Invoke-Tiny11CoreNet35Enable` (skipped when `-EnableNet35:$false`) |
 | 7 | `filesystem-removal` | "Removing Edge/OneDrive/WinRE/WebView" | 30-35 | `Tiny11.Actions.Filesystem` |
@@ -539,7 +539,7 @@ try {
 | Source ISO doesn't mount | `Mount-Tiny11Source` throws → wrapper catch → `build-error` to JS |
 | Edition resolution fails | `Resolve-Tiny11ImageIndex` throws "Unknown edition: X. Known editions: …" → `build-error` |
 | install.wim mount fails | DISM exit code != 0 → wrapper checks `$LASTEXITCODE` → throws → `build-error` |
-| Single appx package not found | logged, **non-fatal** — many of 31 packages may be conditionally present |
+| Single appx package not found | logged, **non-fatal** — many of 32 packages may be conditionally present |
 | Single system package pattern matches zero | logged, **non-fatal** — some packages may have been removed by language drift |
 | `.NET 3.5 enable fails (sources\sxs missing)` | **fatal but recoverable** — throws "`.NET 3.5 source not found at <path>. Verify your Windows 11 ISO includes sources\sxs.` Either uncheck Enable .NET 3.5 in Step 1 and rebuild, or use a complete Win11 multi-edition ISO." → `build-error` |
 | WinSxS `takeown` fails | throws → `build-error`; user manually clears scratch and retries |

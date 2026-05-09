@@ -61,7 +61,7 @@ If any of these fail, stop and fix before proceeding.
 
 - [ ] **Step 0: Read upstream source-of-truth**
 
-Open `tiny11Coremaker.ps1` and read line 119 in full. The array contains 31 comma-separated string literals on a single physical line. Verify the count, the trailing-`_` convention (most entries end with `_` for prefix-match against DISM output, but `Microsoft.Windows.Copilot` is the documented exception with no trailing `_`). Note any cases the inline data below may have transcribed wrong.
+Open `tiny11Coremaker.ps1` and read line 119 in full. The array contains 32 comma-separated string literals on a single physical line (the plan originally said 31 — corrected after Task 1 dispatch caught the miscount; the count is 32). Verify the count, the trailing-`_` convention (most entries end with `_` for prefix-match against DISM output, but `Microsoft.Windows.Copilot` is the documented exception with no trailing `_`). Note any cases the inline data below may have transcribed wrong.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -74,9 +74,9 @@ Describe 'Get-Tiny11CoreAppxPrefixes' {
         Import-Module $script:modulePath -Force
     }
 
-    It 'returns 31 hardcoded provisioned-appx package prefixes' {
+    It 'returns 32 hardcoded provisioned-appx package prefixes' {
         $prefixes = Get-Tiny11CoreAppxPrefixes
-        $prefixes.Count | Should -Be 31
+        $prefixes.Count | Should -Be 32
     }
 
     It 'contains known consumer-app entries' {
