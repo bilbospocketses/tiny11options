@@ -505,14 +505,14 @@ Append to `tests/Tiny11.Core.Tests.ps1`:
 
 ```powershell
 Describe 'Get-Tiny11CoreWinSxsKeepList' {
-    It 'returns the amd64 keep-list (29 entries) when -Architecture amd64' {
+    It 'returns the amd64 keep-list (31 entries after de-dup) when -Architecture amd64' {
         $list = Get-Tiny11CoreWinSxsKeepList -Architecture 'amd64'
-        $list.Count | Should -Be 29
+        $list.Count | Should -Be 31
     }
 
-    It 'returns the arm64 keep-list (28 entries) when -Architecture arm64' {
+    It 'returns the arm64 keep-list (33 entries) when -Architecture arm64' {
         $list = Get-Tiny11CoreWinSxsKeepList -Architecture 'arm64'
-        $list.Count | Should -Be 28
+        $list.Count | Should -Be 33
     }
 
     It 'amd64 list contains servicingstack and Manifests' {
@@ -547,7 +547,7 @@ Append to `src/Tiny11.Core.psm1`:
 
 ```powershell
 # WinSxS subdirs preserved during Core's destructive WinSxS wipe.
-# Per architecture: amd64 (29 entries) or arm64 (28 entries).
+# Per architecture: amd64 (31 entries after de-dup) or arm64 (33 entries).
 # Patterns are Get-ChildItem -Filter wildcards — most end in `_*` to match
 # version-suffixed dirs. Non-wildcarded entries (Catalogs, Manifests, etc.)
 # are exact directory names that exist verbatim under WinSxS.
