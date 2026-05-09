@@ -67,7 +67,7 @@ const state = {
     scratchDir: null,
     outputPath: null,
     unmountSource: true,
-    fastBuild: false,
+    fastBuild: true,
     drilledCategory: null,
     search: '',
     building: false,
@@ -382,24 +382,26 @@ function renderSearchResults(term, resolved) {
     });
 
     return el('section', { class: 'customize' },
-        el('div', { class: 'row' },
-            el('input', {
-                id: 'search', type: 'text', value: state.search || '',
-                placeholder: 'Search across all items...',
-                oninput: ev => { state.search = ev.target.value; renderStep(); },
-                onkeydown: ev => { if (ev.key === 'Escape') { state.search = ''; renderStep(); } }
-            }),
-            el('span', { class: 'counter' }, `Items matching: ${matchingItems.length} (${totalApplied} applied)`)
-        ),
-        el('div', { class: 'row' },
-            el('button', { onclick: () => { state.search = ''; renderStep(); } }, '< Back to categories'),
-            bulkSelectButton(matchingItems, resolved),
-            el('button', { onclick: () => {
-                pendingSaveProfileSelections = JSON.parse(JSON.stringify(state.selections));
-                ps({ type: 'browse-save-file', payload: { context: 'profile-save', title: 'Save profile as...', filter: 'JSON|*.json', defaultName: 'profile.json' } });
-            } }, 'Save profile...'),
-            el('button', { onclick: () => ps({ type: 'browse-file', payload: { context: 'profile-load', title: 'Load profile...', filter: 'JSON|*.json|All files|*.*' } }) }, 'Load profile...'),
-            el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
+        el('div', { class: 'sticky-header' },
+            el('div', { class: 'row' },
+                el('input', {
+                    id: 'search', type: 'text', value: state.search || '',
+                    placeholder: 'Search across all items...',
+                    oninput: ev => { state.search = ev.target.value; renderStep(); },
+                    onkeydown: ev => { if (ev.key === 'Escape') { state.search = ''; renderStep(); } }
+                }),
+                el('span', { class: 'counter' }, `Items matching: ${matchingItems.length} (${totalApplied} applied)`)
+            ),
+            el('div', { class: 'row' },
+                el('button', { onclick: () => { state.search = ''; renderStep(); } }, '< Back to categories'),
+                bulkSelectButton(matchingItems, resolved),
+                el('button', { onclick: () => {
+                    pendingSaveProfileSelections = JSON.parse(JSON.stringify(state.selections));
+                    ps({ type: 'browse-save-file', payload: { context: 'profile-save', title: 'Save profile as...', filter: 'JSON|*.json', defaultName: 'profile.json' } });
+                } }, 'Save profile...'),
+                el('button', { onclick: () => ps({ type: 'browse-file', payload: { context: 'profile-load', title: 'Load profile...', filter: 'JSON|*.json|All files|*.*' } }) }, 'Load profile...'),
+                el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
+            )
         ),
         matchingItems.length === 0
             ? el('p', { class: 'hint' }, `No items match "${state.search}".`)
@@ -435,13 +437,15 @@ function renderDrillin(catId, resolved) {
     });
 
     return el('section', { class: 'drill' },
-        el('div', { class: 'row' },
-            el('button', {
-                onclick: () => { state.drilledCategory = null; renderStep(); }
-            }, '< Back to categories'),
-            bulkSelectButton(items, resolved)
+        el('div', { class: 'sticky-header' },
+            el('div', { class: 'row' },
+                el('button', {
+                    onclick: () => { state.drilledCategory = null; renderStep(); }
+                }, '< Back to categories'),
+                bulkSelectButton(items, resolved)
+            ),
+            el('h2', null, cat.displayName)
         ),
-        el('h2', null, cat.displayName),
         el('ul', { class: 'item-list' }, itemElements)
     );
 }

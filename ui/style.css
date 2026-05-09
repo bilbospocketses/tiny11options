@@ -237,6 +237,16 @@ section.form {
     max-width: 720px;
 }
 
+/* Edition select sits standalone (no Browse companion), so it's not in a
+   .row flex container. Without an explicit width it would size to content —
+   visually narrow before ISO validation, expanding to fit the longest edition
+   name once options arrive. The expansion looked like the dropdown "flying in
+   from the left". Stable full-width matches the input fields above. */
+section.form select {
+    display: block;
+    width: 100%;
+}
+
 .hint {
     color: var(--fg-muted);
     font-size: 12px;
@@ -299,6 +309,32 @@ section.customize .row {
 /* Drill-in (Step 2) */
 section.drill h2 {
     margin: var(--gap) 0;
+}
+
+/* Sticky-header wraps the buttons + h2 (drill-in) or the search/counter +
+   buttons (search results) so they stay visible while the long item list
+   scrolls underneath. Negative side margins extend the background to the
+   #content padding edges so item rows don't visually bleed past the header. */
+.sticky-header {
+    position: sticky;
+    top: calc(-1 * var(--gap-lg));
+    background: var(--bg);
+    z-index: 2;
+    margin: calc(-1 * var(--gap-lg)) calc(-1 * var(--gap-lg)) 0 calc(-1 * var(--gap-lg));
+    padding: var(--gap-lg) var(--gap-lg) var(--gap) var(--gap-lg);
+    border-bottom: 1px solid var(--border);
+}
+
+.sticky-header > .row {
+    margin-bottom: var(--gap);
+}
+
+.sticky-header > .row:last-child {
+    margin-bottom: 0;
+}
+
+.sticky-header h2 {
+    margin: var(--gap) 0 0 0;
 }
 
 .item-list {

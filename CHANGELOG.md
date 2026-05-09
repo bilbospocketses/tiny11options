@@ -121,7 +121,18 @@ After smoke check 6 passed end-to-end against a real retail multi-edition Win11 
 - BuildHandlers `ForwardJsonLine` `else { LogSmoke("IGNORED non-marker JSON: …"); }` branch dropped entirely — silently ignoring non-marker JSON is the production behavior; the diagnostic logging was the only reason for the branch to exist.
 
 #### Lessons
-- The "stray" non-JSON line in smoke-build.log (`'this is just a log line, not JSON'`) was traced to `BuildHandlersTests.ForwardJsonLine_IgnoresNonJsonLines` — the test calls `ForwardJsonLine` via reflection with a deliberately-malformed input, and the diagnostic `LogSmoke` was a static path under `%LOCALAPPDATA%`, so test runs and GUI runs cross-pollinated the same log file. With LogSmoke gone, the cross-pollination evaporates. No production code was emitting non-JSON.
+- The "stray" non-JSON line in smoke-build.log (`'this is just a log line, not JSON'`) was traced to `BuildHandlersTests.ForwardJsonLine_IgnoresNonJsonLines` — the test calls `ForwardJsonLine` via reflection with a deliberately-malformed input, and the diagnostic `LogSmoke` was a static path under `%LOCALAPPDATA%`, so test runs and GUI runs cross-pollinated the same log file. With LogSmoke gone, the cross-pollution evaporates. No production code was emitting non-JSON.
+
+### Pre-v1.0.0 UI polish bundle (2026-05-09)
+
+Three small UX items surfaced during smoke retake on 2026-05-08, grouped as a single commit per the v0.1.0 polish-bundle precedent (commit `cf80091`).
+
+#### Changed
+- `state.fastBuild` defaults to `true` in `ui/app.js`. Realistic-default-with-easy-opt-out: the 25–40 minute compression wait is the worse default for most users; if they need the smaller ISO they can uncheck the box on Step 1. The `<input id="fast-build" checked={state.fastBuild}>` binding picks up the new default automatically.
+
+#### Fixed
+- FOUC flicker on Step 1 edition dropdown. The `<select>` lives standalone (no Browse companion), so it was not in a `.row` flex container. Without an explicit width it sized to its content — visually narrow before ISO validation, expanding to fit the longest edition name once options arrived. The expansion looked like the dropdown "flying in from the left". New rule `section.form select { display: block; width: 100%; }` gives it stable full-width matching the input fields above it.
+- Sticky top row on category drill-in + search results. When scrolling through long item lists the user couldn't easily get back to the top buttons. Drill-in now wraps the `< Back / Uncheck-all` row + the category H2 in a `<div class="sticky-header">`; search results wraps the search input + counter row + the buttons row in the same wrapper. CSS uses `position: sticky; top: calc(-1 * var(--gap-lg));` with negative side margins so the background extends to `#content`'s padding edges and item rows don't visually bleed past the header during scroll.
 
 ## [0.2.0] - 2026-05-07
 
