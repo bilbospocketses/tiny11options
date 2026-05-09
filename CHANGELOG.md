@@ -134,6 +134,21 @@ Three small UX items surfaced during smoke retake on 2026-05-08, grouped as a si
 - FOUC flicker on Step 1 edition dropdown. The `<select>` lives standalone (no Browse companion), so it was not in a `.row` flex container. Without an explicit width it sized to its content — visually narrow before ISO validation, expanding to fit the longest edition name once options arrived. The expansion looked like the dropdown "flying in from the left". New rule `section.form select { display: block; width: 100%; }` gives it stable full-width matching the input fields above it.
 - Sticky top row on category drill-in + search results. When scrolling through long item lists the user couldn't easily get back to the top buttons. Drill-in now wraps the `< Back / Uncheck-all` row + the category H2 in a `<div class="sticky-header">`; search results wraps the search input + counter row + the buttons row in the same wrapper. CSS uses `position: sticky; top: calc(-1 * var(--gap-lg));` with negative side margins so the background extends to `#content`'s padding edges and item rows don't visually bleed past the header during scroll.
 
+### ui-cache + resources-cache content-aware hashing (2026-05-09)
+
+Supersedes the round-4 caveat ("content changes to existing resources without name changes still need a version bump to invalidate"). The polish-bundle smoke surfaced exactly the predicted failure mode — content-only edits to `ui/app.js` + `ui/style.css` didn't invalidate the cache, the launcher served stale UI, and only one of three changes appeared to land on first relaunch.
+
+#### Changed
+- `MainWindow.ComputeManifestHash` now hashes both the sorted resource-name list AND each resource's byte stream, interleaved with NUL separators (so a name boundary can't collide with content bytes — e.g. a file containing the next file's name). Streamed via `IncrementalHash` so embedded resources never have to fully materialize in memory.
+- `MainWindow.ComputeManifestHash` signature now takes `Func<string, Stream?> openResource` (was: implicit assembly-only). The caller in `ExtractIfManifestChanged` passes `n => asm.GetManifestResourceStream(n)`; tests pass MemoryStream-based fakes so the function is unit-testable without building a real assembly.
+- Doc comment on `ExtractIfManifestChanged` rewritten — removed the "version bump still required" caveat and the "per-build content hashing would slow every launch" justification (overcautious; the entire `ui/` + `resources/` tree is well under 1 MB and SHA256-ing it is single-digit milliseconds, comfortably under perception threshold).
+
+#### Added
+- `launcher/Tests/ResourceCacheHashTests.cs` — six tests covering the failure modes the cache invalidation must catch (content change, resource added, resource removed) plus determinism-on-stable-input, NUL-separator boundary correctness, and graceful handling of `openResource` returning null. xUnit total: 41 (was 35).
+
+#### Behavior change
+- Editing `ui/app.js`, `ui/style.css`, any `Tiny11.*.psm1`, or any other embedded resource and rebuilding now invalidates the cache automatically on next launch. No more "you also need to clear `%LOCALAPPDATA%\tiny11options\ui-cache`" in dev. Same applies to release-time hotfixes that change content without bumping the assembly version.
+
 ## [0.2.0] - 2026-05-07
 
 UX wizard improvements (theme detection + toggle, persistent window size, bulk-select, clickable rows, output-path autofill, locked build-details panel), scripted-mode CLI additions (`-Edition`, `-AllowVLSource`), small cleanups, and expanded test coverage. Built end-to-end ISO + Hyper-V install verified. 82/82 Pester tests green (72 prior + 10 new).

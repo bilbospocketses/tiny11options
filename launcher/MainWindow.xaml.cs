@@ -217,21 +217,19 @@ public partial class MainWindow : Window
                  && !n.Equals("test-fixture.txt", StringComparison.OrdinalIgnoreCase),
             n => n);
 
-    /// Hash-based extraction: marker file contains a SHA256 of the sorted resource-name
-    /// list filtered by `include`. If the hash matches, skip extraction. If it differs
-    /// (new resource added, resource removed, first run), wipe the dir contents and
-    /// re-extract everything. This means adding a new embedded resource (like the new
-    /// tiny11-profile-validate.ps1) automatically refreshes the cache on next launch
-    /// without manual intervention — no more "you also need to delete %LOCALAPPDATA%\..."
-    /// in dev workflows. Content changes to existing resources still need a version
-    /// bump to invalidate (caught at release time, not at dev time — acceptable trade
-    /// since per-build content hashing would slow every launch).
+    /// Hash-based extraction: marker file contains a SHA256 over the sorted resource-name
+    /// list AND each resource's bytes. If the hash matches, skip extraction. If it differs
+    /// — new resource added, resource removed, first run, OR existing resource's content
+    /// changed — wipe the dir contents and re-extract everything. Content-aware hashing
+    /// makes "edit ui/app.js then relaunch" Just Work without a manual cache wipe or a
+    /// version bump. The whole `ui/` + `resources/` tree is well under 1 MB; SHA256-ing it
+    /// on every launch is single-digit milliseconds, comfortably under perception threshold.
     private static void ExtractIfManifestChanged(string targetDir, Func<string, bool> include, Func<string, string> mapDestRelPath)
     {
         var asm = typeof(MainWindow).Assembly;
         var marker = Path.Combine(targetDir, ".extracted");
         var names = asm.GetManifestResourceNames().Where(include).OrderBy(n => n, StringComparer.Ordinal).ToArray();
-        var currentHash = ComputeManifestHash(names);
+        var currentHash = ComputeManifestHash(names, n => asm.GetManifestResourceStream(n));
 
         if (File.Exists(marker))
         {
@@ -279,11 +277,32 @@ public partial class MainWindow : Window
         File.WriteAllText(marker, currentHash);
     }
 
-    private static string ComputeManifestHash(string[] sortedNames)
+    /// SHA256 over the sorted resource-name list AND each resource's byte stream,
+    /// interleaved with NUL separators so a name boundary can't collide with content
+    /// bytes (e.g. a file containing the next file's name). Streamed via IncrementalHash
+    /// so embedded resources never have to fully materialize in memory.
+    /// `openResource` is injected so unit tests can supply MemoryStream-based fakes
+    /// without building a real assembly.
+    internal static string ComputeManifestHash(string[] sortedNames, Func<string, Stream?> openResource)
     {
-        var joined = string.Join("\n", sortedNames);
-        using var sha = System.Security.Cryptography.SHA256.Create();
-        var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(joined));
-        return Convert.ToHexString(bytes);
+        using var sha = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
+        var sep = new byte[] { 0 };
+        foreach (var name in sortedNames)
+        {
+            sha.AppendData(System.Text.Encoding.UTF8.GetBytes(name));
+            sha.AppendData(sep);
+            using var stream = openResource(name);
+            if (stream is not null)
+            {
+                var buf = new byte[8192];
+                int read;
+                while ((read = stream.Read(buf, 0, buf.Length)) > 0)
+                {
+                    sha.AppendData(buf, 0, read);
+                }
+            }
+            sha.AppendData(sep);
+        }
+        return Convert.ToHexString(sha.GetHashAndReset());
     }
 }
