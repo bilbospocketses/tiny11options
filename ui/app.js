@@ -475,11 +475,14 @@ function renderSourceStep() {
         ),
         errorBanner,
         el('label', null, 'Edition'),
-        el('select', {
-            id: 'edition-select',
-            disabled: !state.editions,
-            onchange: e => { state.edition = parseInt(e.target.value, 10); updateNav(); }
-        }, editionsOptions),
+        el('div', { class: 'row' },
+            el('select', {
+                id: 'edition-select',
+                disabled: !state.editions,
+                onchange: e => { state.edition = parseInt(e.target.value, 10); updateNav(); }
+            }, editionsOptions),
+            el('button', { class: 'browse-spacer', 'aria-hidden': 'true', tabindex: '-1' }, 'Browse...')
+        ),
         el('label', null, 'Scratch directory'),
         el('div', { class: 'row' },
             el('input', {

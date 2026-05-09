@@ -237,14 +237,17 @@ section.form {
     max-width: 720px;
 }
 
-/* Edition select sits standalone (no Browse companion), so it's not in a
-   .row flex container. Without an explicit width it would size to content —
-   visually narrow before ISO validation, expanding to fit the longest edition
-   name once options arrive. The expansion looked like the dropdown "flying in
-   from the left". Stable full-width matches the input fields above. */
-section.form select {
-    display: block;
-    width: 100%;
+/* Hidden Browse-style button placeholder, sits next to the Edition select
+   inside its .row wrapper. Reserves the same column width as a real Browse
+   button so the select's right edge aligns with the text inputs above and
+   below. The select itself picks up `flex: 1; min-width: 0` from the global
+   input/select rule once it's inside a flex .row, which also fixes the
+   pre-validation FOUC where the select would size to its (initially empty,
+   then post-validate longer-edition-name) content. visibility:hidden keeps
+   the spacer laid out; aria-hidden + tabindex=-1 keep it inert. */
+button.browse-spacer {
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .hint {
