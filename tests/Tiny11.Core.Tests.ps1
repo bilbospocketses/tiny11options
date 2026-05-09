@@ -128,3 +128,61 @@ Describe 'Get-Tiny11CoreWinSxsKeepList' {
             Should -Throw -ExpectedMessage '*architecture*mips*'
     }
 }
+
+Describe 'Get-Tiny11CoreRegistryTweaks' {
+    BeforeAll {
+        $script:tweaks = Get-Tiny11CoreRegistryTweaks
+    }
+
+    It 'returns at least 60 entries' {
+        $script:tweaks.Count | Should -BeGreaterOrEqual 60
+    }
+
+    It 'every entry has Category, Op, Hive, Path fields' {
+        foreach ($t in $script:tweaks) {
+            $t.PSObject.Properties.Name | Should -Contain 'Category'
+            $t.PSObject.Properties.Name | Should -Contain 'Op'
+            $t.PSObject.Properties.Name | Should -Contain 'Hive'
+            $t.PSObject.Properties.Name | Should -Contain 'Path'
+        }
+    }
+
+    It 'every entry has a known category' {
+        $known = @('bypass-sysreqs', 'sponsored-apps', 'telemetry', 'defender-disable', 'update-disable', 'misc')
+        foreach ($t in $script:tweaks) {
+            $known | Should -Contain $t.Category
+        }
+    }
+
+    It 'every entry has a known op' {
+        $known = @('add', 'delete')
+        foreach ($t in $script:tweaks) {
+            $known | Should -Contain $t.Op
+        }
+    }
+
+    It 'bypass-sysreqs category contains BypassTPMCheck, BypassSecureBootCheck, BypassRAMCheck' {
+        $bypass = $script:tweaks | Where-Object Category -eq 'bypass-sysreqs'
+        $bypass | Where-Object { $_.Name -eq 'BypassTPMCheck' } | Should -Not -BeNullOrEmpty
+        $bypass | Where-Object { $_.Name -eq 'BypassSecureBootCheck' } | Should -Not -BeNullOrEmpty
+        $bypass | Where-Object { $_.Name -eq 'BypassRAMCheck' } | Should -Not -BeNullOrEmpty
+    }
+
+    It 'defender-disable category contains all 5 services with Start=4' {
+        $defender = $script:tweaks | Where-Object Category -eq 'defender-disable'
+        $services = @('WinDefend', 'WdNisSvc', 'WdNisDrv', 'WdFilter', 'Sense')
+        foreach ($svc in $services) {
+            $entry = $defender | Where-Object { $_.Path -like "*Services\$svc" -and $_.Name -eq 'Start' }
+            $entry | Should -Not -BeNullOrEmpty -Because "$svc service Start=4 entry expected"
+            $entry.Value | Should -Be 4
+        }
+    }
+
+    It 'add ops have Type and Value fields; delete ops do not require Value' {
+        $adds = $script:tweaks | Where-Object Op -eq 'add'
+        foreach ($a in $adds) {
+            $a.PSObject.Properties.Name | Should -Contain 'Type'
+            $a.PSObject.Properties.Name | Should -Contain 'Value'
+        }
+    }
+}

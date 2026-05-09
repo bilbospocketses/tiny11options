@@ -207,9 +207,154 @@ function Get-Tiny11CoreWinSxsKeepList {
     throw "Unknown architecture: $Architecture. Expected 'amd64' or 'arm64'."
 }
 
+# Registry operations applied to the offline-mounted hives during a Core
+# build. 85 unique entries across 6 categories (after de-duplication of
+# upstream repeated invocations) matching the build pipeline phases:
+# bypass-sysreqs (10), sponsored-apps (26), telemetry (10),
+# defender-disable (6), update-disable (16), misc (17).
+#
+# Schema: each entry is a PSCustomObject with these fields:
+#   Category : phase-tag for filtering (one of the 6 known values)
+#   Op       : 'add' (REG ADD) or 'delete' (REG DELETE)
+#   Hive     : hive prefix used in offline mount (e.g. 'zSOFTWARE')
+#   Path     : registry path under the hive (no leading backslash)
+#   Name     : value name (add ops and some delete-value ops)
+#   Type     : REG_DWORD / REG_SZ etc. (add ops only)
+#   Value    : the value to set (add ops only)
+#
+# Consumed by the registry-* phases in Invoke-Tiny11CoreBuildPipeline,
+# which filters by Category and dispatches each entry to
+# Tiny11.Actions.Registry.Invoke-RegistryAction.
+#
+# Ported from upstream tiny11Coremaker.ps1 lines 340-470 (install.wim hive
+# edits). Upstream has 81 '& reg' invocations plus 2 bare 'reg delete' calls
+# for Edge (lines 392-393) and 5 Set-ItemProperty calls for Defender services
+# (lines 467-469) — all captured here. Upstream duplicates de-duplicated:
+#   - ContentDeliveryAllowed appears 3x (lines 356/358/359) -> 1 entry
+#   - SubscribedContentEnabled appears 2x (lines 366/373) -> 1 entry
+#
+# The boot.wim bypass-sysreqs subset (upstream lines 503-514) is applied
+# separately by Plan Task 12's boot-wim phase, which re-uses the
+# bypass-sysreqs category from THIS data plus one extra Setup\CmdLine entry
+# inlined there.
+function Get-Tiny11CoreRegistryTweaks {
+    @(
+        # bypass-sysreqs (10 entries) — install.wim
+        # Upstream lines 341-350: UnsupportedHardwareNotificationCache + LabConfig + MoSetup
+        [pscustomobject]@{ Category='bypass-sysreqs'; Op='add'; Hive='zDEFAULT'; Path='Control Panel\UnsupportedHardwareNotificationCache'; Name='SV1'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='bypass-sysreqs'; Op='add'; Hive='zDEFAULT'; Path='Control Panel\UnsupportedHardwareNotificationCache'; Name='SV2'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='bypass-sysreqs'; Op='add'; Hive='zNTUSER';  Path='Control Panel\UnsupportedHardwareNotificationCache'; Name='SV1'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='bypass-sysreqs'; Op='add'; Hive='zNTUSER';  Path='Control Panel\UnsupportedHardwareNotificationCache'; Name='SV2'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='bypass-sysreqs'; Op='add'; Hive='zSYSTEM';  Path='Setup\LabConfig'; Name='BypassCPUCheck'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='bypass-sysreqs'; Op='add'; Hive='zSYSTEM';  Path='Setup\LabConfig'; Name='BypassRAMCheck'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='bypass-sysreqs'; Op='add'; Hive='zSYSTEM';  Path='Setup\LabConfig'; Name='BypassSecureBootCheck'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='bypass-sysreqs'; Op='add'; Hive='zSYSTEM';  Path='Setup\LabConfig'; Name='BypassStorageCheck'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='bypass-sysreqs'; Op='add'; Hive='zSYSTEM';  Path='Setup\LabConfig'; Name='BypassTPMCheck'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='bypass-sysreqs'; Op='add'; Hive='zSYSTEM';  Path='Setup\MoSetup'; Name='AllowUpgradesWithUnsupportedTPMOrCPU'; Type='REG_DWORD'; Value=1 }
+
+        # sponsored-apps (26 entries) — ContentDeliveryManager + CloudContent + PolicyManager +
+        # PushToInstall + MRT + Subscription deletes. De-duped from upstream (ContentDeliveryAllowed
+        # appeared 3x at lines 356/358/359; SubscribedContentEnabled appeared 2x at lines 366/373).
+        # Upstream lines 352-380.
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='OemPreInstalledAppsEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='PreInstalledAppsEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='SilentInstalledAppsEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\CloudContent'; Name='DisableWindowsConsumerFeatures'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='ContentDeliveryAllowed'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\PolicyManager\current\device\Start'; Name='ConfigureStartPins'; Type='REG_SZ'; Value='{"pinnedList": [{}]}' }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='FeatureManagementEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='OemPreInstalledAppsEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='PreInstalledAppsEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='PreInstalledAppsEverEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='SilentInstalledAppsEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='SoftLandingEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='SubscribedContentEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='SubscribedContent-310093Enabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='SubscribedContent-338388Enabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='SubscribedContent-338389Enabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='SubscribedContent-338393Enabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='SubscribedContent-353694Enabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='SubscribedContent-353696Enabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name='SystemPaneSuggestionsEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\PushToInstall'; Name='DisablePushToInstall'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\MRT'; Name='DontOfferThroughWUAU'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='delete'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscriptions' }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='delete'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SuggestedApps' }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\CloudContent'; Name='DisableConsumerAccountStateContent'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='sponsored-apps'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\CloudContent'; Name='DisableCloudOptimizedContent'; Type='REG_DWORD'; Value=1 }
+
+        # misc (17 entries) — BypassNRO, Reserved Storage, BitLocker, Chat icon, TaskbarMn,
+        # Edge uninstall reg deletes, OneDrive backup, DevHome/Outlook prevent+delete,
+        # Copilot, Edge HubsSidebar, Explorer SearchBoxSuggestions, Teams, Mail.
+        # Upstream lines 382, 385, 387, 389-390, 392-393, 395, 408-415, 417, 419.
+        # Note: lines 392-393 use bare 'reg delete' (not '& reg') in upstream.
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\OOBE'; Name='BypassNRO'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\ReserveManager'; Name='ShippedWithReserves'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSYSTEM';   Path='ControlSet001\Control\BitLocker'; Name='PreventDeviceEncryption'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\Windows Chat'; Name='ChatIcon'; Type='REG_DWORD'; Value=3 }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zNTUSER';   Path='SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced'; Name='TaskbarMn'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='misc'; Op='delete'; Hive='zSOFTWARE'; Path='WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge' }
+        [pscustomobject]@{ Category='misc'; Op='delete'; Hive='zSOFTWARE'; Path='WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge Update' }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\OneDrive'; Name='DisableFileSyncNGSC'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\WindowsUpdate\Orchestrator\UScheduler\OutlookUpdate'; Name='workCompleted'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\WindowsUpdate\Orchestrator\UScheduler\DevHomeUpdate'; Name='workCompleted'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='misc'; Op='delete'; Hive='zSOFTWARE'; Path='Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\OutlookUpdate' }
+        [pscustomobject]@{ Category='misc'; Op='delete'; Hive='zSOFTWARE'; Path='Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\DevHomeUpdate' }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\WindowsCopilot'; Name='TurnOffWindowsCopilot'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Edge'; Name='HubsSidebarEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\Explorer'; Name='DisableSearchBoxSuggestions'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Teams'; Name='DisableInstallation'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='misc'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\Windows Mail'; Name='PreventRun'; Type='REG_DWORD'; Value=1 }
+
+        # telemetry (10 entries) — AdvertisingInfo, Privacy, OnlineSpeechPrivacy, Input TIPC,
+        # InputPersonalization, TrainedDataStore, Personalization, DataCollection, dmwappushservice.
+        # Upstream lines 397-406.
+        [pscustomobject]@{ Category='telemetry'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo'; Name='Enabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='telemetry'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Windows\CurrentVersion\Privacy'; Name='TailoredExperiencesWithDiagnosticDataEnabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='telemetry'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy'; Name='HasAccepted'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='telemetry'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Input\TIPC'; Name='Enabled'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='telemetry'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\InputPersonalization'; Name='RestrictImplicitInkCollection'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='telemetry'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\InputPersonalization'; Name='RestrictImplicitTextCollection'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='telemetry'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\InputPersonalization\TrainedDataStore'; Name='HarvestContacts'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='telemetry'; Op='add'; Hive='zNTUSER';  Path='Software\Microsoft\Personalization\Settings'; Name='AcceptedPrivacyPolicy'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='telemetry'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\DataCollection'; Name='AllowTelemetry'; Type='REG_DWORD'; Value=0 }
+        [pscustomobject]@{ Category='telemetry'; Op='add'; Hive='zSYSTEM';  Path='ControlSet001\Services\dmwappushservice'; Name='Start'; Type='REG_DWORD'; Value=4 }
+
+        # update-disable (16 entries) — RunOnce post-OOBE WU stops, WindowsUpdate policies,
+        # wuauserv Start=4, WaaSMedicSVC/UsoSvc service deletions, NoAutoUpdate, DisableOnline.
+        # Upstream lines 441-456.
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\RunOnce'; Name='StopWUPostOOBE1'; Type='REG_SZ'; Value='net stop wuauserv' }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\RunOnce'; Name='StopWUPostOOBE2'; Type='REG_SZ'; Value='sc stop wuauserv' }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\RunOnce'; Name='StopWUPostOOBE3'; Type='REG_SZ'; Value='sc config wuauserv start= disabled' }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\RunOnce'; Name='DisbaleWUPostOOBE1'; Type='REG_SZ'; Value='reg add HKLM\SYSTEM\CurrentControlSet\Services\wuauserv /v Start /t REG_DWORD /d 4 /f' }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\RunOnce'; Name='DisbaleWUPostOOBE2'; Type='REG_SZ'; Value='reg add HKLM\SYSTEM\ControlSet001\Services\wuauserv /v Start /t REG_DWORD /d 4 /f' }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\WindowsUpdate'; Name='DoNotConnectToWindowsUpdateInternetLocations'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\WindowsUpdate'; Name='DisableWindowsUpdateAccess'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\WindowsUpdate'; Name='WUServer'; Type='REG_SZ'; Value='localhost' }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\WindowsUpdate'; Name='WUStatusServer'; Type='REG_SZ'; Value='localhost' }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\WindowsUpdate'; Name='UpdateServiceUrlAlternate'; Type='REG_SZ'; Value='localhost' }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\WindowsUpdate\AU'; Name='UseWUServer'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\OOBE'; Name='DisableOnline'; Type='REG_DWORD'; Value=1 }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSYSTEM';  Path='ControlSet001\Services\wuauserv'; Name='Start'; Type='REG_DWORD'; Value=4 }
+        [pscustomobject]@{ Category='update-disable'; Op='delete'; Hive='zSYSTEM';  Path='ControlSet001\Services\WaaSMedicSVC' }
+        [pscustomobject]@{ Category='update-disable'; Op='delete'; Hive='zSYSTEM';  Path='ControlSet001\Services\UsoSvc' }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\WindowsUpdate\AU'; Name='NoAutoUpdate'; Type='REG_DWORD'; Value=1 }
+
+        # defender-disable (6 entries) — 5 services Start=4 (via Set-ItemProperty in upstream
+        # lines 459-469) + SettingsPageVisibility (upstream line 470).
+        [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\WinDefend'; Name='Start'; Type='REG_DWORD'; Value=4 }
+        [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\WdNisSvc'; Name='Start'; Type='REG_DWORD'; Value=4 }
+        [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\WdNisDrv'; Name='Start'; Type='REG_DWORD'; Value=4 }
+        [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\WdFilter'; Name='Start'; Type='REG_DWORD'; Value=4 }
+        [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\Sense'; Name='Start'; Type='REG_DWORD'; Value=4 }
+        [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\Policies\Explorer'; Name='SettingsPageVisibility'; Type='REG_SZ'; Value='hide:virus;windowsupdate' }
+    )
+}
+
 Export-ModuleMember -Function `
     Get-Tiny11CoreAppxPrefixes, `
     Get-Tiny11CoreSystemPackagePatterns, `
     Get-Tiny11CoreFilesystemTargets, `
     Get-Tiny11CoreScheduledTaskTargets, `
-    Get-Tiny11CoreWinSxsKeepList
+    Get-Tiny11CoreWinSxsKeepList, `
+    Get-Tiny11CoreRegistryTweaks
