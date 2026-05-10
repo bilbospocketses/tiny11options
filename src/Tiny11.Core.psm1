@@ -387,10 +387,16 @@ function Invoke-CoreTakeown {
         [Parameter(Mandatory)][string]$Path,
         [switch]$Recurse
     )
-    $args = @('/F', $Path)
-    if ($Recurse) { $args += '/R' }
-    $args += @('/D', 'Y')
-    Start-CoreProcess -FileName 'takeown.exe' -Arguments $args
+    # /D <answer> is only valid when /R is also passed — takeown rejects
+    # `/D Y` standalone with "ERROR: /D should be specified only with /R."
+    # When /R IS passed, /D Y answers the per-directory inaccessible-listing
+    # prompt without blocking on stdin (we run inside a non-interactive
+    # subprocess so an unanswered prompt would hang). Upstream Coremaker
+    # itself never uses /D — it runs interactively and the user can answer
+    # the prompt manually if it fires; we can't, so we pre-answer.
+    $argList = @('/F', $Path)
+    if ($Recurse) { $argList += @('/R', '/D', 'Y') }
+    Start-CoreProcess -FileName 'takeown.exe' -Arguments $argList
 }
 
 # Wrapper for icacls.exe — grants Administrators full control. /T recurses,
