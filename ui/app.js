@@ -525,12 +525,17 @@ function renderSourceStep() {
 
     const errorBanner = el('div', { id: 'src-error', class: 'error hidden' });
 
-    // Fast-build row + hint are hidden when Core mode is on (Core uses its own fixed sequence).
-    const fastBuildRow = state.coreMode ? [] : [
+    // Fast-build row + hint always render. When Core mode is on the input is
+    // disabled (Core has its own fixed compression sequence and ignores the
+    // fastBuild flag); the label + adjacent hint are greyed out via CSS
+    // (.checkbox-label:has(input:disabled) and its + .hint sibling). Keeping
+    // the row in the layout avoids the visual jump from hiding it.
+    const fastBuildRow = [
         el('label', { class: 'checkbox-label' },
             el('input', {
                 id: 'fast-build', type: 'checkbox',
                 checked: state.fastBuild,
+                disabled: state.coreMode,
                 onchange: e => state.fastBuild = e.target.checked
             }),
             'Fast build (skip recovery compression)'

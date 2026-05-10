@@ -257,6 +257,22 @@ button.browse-spacer {
     line-height: 1.4;
 }
 
+/* When a checkbox-label contains a disabled input, dim the whole label
+   AND the immediately-following .hint paragraph. Used by the fast-build
+   row in Step 1, which stays visible but greys out when Core mode is on
+   (Core has its own fixed compression sequence). The :has() + sibling
+   combinator is supported by the WebView2 (Chromium) runtime. */
+label.checkbox-label:has(input:disabled),
+label.checkbox-label:has(input:disabled) + .hint {
+    opacity: 0.5;
+}
+label.checkbox-label:has(input:disabled) {
+    cursor: not-allowed;
+}
+input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+}
+
 /* Customize step (Step 2) */
 section.customize .row {
     margin-bottom: var(--gap);
