@@ -202,6 +202,21 @@ The feature ports unique operations of upstream `ntdevlabs/tiny11builder`'s `tin
 
 Total scope: ~10 commits across the feature plus several auto-format / UTF-8-encoding fixes. Test counts: xUnit 45/45 (was 41; +4), Pester 125/125 (was 85 pre-feature; +40 in `Tiny11.Core.Tests.ps1`).
 
+### Core mode UI refinements + Phase 7 C2 fix-forwards (2026-05-10)
+
+Post-feature-landing tweaks driven by Phase 7 C1 (UI flow) feedback and the first three runs of Phase 7 C2 (real Core build against a retail multi-edition Win11 25H2 ISO).
+
+#### Fixed
+- **fix(ui)**: replace 46 smart quotes with ASCII in `ui/app.js` (commit `4ed17fc`). An autoformatter substituted curly Unicode quotes into the new `renderSourceStep` additions; JS doesn't accept curly quotes as string delimiters and the file would have thrown SyntaxError in WebView. Caught by editor diagnostics before runtime.
+- **fix(ui)**: keep fast-build row visible + greyed when Core mode is on (commit `7d5b286`). Hiding the row entirely caused a layout jump on toggle. Now the row stays in place; CSS `:has(input:disabled)` + adjacent-sibling selector dims label and hint paragraph below.
+- **fix(ui)**: visually uncheck + tooltip on fast-build when Core mode is on (commit `936c659`). A disabled-but-checked box read as "forced active." Now `checked = (coreMode ? false : state.fastBuild)` so the box appears empty while Core is on; `state.fastBuild` itself is preserved so toggling Core off restores user preference. Tooltip "Unavailable when Core mode is enabled" added.
+- **fix(core)**: mount source ISO before copying — Phase 1 ISO-input bug (commit `5955025`). `Invoke-Tiny11CoreBuildPipeline` was calling `Copy-Item -Path "$Source\*"` directly on an ISO file path, which silently no-op'd; downstream `dism /Mount-Image` then failed. Fix: `Mount-Tiny11Source` first, copy from drive-letter, dismount in finally.
+- **fix(core)**: clear install.wim read-only before DISM /Mount-Image (commit `13a6edd`). Copy-Item from a mounted ISO inherits the read-only attribute on copied files; DISM `/Mount-Image` failed with `0xc1510111 "You do not have permissions to mount and modify this image."` Same `takeown + icacls + Set-ItemProperty IsReadOnly:$false` pattern upstream applies, and that we already apply before boot.wim — install.wim was missing the same pre-mount step.
+- **fix(core)**: only pass `/D Y` to takeown when `/R` is also used (commit `be2d8bb`). takeown rejects `/D` without `/R`. The `Invoke-CoreTakeown` wrapper unconditionally appended `/D Y`, breaking single-file (non-recursive) takeown calls with `ERROR: /D should be specified only with /R.` Upstream Coremaker never uses `/D`; our subprocess-based runs need `/D Y` only when `/R` is used.
+
+#### Process lesson
+The three `fix(core)` bugs above all share the same root cause: the original Plan Task 12 paraphrased upstream's external-tool invocations into freshly-written PowerShell rather than transcribing literally. Step 0 source-of-truth pre-read sample-confirmed the paraphrase against upstream rather than diffing them byte-for-byte. Each preventable runtime error cost a fix-forward cycle. Captured as a strengthened global rule in `~/.claude/projects/C--Users-jscha/memory/feedback_legacy_port_section.md` (revision 2026-05-10): for port tasks, plan code must be literal upstream transcription with deltas as explicit diff hunks; Step 0 must produce a byte-level diff, not a verified-summary.
+
 ## [0.2.0] - 2026-05-07
 
 UX wizard improvements (theme detection + toggle, persistent window size, bulk-select, clickable rows, output-path autofill, locked build-details panel), scripted-mode CLI additions (`-Edition`, `-AllowVLSource`), small cleanups, and expanded test coverage. Built end-to-end ISO + Hyper-V install verified. 82/82 Pester tests green (72 prior + 10 new).
