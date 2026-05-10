@@ -68,6 +68,8 @@ const state = {
     outputPath: null,
     unmountSource: true,
     fastBuild: true,
+    coreMode: false,
+    enableNet35: false,
     drilledCategory: null,
     search: '',
     building: false,
@@ -82,14 +84,27 @@ const state = {
 let pendingSaveProfileSelections = null;
 
 // When the user picks or types a scratch directory, prefill the output ISO path with
-// "<scratchDir>\tiny11.iso" — but only if outputPath is empty so we never clobber a
-// custom value. Output goes alongside scratchDir's tiny11/ source folder, not inside it,
-// so oscdimg never sees its own output as input.
+// "<scratchDir>\tiny11.iso" (or tiny11core.iso in Core mode) — but only if outputPath is
+// empty so we never clobber a custom value. Output goes alongside scratchDir's tiny11/
+// source folder, not inside it, so oscdimg never sees its own output as input.
 function prefillOutputIfEmpty() {
     if (state.outputPath || !state.scratchDir) return;
     const trimmed = state.scratchDir.replace(/[\\/]+$/, '');
     const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
-    state.outputPath = trimmed + sep + 'tiny11.iso';
+    const filename = state.coreMode ? 'tiny11core.iso' : 'tiny11.iso';
+    state.outputPath = trimmed + sep + filename;
+}
+
+// When coreMode toggles, swap the default ISO filename if the user hasn't customized it.
+function syncOutputFilenameToMode() {
+    if (!state.scratchDir || !state.outputPath) return;
+    const trimmed = state.scratchDir.replace(/[\\/]+$/, '');
+    const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
+    const prev = trimmed + sep + (state.coreMode ? 'tiny11.iso' : 'tiny11core.iso');
+    if (state.outputPath === prev) {
+        state.outputPath = null;
+        prefillOutputIfEmpty();
+    }
 }
 
 function renderStep() {
@@ -101,6 +116,10 @@ function renderStep() {
     clear(root);
     document.querySelectorAll('.breadcrumb span').forEach(s => {
         s.classList.toggle('active', s.dataset.step === state.step);
+        if (s.dataset.step === 'customize') {
+            if (state.coreMode) s.setAttribute('data-disabled', 'true');
+            else s.removeAttribute('data-disabled');
+        }
     });
     if (state.step === 'source')    root.appendChild(renderSourceStep());
     if (state.step === 'customize') root.appendChild(renderCustomizeStep());
@@ -129,12 +148,12 @@ function canAdvance() {
 
 document.getElementById('back-btn').addEventListener('click', () => {
     if (state.step === 'customize') state.step = 'source';
-    else if (state.step === 'build') state.step = 'customize';
+    else if (state.step === 'build') state.step = state.coreMode ? 'source' : 'customize';
     state.drilledCategory = null;
     renderStep();
 });
 document.getElementById('next-btn').addEventListener('click', () => {
-    if (state.step === 'source')    state.step = 'customize';
+    if (state.step === 'source') state.step = state.coreMode ? 'build' : 'customize';
     else if (state.step === 'customize') state.step = 'build';
     renderStep();
 });
@@ -146,6 +165,16 @@ function renderBuildStep() {
     const resolved = reconcile();
     const totalApplied = state.catalog.items.filter(i => resolved[i.id].effective === 'apply').length;
     const editionLabel = (state.editions || []).find(e => e.index === state.edition);
+
+    // Summary rows differ between Core and standard mode.
+    const modeSummaryRows = state.coreMode
+        ? [
+            el('dt', null, 'Mode'),    el('dd', null, 'Core'),
+            el('dt', null, '.NET 3.5'), el('dd', null, state.enableNet35 ? 'Enabled' : 'Disabled'),
+          ]
+        : [
+            el('dt', null, 'Changes'), el('dd', null, `${totalApplied} items applied`),
+          ];
 
     return el('section', { class: 'build' },
         el('h2', null, 'Ready to build'),
@@ -159,9 +188,9 @@ function renderBuildStep() {
                     id: 'out-input', type: 'text', value: state.outputPath || '',
                     onchange: e => state.outputPath = e.target.value
                 }),
-                el('button', { onclick: () => ps({ type: 'browse-save-file', payload: { context: 'output', title: 'Save tiny11 ISO as...', filter: 'ISO files|*.iso|All files|*.*', defaultName: 'tiny11.iso' } }) }, 'Browse...')
+                el('button', { onclick: () => ps({ type: 'browse-save-file', payload: { context: 'output', title: 'Save tiny11 ISO as...', filter: 'ISO files|*.iso|All files|*.*', defaultName: state.coreMode ? 'tiny11core.iso' : 'tiny11.iso' } }) }, 'Browse...')
             ),
-            el('dt', null, 'Changes'), el('dd', null, `${totalApplied} items applied`)
+            ...modeSummaryRows
         ),
         el('button', {
             class: 'primary',
@@ -178,10 +207,33 @@ function renderBuildStep() {
                         unmountSource: state.unmountSource,
                         fastBuild: state.fastBuild,
                         selections: state.selections,
+                        coreMode: state.coreMode,
+                        enableNet35: state.enableNet35,
                     },
                 });
             }
         }, 'Build ISO')
+    );
+}
+
+function renderCoreCleanupBlock() {
+    const sd = (state.scratchDir || '').replace(/[\\/]+$/, '');
+    if (!sd) return null;
+    const mount = `${sd}\\mount`;
+    const source = `${sd}\\source`;
+    const cmds = [
+        `dism /unmount-image /mountdir:"${mount}" /discard`,
+        `dism /cleanup-mountpoints`,
+        `takeown /F "${mount}" /R /D Y`,
+        `icacls "${mount}" /grant Administrators:F /T /C`,
+        `Remove-Item -Path "${mount}" -Recurse -Force -ErrorAction SilentlyContinue`,
+        `Remove-Item -Path "${source}" -Recurse -Force -ErrorAction SilentlyContinue`,
+    ];
+    return el('div', { class: 'core-cleanup' },
+        el('p', { class: 'core-cleanup-intro' },
+            '⚠ If you cancel during the WinSxS wipe phase, the scratch directory is left in a non-resumable state. To clean up, run these in an elevated PowerShell prompt before starting another build:'
+        ),
+        el('pre', { class: 'cleanup-cmd' }, cmds.join('\n'))
     );
 }
 
@@ -193,11 +245,35 @@ function renderProgress() {
     const editionLabel = editionEntry
         ? `${editionEntry.name} (index ${editionEntry.index})`
         : (state.edition !== null ? `index ${state.edition}` : '—');
-    const buildMode = state.fastBuild
-        ? 'Fast build (no recovery compression — output ISO typically 7–8 GB)'
-        : 'Standard (with recovery compression — output ISO roughly 2 GB smaller)';
+    const buildMode = state.coreMode
+        ? 'Core (WinSxS wipe + fixed compression sequence)'
+        : state.fastBuild
+            ? 'Fast build (no recovery compression — output ISO typically 7–8 GB)'
+            : 'Standard (with recovery compression — output ISO roughly 2 GB smaller)';
     const resolved = reconcile();
     const appliedItems = state.catalog.items.filter(i => resolved[i.id].effective === 'apply');
+
+    // Build-details inner content differs by mode.
+    const detailsInner = state.coreMode
+        ? [
+            el('dl', { class: 'build-details-summary' },
+                el('dt', null, 'Edition'),    el('dd', null, editionLabel),
+                el('dt', null, 'Build mode'), el('dd', null, buildMode),
+                el('dt', null, 'Output ISO'), el('dd', null, state.outputPath || '—')
+            ),
+            renderCoreCleanupBlock(),
+          ]
+        : [
+            el('dl', { class: 'build-details-summary' },
+                el('dt', null, 'Edition'),    el('dd', null, editionLabel),
+                el('dt', null, 'Build mode'), el('dd', null, buildMode),
+                el('dt', null, 'Output ISO'), el('dd', null, state.outputPath || '—')
+            ),
+            el('h3', null, `Items being removed (${appliedItems.length}):`),
+            el('ul', { class: 'build-details-items' },
+                appliedItems.map(it => el('li', null, it.displayName))
+            ),
+          ];
 
     return el('section', { class: 'progress' },
         el('h2', null, 'Building tiny11 image...'),
@@ -211,15 +287,7 @@ function renderProgress() {
             ontoggle: ev => { state.buildDetailsOpen = ev.target.open; }
         },
             el('summary', null, 'Show build details'),
-            el('dl', { class: 'build-details-summary' },
-                el('dt', null, 'Edition'),     el('dd', null, editionLabel),
-                el('dt', null, 'Build mode'),  el('dd', null, buildMode),
-                el('dt', null, 'Output ISO'),  el('dd', null, state.outputPath || '—')
-            ),
-            el('h3', null, `Items being removed (${appliedItems.length}):`),
-            el('ul', { class: 'build-details-items' },
-                appliedItems.map(it => el('li', null, it.displayName))
-            )
+            ...detailsInner
         )
     );
 }
@@ -457,63 +525,108 @@ function renderSourceStep() {
 
     const errorBanner = el('div', { id: 'src-error', class: 'error hidden' });
 
-    const section = el('section', { class: 'form' },
-        el('label', null, 'Windows 11 ISO'),
-        el('div', { class: 'row' },
-            el('input', {
-                id: 'src-input', type: 'text', value: state.source || '',
-                placeholder: 'C:\\path\\to\\Win11.iso or drive letter where Windows 11 DVD or ISO are mounted (ex. E:)',
+    // Fast-build row + hint are hidden when Core mode is on (Core uses its own fixed sequence).
+    const fastBuildRow = state.coreMode ? [] : [
+        el(‘label’, { class: ‘checkbox-label’ },
+            el(‘input’, {
+                id: ‘fast-build’, type: ‘checkbox’,
+                checked: state.fastBuild,
+                onchange: e => state.fastBuild = e.target.checked
+            }),
+            ‘Fast build (skip recovery compression)’
+        ),
+        el(‘p’, { class: ‘hint’ },
+            ‘Skips DISM /Cleanup-Image and /Export-Image /Compress:recovery. ‘ +
+            ‘Saves 25–40 minutes per build. With fast build the output ISO is typically ‘ +
+            ‘7–8 GB; leaving fast build off enables recovery compression and shrinks the ‘ +
+            ‘ISO by roughly 2 GB. Both produce functionally identical installs. Recommended ‘ +
+            ‘for VM testing or iterative builds where ISO size doesn\’t matter.’
+        ),
+    ];
+
+    // Core warning panel — shown only when coreMode is on.
+    const coreWarning = state.coreMode
+        ? el(‘div’, { class: ‘core-warning’ },
+            ‘tiny11 Core builds a significantly smaller image, but the output is not serviceable: ‘ +
+            ‘you cannot install Windows Updates, add languages, or enable Windows features after install. ‘ +
+            ‘Suitable for VM testing or short-lived development environments — not as a daily-driver Windows install.’
+          )
+        : null;
+
+    // .NET 3.5 checkbox + hint — shown only when coreMode is on.
+    const net35Row = state.coreMode
+        ? [
+            el(‘label’, { class: ‘checkbox-label’ },
+                el(‘input’, {
+                    id: ‘enable-net35’, type: ‘checkbox’,
+                    checked: state.enableNet35,
+                    onchange: e => { state.enableNet35 = e.target.checked; }
+                }),
+                ‘Enable .NET 3.5 (legacy app compatibility)’
+            ),
+            el(‘p’, { class: ‘hint’ },
+                ‘.NET 3.5 must be enabled at build time — cannot be added after install. Adds ~100 MB.’
+            ),
+          ]
+        : [];
+
+    const section = el(‘section’, { class: ‘form’ },
+        el(‘label’, null, ‘Windows 11 ISO’),
+        el(‘div’, { class: ‘row’ },
+            el(‘input’, {
+                id: ‘src-input’, type: ‘text’, value: state.source || ‘’,
+                placeholder: ‘C:\\path\\to\\Win11.iso or drive letter where Windows 11 DVD or ISO are mounted (ex. E:)’,
                 onchange: e => {
                     state.source = e.target.value;
                     state.editions = null;
                     state.edition = null;
-                    ps({ type: 'validate-iso', payload: { path: state.source } });
+                    ps({ type: ‘validate-iso’, payload: { path: state.source } });
                     renderStep();
                 }
             }),
-            el('button', { id: 'src-browse', onclick: () => ps({ type: 'browse-file', payload: { context: 'source', title: 'Select Win11 ISO', filter: 'ISO files|*.iso|All files|*.*' } }) }, 'Browse...')
+            el(‘button’, { id: ‘src-browse’, onclick: () => ps({ type: ‘browse-file’, payload: { context: ‘source’, title: ‘Select Win11 ISO’, filter: ‘ISO files|*.iso|All files|*.*’ } }) }, ‘Browse...’)
         ),
         errorBanner,
-        el('label', null, 'Edition'),
-        el('div', { class: 'row' },
-            el('select', {
-                id: 'edition-select',
+        el(‘label’, null, ‘Edition’),
+        el(‘div’, { class: ‘row’ },
+            el(‘select’, {
+                id: ‘edition-select’,
                 disabled: !state.editions,
                 onchange: e => { state.edition = parseInt(e.target.value, 10); updateNav(); }
             }, editionsOptions),
-            el('button', { class: 'browse-spacer', 'aria-hidden': 'true', tabindex: '-1' }, 'Browse...')
+            el(‘button’, { class: ‘browse-spacer’, ‘aria-hidden’: ‘true’, tabindex: ‘-1’ }, ‘Browse...’)
         ),
-        el('label', null, 'Scratch directory'),
-        el('div', { class: 'row' },
-            el('input', {
-                id: 'scratch-input', type: 'text', value: state.scratchDir || '',
+        el(‘label’, null, ‘Scratch directory’),
+        el(‘div’, { class: ‘row’ },
+            el(‘input’, {
+                id: ‘scratch-input’, type: ‘text’, value: state.scratchDir || ‘’,
                 onchange: e => { state.scratchDir = e.target.value; prefillOutputIfEmpty(); }
             }),
-            el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
+            el(‘button’, { onclick: () => ps({ type: ‘browse-folder’, payload: { context: ‘scratch’, title: ‘Select scratch directory’ } }) }, ‘Browse...’)
         ),
-        el('label', { class: 'checkbox-label' },
-            el('input', {
-                id: 'unmount-source', type: 'checkbox',
+        el(‘label’, { class: ‘checkbox-label’ },
+            el(‘input’, {
+                id: ‘unmount-source’, type: ‘checkbox’,
                 checked: state.unmountSource,
                 onchange: e => state.unmountSource = e.target.checked
             }),
-            'Unmount source ISO when build finishes'
+            ‘Unmount source ISO when build finishes’
         ),
-        el('label', { class: 'checkbox-label' },
-            el('input', {
-                id: 'fast-build', type: 'checkbox',
-                checked: state.fastBuild,
-                onchange: e => state.fastBuild = e.target.checked
+        ...fastBuildRow,
+        el(‘label’, { class: ‘checkbox-label’ },
+            el(‘input’, {
+                id: ‘core-mode’, type: ‘checkbox’,
+                checked: state.coreMode,
+                onchange: e => {
+                    state.coreMode = e.target.checked;
+                    syncOutputFilenameToMode();
+                    renderStep();
+                }
             }),
-            'Fast build (skip recovery compression)'
+            ‘Build tiny11 Core (smaller, non-serviceable)’
         ),
-        el('p', { class: 'hint' },
-            'Skips DISM /Cleanup-Image and /Export-Image /Compress:recovery. ' +
-            'Saves 25–40 minutes per build. With fast build the output ISO is typically ' +
-            '7–8 GB; leaving fast build off enables recovery compression and shrinks the ' +
-            'ISO by roughly 2 GB. Both produce functionally identical installs. Recommended ' +
-            'for VM testing or iterative builds where ISO size doesn’t matter.'
-        )
+        coreWarning,
+        ...net35Row
     );
     return section;
 }
@@ -566,11 +679,16 @@ onPs(msg => {
         state.building = false;
         const root = document.getElementById('content');
         clear(root);
-        root.appendChild(el('section', { class: 'error' },
+        const children = [
             el('h2', null, 'Build failed'),
             el('p', null, p.message || 'Unknown error'),
-            el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close')
-        ));
+        ];
+        if (state.coreMode && state.scratchDir) {
+            const block = renderCoreCleanupBlock();
+            if (block) children.push(block);
+        }
+        children.push(el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close'));
+        root.appendChild(el('section', { class: 'error' }, ...children));
     } else if (msg.type === 'profile-saved') {
         // v1: log only; future: transient toast.
         console.log('Profile saved:', p.path);

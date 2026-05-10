@@ -535,3 +535,40 @@ section.progress h2 {
 .error.hidden {
     display: none;
 }
+
+/* Core mode — warning panel (Step 1, visible when coreMode is on) */
+.core-warning {
+    background: var(--warn-bg);
+    color: var(--warn-fg);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    margin: var(--gap) 0 var(--gap) 24px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* Breadcrumb pip dim — Customize step is skipped in Core mode */
+.breadcrumb span[data-disabled="true"] {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+/* Core cleanup command block */
+.cleanup-cmd {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--gap);
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.core-cleanup-intro {
+    color: var(--warn-fg);
+    margin: var(--gap) 0 6px 0;
+    font-size: 13px;
+    line-height: 1.4;
+}
