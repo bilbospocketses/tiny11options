@@ -44,12 +44,11 @@ Describe 'launcher/tiny11options.Launcher.csproj <EmbeddedResource> drift' {
             'src\Tiny11.Bridge.psm1'
             'src\Tiny11.WebView2.psm1'
 
-            # Upstream ntdevlabs/tiny11builder Core-variant builder. More
-            # aggressive removals than tiny11maker.ps1; never ported into our
-            # catalog/UI, never consumed at runtime by the launcher. Tracked
-            # in our fork as upstream-inherited but dormant. If we ever add a
-            # "Core" build mode, the exclusion comes off and the csproj line
-            # gets added — until then, no point bloating the launcher .exe.
+            # Upstream ntdevlabs/tiny11builder Core-variant builder. Core behavior
+            # ported to tiny11Coremaker-from-config.ps1 + Tiny11.Core.psm1
+            # (commits e4c410c..7d0dcb2). Kept as reference until Phase 7 C2 smoke
+            # (Core build end-to-end) confirms wrapper produces a working ISO.
+            # Deletion is a follow-up commit after C2 passes.
             'tiny11Coremaker.ps1'
         )
     }

@@ -73,10 +73,12 @@
     <EmbeddedResource Include="..\src\Tiny11.Actions.Filesystem.psm1"><LogicalName>src/Tiny11.Actions.Filesystem.psm1</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\src\Tiny11.Actions.ProvisionedAppx.psm1"><LogicalName>src/Tiny11.Actions.ProvisionedAppx.psm1</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\src\Tiny11.Actions.ScheduledTask.psm1"><LogicalName>src/Tiny11.Actions.ScheduledTask.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Core.psm1"><LogicalName>src/Tiny11.Core.psm1</LogicalName></EmbeddedResource>
 
     <!-- Orchestrator + wrapper scripts + autounattend template -->
     <EmbeddedResource Include="..\tiny11maker.ps1"><LogicalName>tiny11maker.ps1</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\tiny11maker-from-config.ps1"><LogicalName>tiny11maker-from-config.ps1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\tiny11Coremaker-from-config.ps1"><LogicalName>tiny11Coremaker-from-config.ps1</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\tiny11-iso-validate.ps1"><LogicalName>tiny11-iso-validate.ps1</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\tiny11-profile-validate.ps1"><LogicalName>tiny11-profile-validate.ps1</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\autounattend.template.xml"><LogicalName>autounattend.template.xml</LogicalName></EmbeddedResource>
