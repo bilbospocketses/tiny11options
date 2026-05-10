@@ -466,3 +466,116 @@ Describe 'Invoke-Tiny11CoreImageExport' {
         }
     }
 }
+
+Describe 'New-Tiny11CorePostBootCleanupScript' {
+    BeforeAll {
+        $script:modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $script:modulePath -Force
+    }
+
+    It 'returns a non-empty CMD script' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Not -BeNullOrEmpty
+        $script.Length | Should -BeGreaterThan 100
+    }
+
+    It 'starts with @echo off' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match '^@echo off'
+    }
+
+    It 'invokes dism /online /Cleanup-Image /StartComponentCleanup /ResetBase' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'dism /online /English /Cleanup-Image /StartComponentCleanup /ResetBase'
+    }
+
+    It 'writes to %SystemDrive%\Windows\Logs\tiny11-postboot.log' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'tiny11-postboot\.log'
+        $script | Should -Match 'SystemDrive'
+    }
+
+    It 'self-deletes via del /F /Q "%~f0"' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'del /F /Q "%~f0"'
+    }
+
+    It 'creates the Logs directory if missing' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'mkdir "%SystemDrive%\\Windows\\Logs"'
+    }
+}
+
+Describe 'Install-Tiny11CorePostBootCleanup' {
+    BeforeAll {
+        $script:modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $script:modulePath -Force
+    }
+
+    Context 'fresh mount with no Setup\Scripts directory' {
+        BeforeEach {
+            $script:mountDir = Join-Path ([System.IO.Path]::GetTempPath()) ("tiny11-postboot-test-" + [guid]::NewGuid())
+            New-Item -ItemType Directory -Path $script:mountDir -Force | Out-Null
+        }
+        AfterEach {
+            if (Test-Path -LiteralPath $script:mountDir) {
+                Remove-Item -LiteralPath $script:mountDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'creates Windows\Setup\Scripts and writes SetupComplete.cmd' {
+            Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
+            $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\SetupComplete.cmd'
+            Test-Path -LiteralPath $expected | Should -Be $true
+        }
+
+        It 'writes the script content from New-Tiny11CorePostBootCleanupScript' {
+            Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
+            $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\SetupComplete.cmd'
+            $content = Get-Content -LiteralPath $expected -Raw
+            $content | Should -Match 'dism /online /English /Cleanup-Image /StartComponentCleanup /ResetBase'
+            $content | Should -Match '@echo off'
+        }
+
+        It 'writes ASCII (no UTF-8 BOM) for cmd.exe compatibility' {
+            Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
+            $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\SetupComplete.cmd'
+            $bytes = [System.IO.File]::ReadAllBytes($expected)
+            # UTF-8 BOM is EF BB BF; ASCII files don't start with that.
+            $bytes[0] | Should -Not -Be 0xEF
+        }
+
+        It 'writes CRLF line endings' {
+            Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
+            $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\SetupComplete.cmd'
+            $bytes = [System.IO.File]::ReadAllBytes($expected)
+            # Find a CR (0x0D) byte; if present and followed by LF (0x0A), CRLF is being used.
+            $hasCRLF = $false
+            for ($i = 0; $i -lt $bytes.Length - 1; $i++) {
+                if ($bytes[$i] -eq 0x0D -and $bytes[$i+1] -eq 0x0A) { $hasCRLF = $true; break }
+            }
+            $hasCRLF | Should -Be $true
+        }
+    }
+
+    Context 'mount with existing Setup\Scripts directory' {
+        BeforeEach {
+            $script:mountDir = Join-Path ([System.IO.Path]::GetTempPath()) ("tiny11-postboot-test-" + [guid]::NewGuid())
+            New-Item -ItemType Directory -Path (Join-Path $script:mountDir 'Windows\Setup\Scripts') -Force | Out-Null
+        }
+        AfterEach {
+            if (Test-Path -LiteralPath $script:mountDir) {
+                Remove-Item -LiteralPath $script:mountDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'overwrites without erroring' {
+            $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\SetupComplete.cmd'
+            Set-Content -LiteralPath $expected -Value 'dummy prior content' -Force
+            { Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir } | Should -Not -Throw
+            $content = Get-Content -LiteralPath $expected -Raw
+            $content | Should -Not -Match 'dummy prior content'
+            $content | Should -Match 'tiny11options'
+        }
+    }
+}

@@ -251,6 +251,28 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
+### SetupComplete.cmd injection: defer /Cleanup-Image to first boot (2026-05-10)
+
+`/RevertPendingActions` (added in `b171d4d`) ran successfully but DISM's output revealed it can't actually clear pending state offline:
+
+```
+Reverting pending actions from the image...
+The operation completed. Revert of pending actions will be attempted after the reboot.
+```
+
+`/RevertPendingActions` against a mounted offline image only **schedules** the revert for next boot — it can't execute, because executing requires TrustedInstaller running live in the OS. The pending CBS state survives, and Phase 18 `/Cleanup-Image /ResetBase` keeps failing with `0x800f0806` (CBS log: `Pending content found, aborting maintenance`). No offline DISM operation can clear pre-staged CU content baked into modern Win11 ISOs (CU 26200.NNNN on 25H2).
+
+Real fix: defer `/Cleanup-Image` to first boot via Windows' built-in `SetupComplete.cmd` mechanism. The script runs once, in SYSTEM context, after OOBE completes — at which point CBS pending state has resolved naturally. We inject a small CMD script at `\Windows\Setup\Scripts\SetupComplete.cmd` that runs `dism /online /Cleanup-Image /StartComponentCleanup /ResetBase`, logs to `%SystemDrive%\Windows\Logs\tiny11-postboot.log`, and self-deletes. Image ships at offline size (~1-2 GB heavier than upstream-against-23H2) and shrinks at first user boot, automatically. Phase 3.5 `/RevertPendingActions` is retained as a best-effort cheap call for older Win10/Win11-23H2 images where it might actually execute.
+
+#### Added
+- `New-Tiny11CorePostBootCleanupScript` (exported) — returns the SetupComplete.cmd CMD content as a string.
+- `Install-Tiny11CorePostBootCleanup -MountDir <path>` (exported) — creates `<mount>\Windows\Setup\Scripts\SetupComplete.cmd` with the script content. Writes ASCII + CRLF (cmd.exe compatibility — no UTF-8 BOM, Windows Setup tooling expects CRLF).
+- 11 new Pester tests covering script content (dism invocation, log path, self-delete, mkdir guard) and installation (path creation, ASCII/CRLF encoding, idempotent overwrite).
+
+#### Changed
+- **fix(core)**: Phase 18 changed from offline `/Cleanup-Image /StartComponentCleanup /ResetBase` to inject-postboot-cleanup (`Install-Tiny11CorePostBootCleanup`). The offline call cannot succeed on 25H2+ ISOs and the deferred-to-boot approach is the correct mechanism for any Win11 build with pre-staged CU content.
+- **fix(core)**: Phase 3.5 `/RevertPendingActions` reframed from "the fix" to "best-effort." Comment updated to acknowledge that on 25H2+ images the actual cleanup happens post-boot via SetupComplete.cmd.
+
 ### Phase 3.5 RevertPendingActions: clear baseline CU pending state (2026-05-10)
 
 C2 retry against the two-pass `/Cleanup-Image` (commit `cdb264e`) showed both passes failing identically with `0x800f0806`. Reading `C:\Windows\Logs\DISM\dism.log` for the failed run revealed CBS's actual diagnosis:
