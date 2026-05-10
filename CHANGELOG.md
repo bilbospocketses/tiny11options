@@ -244,6 +244,14 @@ The audit fix commit (above) closed the registry composer's blocking bug but did
 - **fix(core)**: Phase 19 install.wim unmount (`/Commit` or `/Discard`) was unwrapped — `Invoke-CoreDism ... | Out-Null` discarded the result. Now captured: throws with prefix on `/Commit` failure when `$pipelineSucceeded` is true; `Write-Warning`s on `/Discard` failure to avoid replacing an in-flight pipeline exception in the failure path. Closes the audit follow-up gap.
 - **fix(core)**: Phase 21 boot.wim `/Mount-Image /Index:2` was unwrapped. Now throws with prefix `DISM /Mount-Image (boot.wim index 2) failed (exit N): <output>` on non-zero. Closes the audit follow-up gap.
 
+### Phase 7 takeown /R-against-file fix + Start-CoreProcess EAP localization (2026-05-10)
+
+C2 retry against the build log surfaced two related bugs that together explain every prior `ERROR: The specified path is not a valid directory path.` failure:
+
+#### Fixed
+- **fix(core)**: Phase 7 filesystem-removal composer was passing `-Recurse` unconditionally to `Invoke-CoreTakeown` and `Invoke-CoreIcacls` regardless of the data row's `Recurse` flag. `Get-Tiny11CoreFilesystemTargets` includes `Windows\System32\OneDriveSetup.exe` (a file) with `Recurse=$false` because takeown rejects `/R` against a file with the exact error `ERROR: The specified path is not a valid directory path.` (matching upstream `tiny11Coremaker.ps1:217-220` which calls `takeown` without `/R` on this single file). Composer now uses `-Recurse:$t.Recurse` so files get `takeown /F <file>` and directories get `takeown /F <dir> /R /D Y`.
+- **fix(core)**: `Start-CoreProcess` was auto-terminating on native-exe stderr captured via `2>&1` whenever `$ErrorActionPreference='Stop'` was set in the parent scope (which `tiny11Coremaker-from-config.ps1` sets). The terminating throw fired with the bare stderr line as `Exception.Message`, defeating every exit-code-based wrapper downstream — D4.3/D5.4/D21.3/D23.3 visibility upgrades and Invoke-CoreDism's contextual throw all sat behind this latent timebomb. Localized `$ErrorActionPreference = 'Continue'` inside Start-CoreProcess via `try/finally` so stderr lines flow as normal output and `$LASTEXITCODE` becomes the source of truth as the architecture intended. Latent across the whole DISM/takeown/icacls/reg/oscdimg surface — only triggered now because Phase 7's `/R`-on-file was the first call in this run that wrote to stderr.
+
 ## [0.2.0] - 2026-05-07
 
 UX wizard improvements (theme detection + toggle, persistent window size, bulk-select, clickable rows, output-path autofill, locked build-details panel), scripted-mode CLI additions (`-Edition`, `-AllowVLSource`), small cleanups, and expanded test coverage. Built end-to-end ISO + Hyper-V install verified. 82/82 Pester tests green (72 prior + 10 new).

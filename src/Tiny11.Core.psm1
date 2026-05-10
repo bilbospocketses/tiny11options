@@ -389,8 +389,19 @@ function Start-CoreProcess {
     )
     $argDisplay = ($Arguments | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
     Write-CoreLog "EXEC: $FileName $argDisplay"
-    $output = & $FileName @Arguments 2>&1
-    $exit = $LASTEXITCODE
+    # Localize EAP so native-exe stderr captured via 2>&1 doesn't auto-terminate when the
+    # script-scope $ErrorActionPreference is 'Stop' (as it is in tiny11Coremaker-from-config.ps1).
+    # Our callers handle non-zero $LASTEXITCODE explicitly via Invoke-CoreDism wrappers + visibility
+    # upgrades (D4.3/D5.4/D21.3/D23.3); we don't want a stderr line alone to throw with bare DISM
+    # text as the Exception.Message before the caller can compose a contextual error.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & $FileName @Arguments 2>&1
+        $exit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
     $outStr = $output -join "`n"
     Write-CoreLog "EXIT: $exit"
     if ($outStr.Trim()) { Write-CoreLog ("OUTPUT:`n" + $outStr) }
@@ -751,8 +762,11 @@ function Invoke-Tiny11CoreBuildPipeline {
         foreach ($t in $fsTargets) {
             $abs = Join-Path $mountDir $t.RelPath
             if (Test-Path -LiteralPath $abs) {
-                Invoke-CoreTakeown -Path $abs -Recurse | Out-Null
-                Invoke-CoreIcacls  -Path $abs -Recurse | Out-Null
+                # Honour $t.Recurse for takeown/icacls — upstream uses /R only on directories (lines 186-208 + 224-226),
+                # not on the OneDriveSetup.exe file (lines 217-220). takeown rejects `/R` on a file with
+                # "ERROR: The specified path is not a valid directory path." — pass -Recurse:$false for files.
+                Invoke-CoreTakeown -Path $abs -Recurse:$t.Recurse | Out-Null
+                Invoke-CoreIcacls  -Path $abs -Recurse:$t.Recurse | Out-Null
                 if ($t.Recurse) { Remove-Item -Path $abs -Recurse -Force -ErrorAction SilentlyContinue }
                 else             { Remove-Item -Path $abs -Force -ErrorAction SilentlyContinue }
             }
