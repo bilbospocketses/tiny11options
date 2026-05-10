@@ -568,6 +568,271 @@ function Invoke-Tiny11CoreWinSxsWipe {
     Rename-Item -Path $winSxsEdit -NewName 'WinSxS'
 }
 
+# Top-level Core build orchestrator. Composes the 24 phases per spec §6.
+# Emits build-progress markers to the supplied -ProgressCallback (the
+# wrapper script wires this to Write-Marker JSON to STDOUT for the
+# launcher's BuildHandlers forwarder).
+#
+# Reuses Tiny11.Hives (load/unload) and calls the Core-unique helpers
+# in this module directly. Registry tweaks, filesystem removals, scheduled-
+# task cleanup, and provisioned-appx removal all route through internal
+# helpers rather than the catalog-pattern action modules — those modules
+# use a different ($Action, $ScratchDir) dispatch convention designed for
+# the catalog-driven build pipeline.
+#
+# NOT unit-tested — 24-phase orchestration mocking is high-effort low-payoff.
+# End-to-end verification via Phase 7 manual smoke C2-C5.
+function Invoke-Tiny11CoreBuildPipeline {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][int]$ImageIndex,
+        [Parameter(Mandatory)][string]$ScratchDir,
+        [Parameter(Mandatory)][string]$OutputIso,
+        [Parameter(Mandatory)][bool]$EnableNet35,
+        [Parameter(Mandatory)][bool]$UnmountSource,
+        [Parameter(Mandatory)][scriptblock]$ProgressCallback
+    )
+
+    Import-Module (Join-Path $PSScriptRoot 'Tiny11.Hives.psm1') -Force
+
+    $sourceDir = Join-Path $ScratchDir 'source'
+    $mountDir  = Join-Path $ScratchDir 'mount'
+    $sxsSourcePath = Join-Path $sourceDir 'sources\sxs'
+
+    # Phase 1: preflight — copy source + detect install.esd -> convert
+    & $ProgressCallback @{ phase='preflight'; step='Copying Windows image to scratch'; percent=5 }
+    New-Item -ItemType Directory -Force -Path $sourceDir | Out-Null
+    Copy-Item -Path "$Source\*" -Destination $sourceDir -Recurse -Force
+
+    # Phase 2: preflight — mount install.wim
+    & $ProgressCallback @{ phase='preflight'; step='Mounting install.wim for offline edit'; percent=10 }
+    New-Item -ItemType Directory -Force -Path $mountDir | Out-Null
+    $installWim = Join-Path $sourceDir 'sources\install.wim'
+    $mountResult = Invoke-CoreDism -Arguments @('/English', '/Mount-Image', "/ImageFile:$installWim", "/Index:$ImageIndex", "/MountDir:$mountDir")
+    if ($mountResult.ExitCode -ne 0) { throw "DISM /Mount-Image failed: $($mountResult.Output)" }
+
+    $pipelineSucceeded = $false
+    try {
+        # Phase 3: detect language code from mounted image (used by system-package patterns)
+        $intl = Invoke-CoreDism -Arguments @('/English', "/Image:$mountDir", '/Get-Intl')
+        $languageCode = 'en-US'
+        if ($intl.Output -match 'Default system UI language : ([a-zA-Z]{2}-[a-zA-Z]{2})') {
+            $languageCode = $Matches[1]
+        }
+
+        # Phase 3b: detect architecture (upstream lines 92-105)
+        $imageInfo = Invoke-CoreDism -Arguments @('/English', '/Get-WimInfo', "/wimFile:$installWim", "/index:$ImageIndex")
+        $architecture = 'amd64'
+        if ($imageInfo.Output -match 'Architecture : (\S+)') {
+            $arch = $Matches[1]
+            if ($arch -eq 'x64') { $architecture = 'amd64' }
+            elseif ($arch -eq 'ARM64' -or $arch -eq 'arm64') { $architecture = 'arm64' }
+            else { throw "Unsupported architecture: $arch (Core mode requires amd64 or arm64)" }
+        }
+
+        # Phase 4: appx-removal (upstream lines 111-128)
+        & $ProgressCallback @{ phase='appx-removal'; step="Removing provisioned apps"; percent=15 }
+        $appxPrefixes = Get-Tiny11CoreAppxPrefixes
+        $allAppxOutput = (& 'dism.exe' '/English' "/image:$mountDir" '/Get-ProvisionedAppxPackages') -join "`n"
+        $allAppxPackages = @()
+        foreach ($line in ($allAppxOutput -split "`n")) {
+            if ($line -match 'PackageName\s*:\s*(.+)') { $allAppxPackages += $Matches[1].Trim() }
+        }
+        foreach ($pkg in $allAppxPackages) {
+            foreach ($prefix in $appxPrefixes) {
+                if ($pkg -like "$prefix*") {
+                    & 'dism.exe' '/English' "/image:$mountDir" '/Remove-ProvisionedAppxPackage' "/PackageName:$pkg" | Out-Null
+                    break
+                }
+            }
+        }
+
+        # Phase 5: system-package-removal (upstream lines 130-166)
+        & $ProgressCallback @{ phase='system-package-removal'; step='Removing system packages (IE, MediaPlayer, Defender, etc.)'; percent=20 }
+        $sysPatterns = Get-Tiny11CoreSystemPackagePatterns -LanguageCode $languageCode
+        Invoke-Tiny11CoreSystemPackageRemoval -ScratchDir $mountDir -Patterns $sysPatterns -LanguageCode $languageCode
+
+        # Phase 6: net35-enable (conditional, upstream lines 168-181)
+        if ($EnableNet35) {
+            & $ProgressCallback @{ phase='net35-enable'; step='Enabling .NET 3.5 from offline source'; percent=27 }
+            Invoke-Tiny11CoreNet35Enable -ScratchDir $mountDir -SourcePath $sxsSourcePath -EnableNet35:$true
+        }
+
+        # Phase 7: filesystem-removal (upstream lines 182-220)
+        & $ProgressCallback @{ phase='filesystem-removal'; step='Removing Edge / OneDrive / WebView'; percent=32 }
+        $fsTargets = Get-Tiny11CoreFilesystemTargets
+        foreach ($t in $fsTargets) {
+            $abs = Join-Path $mountDir $t.RelPath
+            if (Test-Path -LiteralPath $abs) {
+                Invoke-CoreTakeown -Path $abs -Recurse | Out-Null
+                Invoke-CoreIcacls  -Path $abs -Recurse | Out-Null
+                if ($t.Recurse) { Remove-Item -Path $abs -Recurse -Force -ErrorAction SilentlyContinue }
+                else             { Remove-Item -Path $abs -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
+        # WinRE.wim — delete-then-create-empty pattern (upstream lines 212-216)
+        $winreWim = Join-Path $mountDir 'Windows\System32\Recovery\winre.wim'
+        if (Test-Path -LiteralPath $winreWim) {
+            $recoveryDir = Join-Path $mountDir 'Windows\System32\Recovery'
+            Invoke-CoreTakeown -Path $recoveryDir -Recurse | Out-Null
+            Invoke-CoreIcacls  -Path $recoveryDir -Recurse | Out-Null
+            Remove-Item -Path $winreWim -Force
+            New-Item -Path $winreWim -ItemType File -Force | Out-Null
+        }
+
+        # Phase 8: winsxs-wipe (longest single phase, upstream lines 222-332)
+        & $ProgressCallback @{ phase='winsxs-wipe'; step='Taking ownership and wiping WinSxS (slowest phase, ~5-10 min)'; percent=35 }
+        Invoke-Tiny11CoreWinSxsWipe -ScratchDir $mountDir -Architecture $architecture
+
+        # Phase 9: registry-load (upstream lines 334-339)
+        & $ProgressCallback @{ phase='registry-load'; step='Loading hives'; percent=66 }
+        foreach ($hive in @('COMPONENTS', 'DEFAULT', 'NTUSER', 'SOFTWARE', 'SYSTEM')) {
+            Mount-Tiny11Hive -Hive $hive -ScratchDir $mountDir
+        }
+
+        try {
+            $allTweaks = Get-Tiny11CoreRegistryTweaks
+            $phaseMap = @{
+                'bypass-sysreqs'   = @{ phase='registry-bypass';            step='Applying system-requirement bypass keys'; percent=68 }
+                'sponsored-apps'   = @{ phase='registry-sponsored-apps';    step='Disabling sponsored apps + ContentDeliveryManager'; percent=71 }
+                'telemetry'        = @{ phase='registry-telemetry';         step='Disabling telemetry'; percent=73 }
+                'defender-disable' = @{ phase='registry-defender-disable';  step='Disabling Windows Defender services'; percent=75 }
+                'update-disable'   = @{ phase='registry-update-disable';    step='Disabling Windows Update'; percent=77 }
+                'misc'             = @{ phase='registry-misc';              step='BitLocker / Chat / Copilot / Teams / Outlook / etc.'; percent=79 }
+            }
+            foreach ($cat in @('bypass-sysreqs', 'sponsored-apps', 'telemetry', 'defender-disable', 'update-disable', 'misc')) {
+                & $ProgressCallback $phaseMap[$cat]
+                $catTweaks = $allTweaks | Where-Object Category -eq $cat
+                foreach ($t in $catTweaks) {
+                    $mountKey = "HKLM\z$($t.Hive)"
+                    $fullKey  = "$mountKey\$($t.Path)"
+                    if ($t.Op -eq 'add') {
+                        & 'reg.exe' 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $t.Value '/f' | Out-Null
+                    } elseif ($t.Op -eq 'delete') {
+                        if ($t.PSObject.Properties['Name'] -and $t.Name) {
+                            & 'reg.exe' 'delete' $fullKey '/v' $t.Name '/f' | Out-Null
+                        } else {
+                            & 'reg.exe' 'delete' $fullKey '/f' | Out-Null
+                        }
+                    }
+                }
+            }
+        }
+        finally {
+            & $ProgressCallback @{ phase='registry-unload'; step='Unloading hives'; percent=81 }
+            foreach ($hive in @('SYSTEM', 'SOFTWARE', 'NTUSER', 'DEFAULT', 'COMPONENTS')) {
+                try { Dismount-Tiny11Hive -Hive $hive } catch { Write-Warning "Failed to unload hive ${hive}: $_" }
+            }
+        }
+
+        # Phase 17: scheduled-task-cleanup (upstream lines 420-438)
+        & $ProgressCallback @{ phase='scheduled-task-cleanup'; step='Removing 5 scheduled task definitions'; percent=82 }
+        $taskTargets = Get-Tiny11CoreScheduledTaskTargets
+        foreach ($t in $taskTargets) {
+            $abs = Join-Path $mountDir "Windows\System32\Tasks\$($t.RelPath)"
+            if (Test-Path -LiteralPath $abs) {
+                if ($t.Recurse) { Remove-Item -Path $abs -Recurse -Force -ErrorAction SilentlyContinue }
+                else             { Remove-Item -Path $abs -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
+        # Phase 18: cleanup-image (upstream lines 478-480)
+        & $ProgressCallback @{ phase='cleanup-image'; step='DISM /Cleanup-Image /StartComponentCleanup /ResetBase'; percent=84 }
+        $cleanResult = Invoke-CoreDism -Arguments @('/English', "/image:$mountDir", '/Cleanup-Image', '/StartComponentCleanup', '/ResetBase')
+        if ($cleanResult.ExitCode -ne 0) { throw "DISM /Cleanup-Image failed: $($cleanResult.Output)" }
+
+        $pipelineSucceeded = $true
+    }
+    finally {
+        # Phase 19: unmount-install (commit on success, discard on failure; upstream lines 482-483)
+        $unmountFlag = if ($pipelineSucceeded) { '/Commit' } else { '/Discard' }
+        & $ProgressCallback @{ phase='unmount-install'; step="Unmounting install.wim with $unmountFlag"; percent=86 }
+        Invoke-CoreDism -Arguments @('/English', '/Unmount-Image', "/MountDir:$mountDir", $unmountFlag) | Out-Null
+    }
+
+    if (-not $pipelineSucceeded) {
+        throw 'Core build pipeline failed mid-flight (see preceding error). install.wim unmounted with /Discard.'
+    }
+
+    # Phase 20: export-install with /Compress:max -> install2.wim, then rename (upstream lines 484-487)
+    & $ProgressCallback @{ phase='export-install'; step='Exporting install.wim with /Compress:max'; percent=89 }
+    $installWim2 = Join-Path $sourceDir 'sources\install2.wim'
+    Invoke-Tiny11CoreImageExport -SourceImageFile $installWim -DestinationImageFile $installWim2 -SourceIndex $ImageIndex -Compress 'max'
+    Remove-Item -Path $installWim -Force
+    Rename-Item -Path $installWim2 -NewName 'install.wim'
+
+    # Phase 21: boot-wim (upstream lines 491-523)
+    # Mount boot.wim index 2, apply bypass-sysreqs subset + CmdLine extra, unmount /commit
+    & $ProgressCallback @{ phase='boot-wim'; step='Mounting boot.wim index 2 + applying bypass-sysreqs'; percent=93 }
+    $bootWim = Join-Path $sourceDir 'sources\boot.wim'
+    Invoke-CoreTakeown -Path $bootWim | Out-Null
+    Invoke-CoreIcacls  -Path $bootWim | Out-Null
+    Set-ItemProperty -Path $bootWim -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+    Invoke-CoreDism -Arguments @('/English', '/Mount-Image', "/ImageFile:$bootWim", '/Index:2', "/MountDir:$mountDir") | Out-Null
+    try {
+        foreach ($hive in @('COMPONENTS', 'DEFAULT', 'NTUSER', 'SOFTWARE', 'SYSTEM')) {
+            Mount-Tiny11Hive -Hive $hive -ScratchDir $mountDir
+        }
+        try {
+            # Apply only the bypass-sysreqs subset to the setup image
+            $bootTweaks = Get-Tiny11CoreRegistryTweaks | Where-Object Category -eq 'bypass-sysreqs'
+            foreach ($t in $bootTweaks) {
+                $mountKey = "HKLM\z$($t.Hive)"
+                $fullKey  = "$mountKey\$($t.Path)"
+                if ($t.Op -eq 'add') {
+                    & 'reg.exe' 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $t.Value '/f' | Out-Null
+                }
+            }
+            # Plus the setup-image-only CmdLine override (upstream tiny11Coremaker.ps1 line 514)
+            & 'reg.exe' 'add' 'HKLM\zSYSTEM\Setup' '/v' 'CmdLine' '/t' 'REG_SZ' '/d' 'X:\sources\setup.exe' '/f' | Out-Null
+        }
+        finally {
+            foreach ($hive in @('SYSTEM', 'SOFTWARE', 'NTUSER', 'DEFAULT', 'COMPONENTS')) {
+                try { Dismount-Tiny11Hive -Hive $hive } catch { Write-Warning "Failed to unload hive ${hive}: $_" }
+            }
+        }
+    }
+    finally {
+        Invoke-CoreDism -Arguments @('/English', '/Unmount-Image', "/MountDir:$mountDir", '/Commit') | Out-Null
+    }
+
+    # Phase 22: export-install-esd with /Compress:recovery, then delete install.wim (upstream lines 525-527)
+    & $ProgressCallback @{ phase='export-install-esd'; step='Exporting install.esd with /Compress:recovery'; percent=96 }
+    # After phase 20 rename, install.wim is the exported/compressed one
+    $installWimFinal = Join-Path $sourceDir 'sources\install.wim'
+    $installEsd = Join-Path $sourceDir 'sources\install.esd'
+    Invoke-Tiny11CoreImageExport -SourceImageFile $installWimFinal -DestinationImageFile $installEsd -SourceIndex 1 -Compress 'recovery'
+    Remove-Item -Path $installWimFinal -Force
+
+    # Phase 23: iso-create (upstream lines 529-559)
+    # Resolve oscdimg via Tiny11.Worker's Resolve-Tiny11Oscdimg helper, then invoke directly.
+    # NOTE: Tiny11.Worker.psm1 does NOT expose a standalone Invoke-OscdimgIsoCreate function;
+    # the oscdimg invocation is inlined inside Invoke-Tiny11BuildPipeline there. We reuse the
+    # Resolve-Tiny11Oscdimg path-resolver (which is exported) and do the invocation ourselves.
+    & $ProgressCallback @{ phase='iso-create'; step='Creating bootable ISO with oscdimg'; percent=98 }
+    Import-Module (Join-Path $PSScriptRoot 'Tiny11.Worker.psm1') -Force
+    $oscdimgCacheDir = Join-Path $ScratchDir 'oscdimg-cache'
+    New-Item -ItemType Directory -Force -Path $oscdimgCacheDir | Out-Null
+    $oscdimg = Resolve-Tiny11Oscdimg -CacheDir $oscdimgCacheDir
+    if (-not $oscdimg -or -not (Test-Path $oscdimg)) {
+        throw "oscdimg.exe could not be resolved (ADK not installed and download failed). Cannot create ISO."
+    }
+    & $oscdimg '-m' '-o' '-u2' '-udfver102' `
+        "-bootdata:2#p0,e,b$sourceDir\boot\etfsboot.com#pEF,e,b$sourceDir\efi\microsoft\boot\efisys.bin" `
+        $sourceDir $OutputIso | Out-Null
+
+    & $ProgressCallback @{ phase='complete'; step='Build complete'; percent=100; outputPath=$OutputIso }
+
+    # Optional source-ISO unmount (only if we mounted it — caller passes UnmountSource:$true
+    # when Source is an ISO that the launcher mounted for us)
+    if ($UnmountSource) {
+        Import-Module (Join-Path $PSScriptRoot 'Tiny11.Iso.psm1') -Force
+        try { Dismount-DiskImage -ImagePath $Source -ErrorAction SilentlyContinue } catch { }
+    }
+}
+
 Export-ModuleMember -Function `
     Get-Tiny11CoreAppxPrefixes, `
     Get-Tiny11CoreSystemPackagePatterns, `
@@ -578,4 +843,5 @@ Export-ModuleMember -Function `
     Invoke-Tiny11CoreSystemPackageRemoval, `
     Invoke-Tiny11CoreNet35Enable, `
     Invoke-Tiny11CoreImageExport, `
-    Invoke-Tiny11CoreWinSxsWipe
+    Invoke-Tiny11CoreWinSxsWipe, `
+    Invoke-Tiny11CoreBuildPipeline
