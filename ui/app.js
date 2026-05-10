@@ -526,16 +526,24 @@ function renderSourceStep() {
     const errorBanner = el('div', { id: 'src-error', class: 'error hidden' });
 
     // Fast-build row + hint always render. When Core mode is on the input is
-    // disabled (Core has its own fixed compression sequence and ignores the
-    // fastBuild flag); the label + adjacent hint are greyed out via CSS
-    // (.checkbox-label:has(input:disabled) and its + .hint sibling). Keeping
-    // the row in the layout avoids the visual jump from hiding it.
+    // disabled AND visually unchecked (a disabled-but-checked box reads as
+    // "forced active in this state" which is wrong — Core ignores the flag
+    // entirely). state.fastBuild is preserved untouched so the user's prior
+    // preference returns when Core is unchecked. The label + adjacent hint
+    // grey out via CSS (.checkbox-label:has(input:disabled) + sibling .hint).
+    // A title tooltip on label + input explains the inactive state on hover.
+    const fastBuildDisabled = state.coreMode;
+    const fastBuildTooltip = 'Unavailable when Core mode is enabled';
     const fastBuildRow = [
-        el('label', { class: 'checkbox-label' },
+        el('label', {
+            class: 'checkbox-label',
+            title: fastBuildDisabled ? fastBuildTooltip : null
+        },
             el('input', {
                 id: 'fast-build', type: 'checkbox',
-                checked: state.fastBuild,
-                disabled: state.coreMode,
+                checked: fastBuildDisabled ? false : state.fastBuild,
+                disabled: fastBuildDisabled,
+                title: fastBuildDisabled ? fastBuildTooltip : null,
                 onchange: e => state.fastBuild = e.target.checked
             }),
             'Fast build (skip recovery compression)'
