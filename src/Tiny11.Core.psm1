@@ -425,6 +425,7 @@ function Invoke-Tiny11CoreSystemPackageRemoval {
         [Parameter(Mandatory)][string]$LanguageCode
     )
 
+    # D5.1 — /English forces English DISM output for the -like pattern filter (deliberate addition over upstream's bare `& dism`).
     $enumResult = Invoke-CoreDism -Arguments @('/English', "/image:$ScratchDir", '/Get-Packages', '/Format:Table')
     if ($enumResult.ExitCode -ne 0) {
         throw "dism /Get-Packages failed (exit $($enumResult.ExitCode)): $($enumResult.Output)"
@@ -435,7 +436,8 @@ function Invoke-Tiny11CoreSystemPackageRemoval {
     # The identity is extracted as the first whitespace-delimited token from each
     # matching line. Header and label lines are naturally excluded because they
     # don't match any package-identity prefix pattern.
-    $allLines = $enumResult.Output -split "`n"
+    # D5.2 — Select-Object -Skip 1 matches upstream parity (skip the table header line).
+    $allLines = $enumResult.Output -split "`n" | Select-Object -Skip 1
 
     foreach ($pattern in $Patterns) {
         $matchedItems = $allLines |
@@ -448,7 +450,8 @@ function Invoke-Tiny11CoreSystemPackageRemoval {
         foreach ($identity in $matchedItems) {
             $removeResult = Invoke-CoreDism -Arguments @('/English', "/image:$ScratchDir", '/Remove-Package', "/PackageName:$identity")
             if ($removeResult.ExitCode -ne 0) {
-                Write-Verbose "dism /Remove-Package $identity failed (exit $($removeResult.ExitCode)) — non-fatal, continuing"
+                # D5.4 — surface as Write-Warning so the failure is visible without -Verbose; build still continues per upstream tolerance.
+                Write-Warning "dism /Remove-Package $identity failed (exit $($removeResult.ExitCode)) — non-fatal, continuing"
             }
         }
     }
@@ -564,6 +567,7 @@ function Invoke-Tiny11CoreWinSxsWipe {
     }
 
     if ($totalMatches -eq 0) {
+        # OOS-5 — fail loudly; upstream silently produces a corrupted image when zero keep-list patterns match.
         throw "WinSxS wipe: zero keep-list patterns matched any subdirectory under $winSxs (Architecture=$Architecture). Source ISO may not be a $Architecture Win11 image, or its WinSxS layout differs from the expected layout."
     }
 
@@ -660,6 +664,7 @@ function Invoke-Tiny11CoreBuildPipeline {
             $arch = $Matches[1]
             if ($arch -eq 'x64') { $architecture = 'amd64' }
             elseif ($arch -eq 'ARM64' -or $arch -eq 'arm64') { $architecture = 'arm64' }
+            # OOS-9 — fail fast on unknown architecture; upstream silently continues with the unknown string and fails later opaquely.
             else { throw "Unsupported architecture: $arch (Core mode requires amd64 or arm64)" }
         }
 
@@ -669,12 +674,17 @@ function Invoke-Tiny11CoreBuildPipeline {
         $allAppxOutput = (& 'dism.exe' '/English' "/image:$mountDir" '/Get-ProvisionedAppxPackages') -join "`n"
         $allAppxPackages = @()
         foreach ($line in ($allAppxOutput -split "`n")) {
+            # D4.1 — \s*:\s* tolerates non-canonical DISM whitespace; intentional widening from upstream's literal " : ".
             if ($line -match 'PackageName\s*:\s*(.+)') { $allAppxPackages += $Matches[1].Trim() }
         }
         foreach ($pkg in $allAppxPackages) {
             foreach ($prefix in $appxPrefixes) {
                 if ($pkg -like "$prefix*") {
                     & 'dism.exe' '/English' "/image:$mountDir" '/Remove-ProvisionedAppxPackage' "/PackageName:$pkg" | Out-Null
+                    # D4.3 — surface non-zero so silent removal failures are visible; build continues per upstream tolerance.
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Warning "dism /Remove-ProvisionedAppxPackage $pkg failed (exit $LASTEXITCODE) — non-fatal, continuing"
+                    }
                     break
                 }
             }
@@ -692,6 +702,7 @@ function Invoke-Tiny11CoreBuildPipeline {
         }
 
         # Phase 7: filesystem-removal (upstream lines 182-220)
+        # OOS-3 — defensive takeown+icacls before each Remove-Item; upstream relies on later WinSxS-wide takeown to clear ACLs.
         & $ProgressCallback @{ phase='filesystem-removal'; step='Removing Edge / OneDrive / WebView'; percent=32 }
         $fsTargets = Get-Tiny11CoreFilesystemTargets
         foreach ($t in $fsTargets) {
@@ -738,7 +749,7 @@ function Invoke-Tiny11CoreBuildPipeline {
                 & $ProgressCallback $phaseMap[$cat]
                 $catTweaks = $allTweaks | Where-Object Category -eq $cat
                 foreach ($t in $catTweaks) {
-                    $mountKey = "HKLM\z$($t.Hive)"
+                    $mountKey = "HKLM\$($t.Hive)"
                     $fullKey  = "$mountKey\$($t.Path)"
                     if ($t.Op -eq 'add') {
                         & 'reg.exe' 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $t.Value '/f' | Out-Null
@@ -760,6 +771,7 @@ function Invoke-Tiny11CoreBuildPipeline {
         }
 
         # Phase 17: scheduled-task-cleanup (upstream lines 420-438)
+        # D17.1 — $mountDir is correct here; upstream's hardcoded "C:\scratchdir" only works when scratch root is C: (context-trap CT-2).
         & $ProgressCallback @{ phase='scheduled-task-cleanup'; step='Removing 5 scheduled task definitions'; percent=82 }
         $taskTargets = Get-Tiny11CoreScheduledTaskTargets
         foreach ($t in $taskTargets) {
@@ -771,6 +783,7 @@ function Invoke-Tiny11CoreBuildPipeline {
         }
 
         # Phase 18: cleanup-image (upstream lines 478-480)
+        # D18.1 — capture+throw on non-zero; upstream silently swallows Cleanup-Image failures with `>null`.
         & $ProgressCallback @{ phase='cleanup-image'; step='DISM /Cleanup-Image /StartComponentCleanup /ResetBase'; percent=84 }
         $cleanResult = Invoke-CoreDism -Arguments @('/English', "/image:$mountDir", '/Cleanup-Image', '/StartComponentCleanup', '/ResetBase')
         if ($cleanResult.ExitCode -ne 0) { throw "DISM /Cleanup-Image failed: $($cleanResult.Output)" }
@@ -779,6 +792,7 @@ function Invoke-Tiny11CoreBuildPipeline {
     }
     finally {
         # Phase 19: unmount-install (commit on success, discard on failure; upstream lines 482-483)
+        # OOS-7 — /Discard on pipeline failure protects against committing partially-corrupt edits; upstream always /Commits.
         $unmountFlag = if ($pipelineSucceeded) { '/Commit' } else { '/Discard' }
         & $ProgressCallback @{ phase='unmount-install'; step="Unmounting install.wim with $unmountFlag"; percent=86 }
         Invoke-CoreDism -Arguments @('/English', '/Unmount-Image', "/MountDir:$mountDir", $unmountFlag) | Out-Null
@@ -801,6 +815,7 @@ function Invoke-Tiny11CoreBuildPipeline {
     $bootWim = Join-Path $sourceDir 'sources\boot.wim'
     Invoke-CoreTakeown -Path $bootWim | Out-Null
     Invoke-CoreIcacls  -Path $bootWim | Out-Null
+    # D21.2 — -EA SilentlyContinue: takeown+icacls usually clears RO already; tolerate residual case (upstream halts here without try/catch).
     Set-ItemProperty -Path $bootWim -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
     Invoke-CoreDism -Arguments @('/English', '/Mount-Image', "/ImageFile:$bootWim", '/Index:2', "/MountDir:$mountDir") | Out-Null
     try {
@@ -811,7 +826,7 @@ function Invoke-Tiny11CoreBuildPipeline {
             # Apply only the bypass-sysreqs subset to the setup image
             $bootTweaks = Get-Tiny11CoreRegistryTweaks | Where-Object Category -eq 'bypass-sysreqs'
             foreach ($t in $bootTweaks) {
-                $mountKey = "HKLM\z$($t.Hive)"
+                $mountKey = "HKLM\$($t.Hive)"
                 $fullKey  = "$mountKey\$($t.Path)"
                 if ($t.Op -eq 'add') {
                     & 'reg.exe' 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $t.Value '/f' | Out-Null
@@ -827,7 +842,12 @@ function Invoke-Tiny11CoreBuildPipeline {
         }
     }
     finally {
-        Invoke-CoreDism -Arguments @('/English', '/Unmount-Image', "/MountDir:$mountDir", '/Commit') | Out-Null
+        # D21.3 — finally-context: capture exit code and surface as Write-Warning rather than throw, so any
+        # in-flight pipeline exception (e.g. registry-write failure inside the inner try) isn't replaced.
+        $bootUnmountResult = Invoke-CoreDism -Arguments @('/English', '/Unmount-Image', "/MountDir:$mountDir", '/Commit')
+        if ($bootUnmountResult.ExitCode -ne 0) {
+            Write-Warning "dism /Unmount-Image /Commit (boot.wim) failed (exit $($bootUnmountResult.ExitCode)): $($bootUnmountResult.Output)"
+        }
     }
 
     # Phase 22: export-install-esd with /Compress:recovery, then delete install.wim (upstream lines 525-527)
@@ -851,9 +871,14 @@ function Invoke-Tiny11CoreBuildPipeline {
     if (-not $oscdimg -or -not (Test-Path $oscdimg)) {
         throw "oscdimg.exe could not be resolved (ADK not installed and download failed). Cannot create ISO."
     }
+    # D23.2 — $sourceDir resolves to upstream's "$ScratchDisk\tiny11" structurally (Phase 1 Copy-Item mirrors upstream line 61 layout).
     & $oscdimg '-m' '-o' '-u2' '-udfver102' `
         "-bootdata:2#p0,e,b$sourceDir\boot\etfsboot.com#pEF,e,b$sourceDir\efi\microsoft\boot\efisys.bin" `
         $sourceDir $OutputIso | Out-Null
+    # D23.3 — capture exit code; previously a silent | Out-Null could let build-complete fire on a failed ISO write.
+    if ($LASTEXITCODE -ne 0) {
+        throw "oscdimg failed (exit $LASTEXITCODE). ISO not created at $OutputIso."
+    }
 
     & $ProgressCallback @{ phase='complete'; step='Build complete'; percent=100; outputPath=$OutputIso }
 
