@@ -244,6 +244,13 @@ The audit fix commit (above) closed the registry composer's blocking bug but did
 - **fix(core)**: Phase 19 install.wim unmount (`/Commit` or `/Discard`) was unwrapped — `Invoke-CoreDism ... | Out-Null` discarded the result. Now captured: throws with prefix on `/Commit` failure when `$pipelineSucceeded` is true; `Write-Warning`s on `/Discard` failure to avoid replacing an in-flight pipeline exception in the failure path. Closes the audit follow-up gap.
 - **fix(core)**: Phase 21 boot.wim `/Mount-Image /Index:2` was unwrapped. Now throws with prefix `DISM /Mount-Image (boot.wim index 2) failed (exit N): <output>` on non-zero. Closes the audit follow-up gap.
 
+### Two-pass Cleanup-Image: settle pending CBS state before /ResetBase (2026-05-10)
+
+C2 retry on a 25H2 ISO progressed past Phases 4-17 with the EAP localization in place but bombed at Phase 18 with `Error: 0x800f0806 — The operation could not be completed due to pending operations`. Root cause: Phase 5 system-package-removal logged ~8 `0x800f0805` (CBS_E_NOT_INSTALLABLE) failures on FoD packages with versioned variants (Wallpaper-Content-Extended, TabletPCMath, StepsRecorder amd64/wow64 across multiple CU revisions). Each leaves a pending CBS uninstall record. `/Cleanup-Image /StartComponentCleanup /ResetBase` then refuses to reset the component-store baseline while pending records exist. (Pre-`28aaae7` runs never reached Phase 18 because the first stderr-emitting `dism /Remove-Package` terminated the script via the EAP=Stop+`2>&1` interaction; the EAP fix exposed this latent state-accumulation problem.)
+
+#### Fixed
+- **fix(core)**: Phase 18 now runs `/Cleanup-Image /StartComponentCleanup` first (no `/ResetBase`) to commit pending state, then `/Cleanup-Image /StartComponentCleanup /ResetBase`. Pass 1 failure is non-fatal (`Write-Warning`) — pass 2 sometimes still succeeds. Pass 2 failure is fatal. Documented Microsoft workaround for `0x800f0806 (CBS_E_PENDING)` on offline images with prior `/Remove-Package` failures.
+
 ### Phase 7 takeown /R-against-file fix + Start-CoreProcess EAP localization (2026-05-10)
 
 C2 retry against the build log surfaced two related bugs that together explain every prior `ERROR: The specified path is not a valid directory path.` failure:

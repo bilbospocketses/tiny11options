@@ -841,9 +841,20 @@ function Invoke-Tiny11CoreBuildPipeline {
 
         # Phase 18: cleanup-image (upstream lines 478-480)
         # D18.1 — capture+throw on non-zero; upstream silently swallows Cleanup-Image failures with `>null`.
+        # Two-pass: pass 1 (no /ResetBase) settles pending CBS state from Phase 5 per-package /Remove-Package
+        # failures (0x800f0805 on FoD packages — Wallpaper-Content-Extended, TabletPCMath, StepsRecorder
+        # and similar — which on 25H2 ISOs have versioned variants in transitional states). Without the
+        # settle pass, /ResetBase fails with 0x800f0806 (CBS_E_PENDING) because pending uninstall records
+        # block the baseline reset. Pass 1 failure is non-fatal (Write-Warning) — pass 2 sometimes still
+        # succeeds. Pass 2 failure is fatal (the resulting image would be unbootable or grossly oversized).
+        & $ProgressCallback @{ phase='cleanup-image'; step='DISM /Cleanup-Image /StartComponentCleanup (settle)'; percent=83 }
+        $cleanSettleResult = Invoke-CoreDism -Arguments @('/English', "/image:$mountDir", '/Cleanup-Image', '/StartComponentCleanup')
+        if ($cleanSettleResult.ExitCode -ne 0) {
+            Write-Warning "DISM /Cleanup-Image /StartComponentCleanup (pass 1 settle) failed (exit $($cleanSettleResult.ExitCode)). Proceeding to /ResetBase pass — pending state may have settled enough for it to succeed."
+        }
         & $ProgressCallback @{ phase='cleanup-image'; step='DISM /Cleanup-Image /StartComponentCleanup /ResetBase'; percent=84 }
         $cleanResult = Invoke-CoreDism -Arguments @('/English', "/image:$mountDir", '/Cleanup-Image', '/StartComponentCleanup', '/ResetBase')
-        if ($cleanResult.ExitCode -ne 0) { throw "DISM /Cleanup-Image failed: $($cleanResult.Output)" }
+        if ($cleanResult.ExitCode -ne 0) { throw "DISM /Cleanup-Image /ResetBase failed: $($cleanResult.Output)" }
 
         $pipelineSucceeded = $true
     }
