@@ -251,12 +251,23 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
-### Two-pass Cleanup-Image: settle pending CBS state before /ResetBase (2026-05-10)
+### Phase 3.5 RevertPendingActions: clear baseline CU pending state (2026-05-10)
 
-C2 retry on a 25H2 ISO progressed past Phases 4-17 with the EAP localization in place but bombed at Phase 18 with `Error: 0x800f0806 — The operation could not be completed due to pending operations`. Root cause: Phase 5 system-package-removal logged ~8 `0x800f0805` (CBS_E_NOT_INSTALLABLE) failures on FoD packages with versioned variants (Wallpaper-Content-Extended, TabletPCMath, StepsRecorder amd64/wow64 across multiple CU revisions). Each leaves a pending CBS uninstall record. `/Cleanup-Image /StartComponentCleanup /ResetBase` then refuses to reset the component-store baseline while pending records exist. (Pre-`28aaae7` runs never reached Phase 18 because the first stderr-emitting `dism /Remove-Package` terminated the script via the EAP=Stop+`2>&1` interaction; the EAP fix exposed this latent state-accumulation problem.)
+C2 retry against the two-pass `/Cleanup-Image` (commit `cdb264e`) showed both passes failing identically with `0x800f0806`. Reading `C:\Windows\Logs\DISM\dism.log` for the failed run revealed CBS's actual diagnosis:
+
+```
+CBS  Maint: Pending content found, aborting maintenance
+CBS  Maint: processing complete. [0x800f0806 - CBS_E_PENDING]
+CBS  Session finalized. Reboot required: yes [0x800f0806 - CBS_E_PENDING]
+```
+
+The pending state is **inherited from the 25H2 ISO baseline** — CU 26200.8037 ships with pre-staged Windows Update content marked "pending until next boot." CBS refuses every `/Cleanup-Image` variant (settle, ResetBase, anything) while pending content exists. The two-pass approach in `cdb264e` couldn't help because the settle pass *also* requires cleared pending state — both passes hit the same wall for the same reason.
+
+The two-pass logic has been reverted. Replaced with a Phase 3.5 preflight call to `/Cleanup-Image /RevertPendingActions` immediately after the architecture-detect phase. This is Microsoft's documented offline-image fix for the inherited-pending-state case: it explicitly clears the pre-staged content so subsequent `/Cleanup-Image` operations can proceed. Our `/Remove-Package` operations within the same DISM session are committed at function-return time and are not affected by the revert (which targets uncommitted-since-last-boot transactions only).
 
 #### Fixed
-- **fix(core)**: Phase 18 now runs `/Cleanup-Image /StartComponentCleanup` first (no `/ResetBase`) to commit pending state, then `/Cleanup-Image /StartComponentCleanup /ResetBase`. Pass 1 failure is non-fatal (`Write-Warning`) — pass 2 sometimes still succeeds. Pass 2 failure is fatal. Documented Microsoft workaround for `0x800f0806 (CBS_E_PENDING)` on offline images with prior `/Remove-Package` failures.
+- **fix(core)**: Phase 3.5 (new) runs `dism /Cleanup-Image /RevertPendingActions` against the mounted image to clear inherited CU pending content. Non-fatal on failure (`Write-Warning`) — Phase 18 `/ResetBase` will fail loudly if pending state remains, which is the right signal for whatever next investigation needs to happen.
+- **revert(core)**: Phase 18 reverts to the single-pass `/Cleanup-Image /StartComponentCleanup /ResetBase` from before commit `cdb264e`. The two-pass settle approach was empirically wrong-headed once `dism.log` evidence pinned the cause to inherited-pending-state rather than `/Remove-Package`-induced pending state.
 
 ### Phase 7 takeown /R-against-file fix + Start-CoreProcess EAP localization (2026-05-10)
 

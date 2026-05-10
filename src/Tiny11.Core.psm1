@@ -722,6 +722,22 @@ function Invoke-Tiny11CoreBuildPipeline {
             else { throw "Unsupported architecture: $arch (Core mode requires amd64 or arm64)" }
         }
 
+        # Phase 3.5: revert pending CBS actions inherited from the source ISO baseline.
+        # 25H2 ISOs (image 26200) ship with pre-staged Windows Update content (CU 26200.NNNN) that CBS
+        # logs as "Maint: Pending content found, aborting maintenance" — blocking every /Cleanup-Image
+        # variant later in the pipeline including our Phase 18 /ResetBase. Microsoft's documented offline
+        # fix is /Cleanup-Image /RevertPendingActions against the mounted image; this clears the
+        # pre-staged content so /StartComponentCleanup /ResetBase can proceed. Our subsequent
+        # /Remove-Package operations within this same DISM session are committed at return time and
+        # are not affected by this revert (which targets uncommitted-since-last-boot transactions only).
+        # Non-fatal here because if Phase 18 succeeds without this, we don't want a transient
+        # /RevertPendingActions failure to abort an otherwise-clean build.
+        & $ProgressCallback @{ phase='preflight-revert-pending'; step='Reverting pending CBS actions from image baseline'; percent=13 }
+        $revertResult = Invoke-CoreDism -Arguments @('/English', "/image:$mountDir", '/Cleanup-Image', '/RevertPendingActions')
+        if ($revertResult.ExitCode -ne 0) {
+            Write-Warning "DISM /Cleanup-Image /RevertPendingActions returned non-zero (exit $($revertResult.ExitCode)). Proceeding — Phase 18 /ResetBase will fail loudly if pending state remains."
+        }
+
         # Phase 4: appx-removal (upstream lines 111-128)
         & $ProgressCallback @{ phase='appx-removal'; step="Removing provisioned apps"; percent=15 }
         $appxPrefixes = Get-Tiny11CoreAppxPrefixes
@@ -853,17 +869,8 @@ function Invoke-Tiny11CoreBuildPipeline {
 
         # Phase 18: cleanup-image (upstream lines 478-480)
         # D18.1 — capture+throw on non-zero; upstream silently swallows Cleanup-Image failures with `>null`.
-        # Two-pass: pass 1 (no /ResetBase) settles pending CBS state from Phase 5 per-package /Remove-Package
-        # failures (0x800f0805 on FoD packages — Wallpaper-Content-Extended, TabletPCMath, StepsRecorder
-        # and similar — which on 25H2 ISOs have versioned variants in transitional states). Without the
-        # settle pass, /ResetBase fails with 0x800f0806 (CBS_E_PENDING) because pending uninstall records
-        # block the baseline reset. Pass 1 failure is non-fatal (Write-Warning) — pass 2 sometimes still
-        # succeeds. Pass 2 failure is fatal (the resulting image would be unbootable or grossly oversized).
-        & $ProgressCallback @{ phase='cleanup-image'; step='DISM /Cleanup-Image /StartComponentCleanup (settle)'; percent=83 }
-        $cleanSettleResult = Invoke-CoreDism -Arguments @('/English', "/image:$mountDir", '/Cleanup-Image', '/StartComponentCleanup')
-        if ($cleanSettleResult.ExitCode -ne 0) {
-            Write-Warning "DISM /Cleanup-Image /StartComponentCleanup (pass 1 settle) failed (exit $($cleanSettleResult.ExitCode)). Proceeding to /ResetBase pass — pending state may have settled enough for it to succeed."
-        }
+        # Pending CBS state inherited from the 25H2 ISO baseline is cleared in Phase 3.5
+        # (preflight-revert-pending) so /ResetBase can proceed without 0x800f0806 (CBS_E_PENDING).
         & $ProgressCallback @{ phase='cleanup-image'; step='DISM /Cleanup-Image /StartComponentCleanup /ResetBase'; percent=84 }
         $cleanResult = Invoke-CoreDism -Arguments @('/English', "/image:$mountDir", '/Cleanup-Image', '/StartComponentCleanup', '/ResetBase')
         if ($cleanResult.ExitCode -ne 0) { throw "DISM /Cleanup-Image /ResetBase failed: $($cleanResult.Output)" }
