@@ -160,6 +160,48 @@ Closes the only remaining open task in Phase 5 (Tasks 27/28 are CANCELLED per bi
   - Bidirectional drift catcher: a fourth test asserts every entry in `$intentionallyNotEmbedded` still exists on disk, so stale exclusions don't accumulate when a file gets deleted from the repo but stays in the exclusion list.
 - Pester total: 85 (was 81; +4 new).
 
+### tiny11 Core build mode (2026-05-09)
+
+Adds an alternative build mode in the launcher that produces a significantly smaller (sub-2 GB savings) Windows 11 image at the cost of serviceability — Core builds cannot install Windows Updates, add languages, or enable Windows features post-install. Use case: rapid VM testing, short-lived dev environments, embedded/appliance scenarios. Not a daily-driver Windows substitute.
+
+The feature ports unique operations of upstream `ntdevlabs/tiny11builder`'s `tiny11Coremaker.ps1` into our launcher's architecture. Full design spec at `docs/superpowers/specs/2026-05-09-tiny11-core-mode-design.md`; implementation plan at `docs/superpowers/plans/2026-05-09-tiny11-core-mode.md`.
+
+#### Added
+
+- `src/Tiny11.Core.psm1` — new module with 6 data accessors (`Get-Tiny11CoreAppxPrefixes` returning 32 entries, `Get-Tiny11CoreSystemPackagePatterns` with `-LanguageCode` templating, `Get-Tiny11CoreFilesystemTargets`, `Get-Tiny11CoreScheduledTaskTargets`, `Get-Tiny11CoreWinSxsKeepList` per architecture, `Get-Tiny11CoreRegistryTweaks` with ~85 entries across 6 categories) plus 5 operation orchestrators (`Invoke-Tiny11CoreSystemPackageRemoval`, `Invoke-Tiny11CoreNet35Enable`, `Invoke-Tiny11CoreImageExport`, `Invoke-Tiny11CoreWinSxsWipe`, `Invoke-Tiny11CoreBuildPipeline`).
+- `tiny11Coremaker-from-config.ps1` — non-interactive wrapper invoked by `BuildHandlers.cs` when Core mode is selected. Mirrors `tiny11maker-from-config.ps1`'s structure: same Write-Marker JSON envelope, same try/catch, calls `Invoke-Tiny11CoreBuildPipeline` instead of `Invoke-Tiny11BuildPipeline`.
+- `launcher/Gui/Handlers/BuildHandlers.cs` — `coreMode` payload routing: when the JS payload's `coreMode` field is true, the C# handler routes to `tiny11Coremaker-from-config.ps1` and builds Core-shaped args (no `-ConfigPath` / `-FastBuild`, with `-EnableNet35` instead). 4 new xUnit tests cover the routing.
+- Step 1 UI additions in `ui/app.js`:
+  - "Build tiny11 Core (smaller, non-serviceable)" checkbox at the bottom of Step 1
+  - Inline yellow-tinted warning panel (visible when checked) describing the serviceability tradeoff
+  - "Enable .NET 3.5 (legacy app compatibility)" sub-checkbox (visible when Core checked)
+  - Fast-build row hides when Core is on (Core has its own fixed compression sequence)
+- Breadcrumb behavior: when `coreMode === true`, the "Customize" pip dims via `data-disabled="true"` + CSS `opacity: 0.4; pointer-events: none;` and Next/Back navigation skip past it.
+- Step 3 layout adapts: in Core mode the "Changes: N items applied" row is replaced with "Mode: Core" + ".NET 3.5: <Enabled|Disabled>" rows; output ISO filename default flips between `tiny11.iso` and `tiny11core.iso` based on `state.coreMode` (without overriding user-typed paths).
+- Cleanup-command block in BOTH the build-progress build-details panel (proactive — visible while user decides whether to cancel) AND the build-failed screen (reactive — visible after a cancel/error). Six elevated-PowerShell commands with `<scratchDir>\mount` + `<scratchDir>\source` paths interpolated from `state.scratchDir`. Shared `renderCoreCleanupBlock()` helper.
+- 24 new Pester tests in `tests/Tiny11.Core.Tests.ps1` covering all data accessors and operation orchestrators (orchestrators use mocked DISM / mocked filesystem).
+- 4 new xUnit tests in `launcher/Tests/BuildHandlersTests.cs` covering the `coreMode` routing logic.
+- `launcher/tiny11options.Launcher.csproj` `<EmbeddedResource>` entries for `src/Tiny11.Core.psm1` and `tiny11Coremaker-from-config.ps1` so they ship in the launcher .exe.
+
+#### Changed
+
+- `tiny11Coremaker.ps1` (upstream original) is now retained as parity reference until Phase 7 C2 smoke (Core build end-to-end) confirms the wrapper produces a working ISO. Deletion is a follow-up commit after C2 passes. The drift test's `$intentionallyNotEmbedded` rationale comment was updated accordingly.
+
+#### Fixed
+
+- `src/Tiny11.Core.psm1` and `tiny11Coremaker-from-config.ps1` re-saved as UTF-8 with BOM. The launcher invokes `powershell.exe` (Windows PowerShell 5.1), which reads UTF-8-without-BOM files as Windows-1252, mangling the em-dash characters (—) used in comments and string literals. Without this fix, Phase 7 C2 smoke would have hit a launch-time parse error from inside the bundled PowerShell subprocess.
+- `ui/app.js` had 46 curly Unicode quotes (U+2018, U+2019) introduced by an autoformatter into the new renderSourceStep additions, replaced with ASCII single quotes. JS doesn't accept curly quotes as string delimiters; the file would have thrown SyntaxError on every affected line. Caught by editor diagnostics before Phase 7 smoke.
+
+#### Out of scope (deferred to v1.x)
+
+- Customizing Core (per-item toggles in a stripped-down Step 2)
+- Hybrid mode (catalog-driven removals + WinSxS wipe)
+- Rollback / resumable WinSxS wipe (cleanup-via-elevated-PowerShell guidance covers user)
+- Localized warning copy
+- Estimated build time / output ISO size hints in Step 1
+
+Total scope: ~10 commits across the feature plus several auto-format / UTF-8-encoding fixes. Test counts: xUnit 45/45 (was 41; +4), Pester 125/125 (was 85 pre-feature; +40 in `Tiny11.Core.Tests.ps1`).
+
 ## [0.2.0] - 2026-05-07
 
 UX wizard improvements (theme detection + toggle, persistent window size, bulk-select, clickable rows, output-path autofill, locked build-details panel), scripted-mode CLI additions (`-Edition`, `-AllowVLSource`), small cleanups, and expanded test coverage. Built end-to-end ISO + Hyper-V install verified. 82/82 Pester tests green (72 prior + 10 new).

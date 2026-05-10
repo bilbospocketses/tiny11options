@@ -45,6 +45,38 @@ pwsh -NoProfile -File tiny11maker.ps1 `
 `-Config` is one of the example profiles or your own.
 `-NonInteractive` suppresses the GUI; implied when both `-Source` and `-Config` are present.
 
+## Build modes
+
+The launcher offers two build modes in Step 1. Pick the one that fits your use case:
+
+### Standard tiny11 (default)
+
+Reduced Windows 11 image. Removes ~74 catalog items (consumer apps, Office stubs, telemetry components, sponsored apps, scheduled tasks, etc.) configurable per-item in Step 2. Output ISO is ~2 GB smaller than vanilla Windows 11; with the "Fast build" checkbox unchecked, recovery compression saves an additional ~2 GB.
+
+**Use when:** you want a leaner Windows 11 install for everyday use, kept up to date via Windows Update, with the option to add languages or enable features later. Suitable as a daily-driver Windows install.
+
+**Serviceability:** ✅ Windows Update works. Languages and features can be added post-install. Standard Microsoft servicing pipeline applies.
+
+### tiny11 Core (smaller, non-serviceable)
+
+Significantly more aggressive image reduction. In addition to standard tiny11's removals, Core also:
+- Removes the entire WinSxS component store (preserving only ~30 retained subdirs needed for boot)
+- Disables Windows Defender (services set to disabled)
+- Disables Windows Update (services + policies + RunOnce)
+- Removes additional system packages: Internet Explorer remnants, Media Player, WordPad, TabletPCMath, StepsRecorder, language features (Handwriting/OCR/Speech/TextToSpeech), Wallpaper-Content-Extended, Defender-Client
+- Replaces winre.wim with an empty file
+- Optionally enables .NET 3.5 at build time (the only feature you can opt into — cannot be added post-install)
+
+**Use when:** rapid VM testing, short-lived dev environments, embedded/appliance scenarios where post-install changes don't matter and the smallest practical Windows 11 image is the goal.
+
+**Serviceability:** ❌ Windows Update is disabled and the WinSxS store is gone. You cannot install Windows Updates, add languages, or enable Windows features after install. **Not suitable as a daily-driver Windows install.**
+
+**Build time:** Core builds take ~30-45 minutes (similar to standard with recovery compression) but the WinSxS-wipe phase alone runs ~5-10 minutes — longer than any single phase in a standard build.
+
+**Cancellation note:** if you cancel during the WinSxS-wipe phase, the scratch directory is left in a non-resumable state (locked NTFS permissions, half-populated WinSxS_edit, dangling DISM mount). The build-progress UI surfaces a six-command elevated-PowerShell cleanup sequence to recover. Standard tiny11 builds don't have this issue — cancel cleanup is automatic.
+
+To select Core mode, check the "Build tiny11 Core" box at the bottom of Step 1. The wizard then skips Step 2 (no per-item customization in Core) and goes directly to Step 3 with a Core-mode summary.
+
 ## WebView2 boundary
 
 This is **not** a generic "remove all Edge stuff" script. We strip the Edge **browser** binary, but leave the **WebView2 Runtime** alone.
