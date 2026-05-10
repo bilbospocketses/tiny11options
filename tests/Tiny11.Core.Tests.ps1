@@ -186,3 +186,53 @@ Describe 'Get-Tiny11CoreRegistryTweaks' {
         }
     }
 }
+
+Describe 'External-command wrapper shims' {
+    BeforeAll {
+        $script:modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $script:modulePath -Force
+    }
+
+    It 'Invoke-CoreDism passes args to dism.exe and surfaces exit code' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Start-CoreProcess { @{ ExitCode = 0; Output = 'mock dism output' } }
+            $result = Invoke-CoreDism -Arguments @('/English', '/image:C:\mount', '/Get-WimInfo')
+            Should -Invoke Start-CoreProcess -Exactly 1 -ParameterFilter {
+                $FileName -eq 'dism.exe' -and
+                $Arguments -contains '/English' -and
+                $Arguments -contains '/image:C:\mount'
+            }
+            $result.ExitCode | Should -Be 0
+        }
+    }
+
+    It 'Invoke-CoreTakeown passes args to takeown.exe' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Start-CoreProcess { @{ ExitCode = 0 } }
+            Invoke-CoreTakeown -Path 'C:\some\dir' -Recurse
+            Should -Invoke Start-CoreProcess -Exactly 1 -ParameterFilter {
+                $FileName -eq 'takeown.exe' -and
+                $Arguments -contains '/F' -and
+                $Arguments -contains 'C:\some\dir' -and
+                $Arguments -contains '/R' -and
+                $Arguments -contains '/D' -and
+                $Arguments -contains 'Y'
+            }
+        }
+    }
+
+    It 'Invoke-CoreIcacls passes args to icacls.exe with grant Administrators:F' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Start-CoreProcess { @{ ExitCode = 0 } }
+            Invoke-CoreIcacls -Path 'C:\some\dir' -Recurse
+            Should -Invoke Start-CoreProcess -Exactly 1 -ParameterFilter {
+                $FileName -eq 'icacls.exe' -and
+                $Arguments -contains 'C:\some\dir' -and
+                $Arguments -contains '/grant' -and
+                ($Arguments -join ' ') -match 'Administrators:F' -and
+                $Arguments -contains '/T' -and
+                $Arguments -contains '/C'
+            }
+        }
+    }
+}

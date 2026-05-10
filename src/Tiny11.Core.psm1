@@ -351,6 +351,61 @@ function Get-Tiny11CoreRegistryTweaks {
     )
 }
 
+# Internal helper: invoke an external .exe with controlled args, capture
+# exit code + output. Wrapped as a named function so Pester `Mock` can
+# intercept cleanly during unit tests (the `&` call operator is harder
+# to mock reliably). Not exported.
+function Start-CoreProcess {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$FileName,
+        [string[]]$Arguments = @()
+    )
+    $output = & $FileName @Arguments 2>&1
+    [pscustomobject]@{
+        ExitCode = $LASTEXITCODE
+        Output   = $output -join "`n"
+    }
+}
+
+# Wrapper for dism.exe invocations (mounting, removing packages, exporting,
+# cleanup, etc.). Returns @{ExitCode, Output}; callers check ExitCode and
+# throw on non-zero with descriptive context.
+function Invoke-CoreDism {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string[]]$Arguments
+    )
+    Start-CoreProcess -FileName 'dism.exe' -Arguments $Arguments
+}
+
+# Wrapper for takeown.exe — assigns Administrators ownership of $Path.
+# /D Y answers the confirmation prompt for inaccessible directories.
+function Invoke-CoreTakeown {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$Recurse
+    )
+    $args = @('/F', $Path)
+    if ($Recurse) { $args += '/R' }
+    $args += @('/D', 'Y')
+    Start-CoreProcess -FileName 'takeown.exe' -Arguments $args
+}
+
+# Wrapper for icacls.exe — grants Administrators full control. /T recurses,
+# /C continues on errors.
+function Invoke-CoreIcacls {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$Recurse
+    )
+    $args = @($Path, '/grant', 'Administrators:F')
+    if ($Recurse) { $args += @('/T', '/C') }
+    Start-CoreProcess -FileName 'icacls.exe' -Arguments $args
+}
+
 Export-ModuleMember -Function `
     Get-Tiny11CoreAppxPrefixes, `
     Get-Tiny11CoreSystemPackagePatterns, `
