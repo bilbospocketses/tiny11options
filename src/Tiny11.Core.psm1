@@ -746,6 +746,18 @@ function Invoke-Tiny11CoreBuildPipeline {
 
         # Phase 5: system-package-removal (upstream lines 130-166)
         & $ProgressCallback @{ phase='system-package-removal'; step='Removing system packages (IE, MediaPlayer, Defender, etc.)'; percent=20 }
+
+        # DIAGNOSTIC for upcoming Phase 5b (capabilities-removal classification): dump /Get-Capabilities
+        # and /Get-Features to the log so the next session can classify which artifacts should be added to
+        # a 25H2-tuned strip-list. Read-only; both calls just enumerate, and Start-CoreProcess auto-logs
+        # the full output via OUTPUT entries. Once Phase 5b lands with the classified strip-list, the
+        # /Get-Capabilities call here becomes Phase 5b's first step (the enumeration that drives per-pattern
+        # /Remove-Capability) — at that point this diagnostic block collapses into 5b naturally.
+        Write-CoreLog 'DIAGNOSTIC: enumerating capabilities for Phase 5b strip-list classification'
+        Invoke-CoreDism -Arguments @('/English', "/image:$mountDir", '/Get-Capabilities', '/Format:Table') | Out-Null
+        Write-CoreLog 'DIAGNOSTIC: enumerating optional features for Phase 5b strip-list classification'
+        Invoke-CoreDism -Arguments @('/English', "/image:$mountDir", '/Get-Features', '/Format:Table') | Out-Null
+
         $sysPatterns = Get-Tiny11CoreSystemPackagePatterns -LanguageCode $languageCode
         Invoke-Tiny11CoreSystemPackageRemoval -ScratchDir $mountDir -Patterns $sysPatterns -LanguageCode $languageCode
 

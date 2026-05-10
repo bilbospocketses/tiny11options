@@ -244,6 +244,13 @@ The audit fix commit (above) closed the registry composer's blocking bug but did
 - **fix(core)**: Phase 19 install.wim unmount (`/Commit` or `/Discard`) was unwrapped — `Invoke-CoreDism ... | Out-Null` discarded the result. Now captured: throws with prefix on `/Commit` failure when `$pipelineSucceeded` is true; `Write-Warning`s on `/Discard` failure to avoid replacing an in-flight pipeline exception in the failure path. Closes the audit follow-up gap.
 - **fix(core)**: Phase 21 boot.wim `/Mount-Image /Index:2` was unwrapped. Now throws with prefix `DISM /Mount-Image (boot.wim index 2) failed (exit N): <output>` on non-zero. Closes the audit follow-up gap.
 
+### Phase 5 diagnostic dump: /Get-Capabilities + /Get-Features (2026-05-10)
+
+Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 failures on 25H2 ISOs (Wallpaper-Content-Extended, TabletPCMath, StepsRecorder × 4 variants) are FoDs that need `/Remove-Capability` not `/Remove-Package` on modern Win11 builds. Naming conventions differ — `Wallpapers~~~~0.0.1.0` vs `Microsoft-Windows-X-Package~31bf...~amd64~~10.0.26200.NNNN` — so we need ground truth from a real 25H2 image rather than guessing names from docs.
+
+#### Added
+- **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
+
 ### Two-pass Cleanup-Image: settle pending CBS state before /ResetBase (2026-05-10)
 
 C2 retry on a 25H2 ISO progressed past Phases 4-17 with the EAP localization in place but bombed at Phase 18 with `Error: 0x800f0806 — The operation could not be completed due to pending operations`. Root cause: Phase 5 system-package-removal logged ~8 `0x800f0805` (CBS_E_NOT_INSTALLABLE) failures on FoD packages with versioned variants (Wallpaper-Content-Extended, TabletPCMath, StepsRecorder amd64/wow64 across multiple CU revisions). Each leaves a pending CBS uninstall record. `/Cleanup-Image /StartComponentCleanup /ResetBase` then refuses to reset the component-store baseline while pending records exist. (Pre-`28aaae7` runs never reached Phase 18 because the first stderr-emitting `dism /Remove-Package` terminated the script via the EAP=Stop+`2>&1` interaction; the EAP fix exposed this latent state-accumulation problem.)
