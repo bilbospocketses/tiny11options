@@ -251,6 +251,24 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
+### SetupComplete.cmd: re-disable WU services post-OOBE (2026-05-10)
+
+Phase 7 C3 verification of the first successful Core build (commit `38d22fa` SetupComplete.cmd path) showed all bypass-sysreqs registry tweaks persisted correctly, Defender services at Start=4, and appx removals stuck — BUT `wuauserv` was at Start=3 (Manual) instead of the intended Start=4 (Disabled). Investigation:
+
+- Offline reg writes set `wuauserv` Start=4 via the `update-disable` data category (proven mechanism: Defender services in the same data row pattern were at Start=4).
+- RunOnce keys (`StopWUPostOOBE1/2/3`, `DisbaleWUPostOOBE1/2`) fired post-boot — the RunOnce hive is now empty, confirming they ran.
+- Yet `wuauserv` is back at Start=3.
+
+Conclusion: Windows OOBE/post-OOBE actively defends Manual as the "correct" state for wuauserv, overriding both our offline reg AND the RunOnce re-application. wuauserv is a trigger-start service on modern Windows; Setup ensures it's reachable for first-boot update orchestration. By the time the user logs in, all our early-boot mechanisms have lost the race.
+
+Fix: extend the SetupComplete.cmd we already inject with a re-disable block that runs after the `/Cleanup-Image`. SetupComplete.cmd executes late enough in Setup that most resets should already have happened.
+
+#### Changed
+- **fix(core)**: `New-Tiny11CorePostBootCleanupScript` now also runs `sc config wuauserv start= disabled`, `sc config UsoSvc start= disabled`, `sc config WaaSMedicSvc start= disabled`, immediately stops all three with `sc stop`, redundantly writes `HKLM\SYSTEM\CurrentControlSet\Services\wuauserv` `Start=REG_DWORD:4` (so whichever mechanism Windows respects more wins), and logs the resolved state via `sc qc wuauserv` so the next iteration's `tiny11-postboot.log` confirms whether the re-disable held. 7 new Pester tests covering each command and the verification call.
+
+#### Known limitation
+- If Windows STILL resets wuauserv to Manual after SetupComplete.cmd (some later boot trigger we haven't identified), v1.0.1 needs the persistent scheduled-task mechanism already designed in `todo_tiny11options.md` Active #8. Empirical: ship v1.0.0 with this fix; if Phase 7 C3 of the next build still shows Start=3, escalate to the scheduled-task approach.
+
 ### SetupComplete.cmd injection: defer /Cleanup-Image to first boot (2026-05-10)
 
 `/RevertPendingActions` (added in `b171d4d`) ran successfully but DISM's output revealed it can't actually clear pending state offline:

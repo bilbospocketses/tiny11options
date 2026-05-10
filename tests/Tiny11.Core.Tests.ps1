@@ -504,6 +504,38 @@ Describe 'New-Tiny11CorePostBootCleanupScript' {
         $script = New-Tiny11CorePostBootCleanupScript
         $script | Should -Match 'mkdir "%SystemDrive%\\Windows\\Logs"'
     }
+
+    It 'disables wuauserv via sc config start= disabled' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'sc config wuauserv\s+start= disabled'
+    }
+
+    It 'disables UsoSvc (Update Session Orchestrator) via sc config' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'sc config UsoSvc\s+start= disabled'
+    }
+
+    It 'disables WaaSMedicSvc (Windows-As-A-Service healing) via sc config' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'sc config WaaSMedicSvc\s+start= disabled'
+    }
+
+    It 'stops the three WU-related services immediately (defense in depth alongside sc config)' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'sc stop\s+wuauserv'
+        $script | Should -Match 'sc stop\s+UsoSvc'
+        $script | Should -Match 'sc stop\s+WaaSMedicSvc'
+    }
+
+    It 'redundantly writes wuauserv Start=4 to the registry as a second mechanism' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'reg add "HKLM\\SYSTEM\\CurrentControlSet\\Services\\wuauserv" /v Start /t REG_DWORD /d 4 /f'
+    }
+
+    It 'verifies the resolved wuauserv state via sc qc for the next-iteration diagnostic' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'sc qc wuauserv'
+    }
 }
 
 Describe 'Install-Tiny11CorePostBootCleanup' {
