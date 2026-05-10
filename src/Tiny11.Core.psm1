@@ -624,6 +624,17 @@ function Invoke-Tiny11CoreBuildPipeline {
     & $ProgressCallback @{ phase='preflight'; step='Mounting install.wim for offline edit'; percent=10 }
     New-Item -ItemType Directory -Force -Path $mountDir | Out-Null
     $installWim = Join-Path $sourceDir 'sources\install.wim'
+
+    # The Copy-Item from a mounted ISO inherits the read-only filesystem
+    # attribute on copied files. DISM /Mount-Image with intent-to-modify
+    # (no /ReadOnly) fails with 0xc1510111 ("You do not have permissions
+    # to mount and modify this image") until ownership + ACL + RO bit are
+    # cleared. Same fix upstream Coremaker applies before its install.wim
+    # mount and that we already apply before the boot.wim mount in phase 21.
+    Invoke-CoreTakeown -Path $installWim | Out-Null
+    Invoke-CoreIcacls  -Path $installWim | Out-Null
+    Set-ItemProperty -Path $installWim -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+
     $mountResult = Invoke-CoreDism -Arguments @('/English', '/Mount-Image', "/ImageFile:$installWim", "/Index:$ImageIndex", "/MountDir:$mountDir")
     if ($mountResult.ExitCode -ne 0) { throw "DISM /Mount-Image failed: $($mountResult.Output)" }
 
