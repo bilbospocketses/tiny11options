@@ -46,11 +46,6 @@ public class BuildHandlers : IBridgeHandler
         if (_activeBuild is { HasExited: false })
             return Error("a build is already in progress");
 
-        var configPath = Path.Combine(_resourcesDir, $"build-config-{Guid.NewGuid():N}.json");
-        await File.WriteAllTextAsync(configPath, payload?.ToJsonString() ?? "{}");
-
-        var script = Path.Combine(_resourcesDir, "tiny11maker-from-config.ps1");
-
         // PORTED: tiny11maker.ps1:271-278 (legacy `build` worker payload reads).
         // Legacy reads source / imageIndex / scratchDir / outputPath / unmountSource /
         // fastBuild / selections from the JS payload and passes them all to
@@ -62,6 +57,8 @@ public class BuildHandlers : IBridgeHandler
         var scratchDir = payload?["scratchDir"]?.ToString() ?? "";
         var unmountSource = payload?["unmountSource"]?.GetValue<bool>() ?? false;
         var fastBuild = payload?["fastBuild"]?.GetValue<bool>() ?? false;
+        var coreMode = payload?["coreMode"]?.GetValue<bool>() ?? false;
+        var enableNet35 = payload?["enableNet35"]?.GetValue<bool>() ?? false;
 
         // JS-side `state.edition` is the integer ImageIndex (set in app.js:527
         // from p.editions[0].index). Treat it as ImageIndex by default; only fall
@@ -79,21 +76,22 @@ public class BuildHandlers : IBridgeHandler
                 editionName = editionRaw.ToString();
         }
 
-        var args = new System.Text.StringBuilder("-ExecutionPolicy Bypass -NoProfile -File ");
-        args.Append('"').Append(script).Append('"');
-        args.Append(" -ConfigPath \"").Append(configPath).Append('"');
-        args.Append(" -Source \"").Append(src).Append('"');
-        args.Append(" -OutputIso \"").Append(outputIso).Append('"');
-        if (imageIndex > 0) args.Append(" -ImageIndex ").Append(imageIndex);
-        if (!string.IsNullOrEmpty(editionName)) args.Append(" -Edition \"").Append(editionName).Append('"');
-        if (!string.IsNullOrEmpty(scratchDir)) args.Append(" -ScratchDir \"").Append(scratchDir).Append('"');
-        if (unmountSource) args.Append(" -UnmountSource");
-        if (fastBuild) args.Append(" -FastBuild");
+        string psArgs;
+        if (coreMode)
+        {
+            psArgs = BuildCoreArgs(_resourcesDir, src, outputIso, scratchDir, imageIndex, editionName, unmountSource, enableNet35);
+        }
+        else
+        {
+            var configPath = Path.Combine(_resourcesDir, $"build-config-{Guid.NewGuid():N}.json");
+            await File.WriteAllTextAsync(configPath, payload?.ToJsonString() ?? "{}");
+            psArgs = BuildStandardArgs(_resourcesDir, configPath, src, outputIso, scratchDir, imageIndex, editionName, unmountSource, fastBuild);
+        }
 
         var psi = new ProcessStartInfo
         {
             FileName = "powershell.exe",
-            Arguments = args.ToString(),
+            Arguments = psArgs,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -168,6 +166,60 @@ public class BuildHandlers : IBridgeHandler
             }
         }
         catch { /* malformed line — ignore */ }
+    }
+
+    // Extracted for testability: builds the powershell.exe -Arguments string for
+    // the standard (non-Core) build path. Callers that need to unit-test routing
+    // logic can invoke this via reflection without spawning a real process.
+    internal static string BuildStandardArgs(
+        string resourcesDir,
+        string configPath,
+        string src,
+        string outputIso,
+        string scratchDir,
+        int imageIndex,
+        string editionName,
+        bool unmountSource,
+        bool fastBuild)
+    {
+        var script = Path.Combine(resourcesDir, "tiny11maker-from-config.ps1");
+        var args = new System.Text.StringBuilder("-ExecutionPolicy Bypass -NoProfile -File ");
+        args.Append('"').Append(script).Append('"');
+        args.Append(" -ConfigPath \"").Append(configPath).Append('"');
+        args.Append(" -Source \"").Append(src).Append('"');
+        args.Append(" -OutputIso \"").Append(outputIso).Append('"');
+        if (imageIndex > 0) args.Append(" -ImageIndex ").Append(imageIndex);
+        if (!string.IsNullOrEmpty(editionName)) args.Append(" -Edition \"").Append(editionName).Append('"');
+        if (!string.IsNullOrEmpty(scratchDir)) args.Append(" -ScratchDir \"").Append(scratchDir).Append('"');
+        if (unmountSource) args.Append(" -UnmountSource");
+        if (fastBuild) args.Append(" -FastBuild");
+        return args.ToString();
+    }
+
+    // Extracted for testability: builds the powershell.exe -Arguments string for
+    // the Core build path. No -ConfigPath, no -FastBuild, no selections — Core
+    // uses fixed compression and has no catalog.
+    internal static string BuildCoreArgs(
+        string resourcesDir,
+        string src,
+        string outputIso,
+        string scratchDir,
+        int imageIndex,
+        string editionName,
+        bool unmountSource,
+        bool enableNet35)
+    {
+        var script = Path.Combine(resourcesDir, "tiny11Coremaker-from-config.ps1");
+        var args = new System.Text.StringBuilder("-ExecutionPolicy Bypass -NoProfile -File ");
+        args.Append('"').Append(script).Append('"');
+        args.Append(" -Source \"").Append(src).Append('"');
+        args.Append(" -OutputIso \"").Append(outputIso).Append('"');
+        if (imageIndex > 0) args.Append(" -ImageIndex ").Append(imageIndex);
+        if (!string.IsNullOrEmpty(editionName)) args.Append(" -Edition \"").Append(editionName).Append('"');
+        if (!string.IsNullOrEmpty(scratchDir)) args.Append(" -ScratchDir \"").Append(scratchDir).Append('"');
+        if (enableNet35) args.Append(" -EnableNet35");
+        if (unmountSource) args.Append(" -UnmountSource");
+        return args.ToString();
     }
 
     private static Bridge.BridgeMessage Error(string msg)
