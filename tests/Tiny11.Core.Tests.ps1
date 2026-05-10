@@ -236,3 +236,70 @@ Describe 'External-command wrapper shims' {
         }
     }
 }
+
+Describe 'Invoke-Tiny11CoreSystemPackageRemoval' {
+    BeforeAll {
+        $script:modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $script:modulePath -Force
+    }
+
+    It 'invokes dism /Get-Packages once and /Remove-Package once per matching package' {
+        InModuleScope 'Tiny11.Core' {
+            $script:dismCalls = @()
+            Mock Invoke-CoreDism {
+                $script:dismCalls += , @($Arguments)
+                if ($Arguments -contains '/Get-Packages') {
+                    # Simulate dism /Format:Table output: first whitespace-delimited token is the
+                    # package identity, followed by state and release-type columns.
+                    # Header row + one data row.
+                    $tableOutput = "Package Identity                                                         State      Release Type`n" +
+                                   "Microsoft-Windows-MediaPlayer-Package~31bf3856ad364e35~amd64~~10.0.22621.1  Installed  Foundation"
+                    return @{ ExitCode = 0; Output = $tableOutput }
+                }
+                return @{ ExitCode = 0; Output = '' }
+            }
+
+            Invoke-Tiny11CoreSystemPackageRemoval `
+                -ScratchDir 'C:\mount' `
+                -Patterns @('Microsoft-Windows-MediaPlayer-Package~31bf3856ad364e35') `
+                -LanguageCode 'en-US'
+
+            # First call enumerates; second call removes the matching one
+            $script:dismCalls.Count | Should -BeGreaterOrEqual 2
+            ($script:dismCalls[0] -join ' ') | Should -Match '/Get-Packages'
+            ($script:dismCalls[1] -join ' ') | Should -Match '/Remove-Package'
+        }
+    }
+
+    It 'is non-fatal when zero packages match a pattern' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Invoke-CoreDism {
+                if ($Arguments -contains '/Get-Packages') {
+                    return @{ ExitCode = 0; Output = '' }   # no packages reported
+                }
+                return @{ ExitCode = 0; Output = '' }
+            }
+
+            { Invoke-Tiny11CoreSystemPackageRemoval `
+                -ScratchDir 'C:\mount' `
+                -Patterns @('Definitely-Does-Not-Exist-Package~') `
+                -LanguageCode 'en-US' } | Should -Not -Throw
+        }
+    }
+
+    It 'is fatal when dism /Get-Packages itself fails' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Invoke-CoreDism {
+                if ($Arguments -contains '/Get-Packages') {
+                    return @{ ExitCode = 50; Output = 'DISM error 50' }
+                }
+                return @{ ExitCode = 0; Output = '' }
+            }
+
+            { Invoke-Tiny11CoreSystemPackageRemoval `
+                -ScratchDir 'C:\mount' `
+                -Patterns @('foo') `
+                -LanguageCode 'en-US' } | Should -Throw -ExpectedMessage '*Get-Packages*'
+        }
+    }
+}

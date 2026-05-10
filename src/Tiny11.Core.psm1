@@ -406,10 +406,53 @@ function Invoke-CoreIcacls {
     Start-CoreProcess -FileName 'icacls.exe' -Arguments $args
 }
 
+# DISM /Remove-Package loop. Enumerates installed packages once, then
+# removes any whose identity matches one of the supplied patterns
+# (prefix-matched). Non-fatal on zero matches per pattern (a pattern
+# matching nothing means the source ISO didn't include that component).
+# Fatal if DISM /Get-Packages itself errors.
+function Invoke-Tiny11CoreSystemPackageRemoval {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ScratchDir,
+        [Parameter(Mandatory)][string[]]$Patterns,
+        [Parameter(Mandatory)][string]$LanguageCode
+    )
+
+    $enumResult = Invoke-CoreDism -Arguments @('/English', "/image:$ScratchDir", '/Get-Packages', '/Format:Table')
+    if ($enumResult.ExitCode -ne 0) {
+        throw "dism /Get-Packages failed (exit $($enumResult.ExitCode)): $($enumResult.Output)"
+    }
+
+    # Upstream approach (tiny11Coremaker.ps1 lines 153-161): split output on newlines,
+    # then for each pattern filter lines where the full line matches the prefix.
+    # The identity is extracted as the first whitespace-delimited token from each
+    # matching line. Header and label lines are naturally excluded because they
+    # don't match any package-identity prefix pattern.
+    $allLines = $enumResult.Output -split "`n"
+
+    foreach ($pattern in $Patterns) {
+        $matchedItems = $allLines |
+            Where-Object { $_ -like "$pattern*" } |
+            ForEach-Object { ($_ -split '\s+')[0] }
+        if (-not $matchedItems) {
+            Write-Verbose "No matches for pattern: $pattern (non-fatal — package may be absent in this ISO version)"
+            continue
+        }
+        foreach ($identity in $matchedItems) {
+            $removeResult = Invoke-CoreDism -Arguments @('/English', "/image:$ScratchDir", '/Remove-Package', "/PackageName:$identity")
+            if ($removeResult.ExitCode -ne 0) {
+                Write-Verbose "dism /Remove-Package $identity failed (exit $($removeResult.ExitCode)) — non-fatal, continuing"
+            }
+        }
+    }
+}
+
 Export-ModuleMember -Function `
     Get-Tiny11CoreAppxPrefixes, `
     Get-Tiny11CoreSystemPackagePatterns, `
     Get-Tiny11CoreFilesystemTargets, `
     Get-Tiny11CoreScheduledTaskTargets, `
     Get-Tiny11CoreWinSxsKeepList, `
-    Get-Tiny11CoreRegistryTweaks
+    Get-Tiny11CoreRegistryTweaks, `
+    Invoke-Tiny11CoreSystemPackageRemoval
