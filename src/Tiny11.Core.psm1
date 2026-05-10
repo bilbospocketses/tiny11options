@@ -448,6 +448,41 @@ function Invoke-Tiny11CoreSystemPackageRemoval {
     }
 }
 
+# Enable .NET 3.5 in the offline image via DISM. Only invoked when the
+# user checked the .NET 3.5 box in Step 1 (-EnableNet35:$true). Source
+# path is the sources\sxs directory inside the copied ISO contents
+# (typically <scratch>\source\sources\sxs). Throws if the sxs directory
+# is missing — usually means the user's ISO doesn't bundle SxS payloads.
+function Invoke-Tiny11CoreNet35Enable {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ScratchDir,
+        [Parameter(Mandatory)][string]$SourcePath,
+        [Parameter(Mandatory)][bool]$EnableNet35
+    )
+
+    if (-not $EnableNet35) {
+        Write-Verbose '.NET 3.5 enable skipped (-EnableNet35:$false)'
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $SourcePath)) {
+        throw ".NET 3.5 source not found at $SourcePath. Verify your Windows 11 ISO includes sources\sxs. Either uncheck Enable .NET 3.5 in Step 1 and rebuild, or use a complete Win11 multi-edition ISO."
+    }
+
+    $result = Invoke-CoreDism -Arguments @(
+        '/English',
+        "/image:$ScratchDir",
+        '/enable-feature',
+        '/featurename:NetFX3',
+        '/All',
+        "/source:$SourcePath"
+    )
+    if ($result.ExitCode -ne 0) {
+        throw "DISM /enable-feature NetFX3 failed (exit $($result.ExitCode)): $($result.Output)"
+    }
+}
+
 Export-ModuleMember -Function `
     Get-Tiny11CoreAppxPrefixes, `
     Get-Tiny11CoreSystemPackagePatterns, `
@@ -455,4 +490,5 @@ Export-ModuleMember -Function `
     Get-Tiny11CoreScheduledTaskTargets, `
     Get-Tiny11CoreWinSxsKeepList, `
     Get-Tiny11CoreRegistryTweaks, `
-    Invoke-Tiny11CoreSystemPackageRemoval
+    Invoke-Tiny11CoreSystemPackageRemoval, `
+    Invoke-Tiny11CoreNet35Enable

@@ -303,3 +303,47 @@ Describe 'Invoke-Tiny11CoreSystemPackageRemoval' {
         }
     }
 }
+
+Describe 'Invoke-Tiny11CoreNet35Enable' {
+    BeforeAll {
+        $script:modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $script:modulePath -Force
+    }
+
+    It 'does not invoke DISM when -EnableNet35:$false' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Invoke-CoreDism { @{ ExitCode = 0; Output = '' } }
+            Mock Test-Path { $true }
+
+            Invoke-Tiny11CoreNet35Enable -ScratchDir 'C:\mount' -SourcePath 'C:\source\sxs' -EnableNet35:$false
+
+            Should -Invoke Invoke-CoreDism -Times 0
+        }
+    }
+
+    It 'invokes DISM /enable-feature /featurename:NetFX3 when -EnableNet35:$true and source exists' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Invoke-CoreDism { @{ ExitCode = 0; Output = '' } }
+            Mock Test-Path { $true }
+
+            Invoke-Tiny11CoreNet35Enable -ScratchDir 'C:\mount' -SourcePath 'C:\source\sxs' -EnableNet35:$true
+
+            Should -Invoke Invoke-CoreDism -Exactly 1 -ParameterFilter {
+                ($Arguments -join ' ') -match '/enable-feature' -and
+                ($Arguments -join ' ') -match '/featurename:NetFX3' -and
+                ($Arguments -join ' ') -match '/All' -and
+                ($Arguments -join ' ') -match '/source:C:\\source\\sxs'
+            }
+        }
+    }
+
+    It 'throws when source path is missing' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Invoke-CoreDism { @{ ExitCode = 0; Output = '' } }
+            Mock Test-Path { $false }
+
+            { Invoke-Tiny11CoreNet35Enable -ScratchDir 'C:\mount' -SourcePath 'C:\source\sxs' -EnableNet35:$true } |
+                Should -Throw -ExpectedMessage '*sxs*'
+        }
+    }
+}
