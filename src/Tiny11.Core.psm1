@@ -594,16 +594,31 @@ function Invoke-Tiny11CoreBuildPipeline {
         [Parameter(Mandatory)][scriptblock]$ProgressCallback
     )
 
+    Import-Module (Join-Path $PSScriptRoot 'Tiny11.Iso.psm1')   -Force
     Import-Module (Join-Path $PSScriptRoot 'Tiny11.Hives.psm1') -Force
 
     $sourceDir = Join-Path $ScratchDir 'source'
     $mountDir  = Join-Path $ScratchDir 'mount'
     $sxsSourcePath = Join-Path $sourceDir 'sources\sxs'
 
-    # Phase 1: preflight — copy source + detect install.esd -> convert
-    & $ProgressCallback @{ phase='preflight'; step='Copying Windows image to scratch'; percent=5 }
+    # Phase 1: preflight — mount the source ISO (or accept a drive letter the
+    # user already mounted), copy contents to scratch, dismount when copy is
+    # done. We dismount immediately after the copy because the rest of the
+    # build operates against the copied <scratch>\source tree, not the live
+    # ISO mount.
+    #
+    # Mount-Tiny11Source returns DriveLetter as a single letter (e.g. "E");
+    # we add the ":" + "\*" suffix to walk the whole mount root. If $Source
+    # was already a drive letter, MountedByUs=false and Dismount is a no-op.
+    & $ProgressCallback @{ phase='preflight'; step='Mounting source ISO'; percent=2 }
     New-Item -ItemType Directory -Force -Path $sourceDir | Out-Null
-    Copy-Item -Path "$Source\*" -Destination $sourceDir -Recurse -Force
+    $sourceMount = Mount-Tiny11Source -InputPath $Source
+    try {
+        & $ProgressCallback @{ phase='preflight'; step='Copying Windows image to scratch'; percent=5 }
+        Copy-Item -Path "$($sourceMount.DriveLetter):\*" -Destination $sourceDir -Recurse -Force
+    } finally {
+        Dismount-Tiny11Source -IsoPath $sourceMount.IsoPath -MountedByUs:$sourceMount.MountedByUs -ForceUnmount:$true
+    }
 
     # Phase 2: preflight — mount install.wim
     & $ProgressCallback @{ phase='preflight'; step='Mounting install.wim for offline edit'; percent=10 }
