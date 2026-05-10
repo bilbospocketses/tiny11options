@@ -527,95 +527,95 @@ function renderSourceStep() {
 
     // Fast-build row + hint are hidden when Core mode is on (Core uses its own fixed sequence).
     const fastBuildRow = state.coreMode ? [] : [
-        el(‘label’, { class: ‘checkbox-label’ },
-            el(‘input’, {
-                id: ‘fast-build’, type: ‘checkbox’,
+        el('label', { class: 'checkbox-label' },
+            el('input', {
+                id: 'fast-build', type: 'checkbox',
                 checked: state.fastBuild,
                 onchange: e => state.fastBuild = e.target.checked
             }),
-            ‘Fast build (skip recovery compression)’
+            'Fast build (skip recovery compression)'
         ),
-        el(‘p’, { class: ‘hint’ },
-            ‘Skips DISM /Cleanup-Image and /Export-Image /Compress:recovery. ‘ +
-            ‘Saves 25–40 minutes per build. With fast build the output ISO is typically ‘ +
-            ‘7–8 GB; leaving fast build off enables recovery compression and shrinks the ‘ +
-            ‘ISO by roughly 2 GB. Both produce functionally identical installs. Recommended ‘ +
-            ‘for VM testing or iterative builds where ISO size doesn\’t matter.’
+        el('p', { class: 'hint' },
+            'Skips DISM /Cleanup-Image and /Export-Image /Compress:recovery. ' +
+            'Saves 25–40 minutes per build. With fast build the output ISO is typically ' +
+            '7–8 GB; leaving fast build off enables recovery compression and shrinks the ' +
+            'ISO by roughly 2 GB. Both produce functionally identical installs. Recommended ' +
+            'for VM testing or iterative builds where ISO size doesn\'t matter.'
         ),
     ];
 
     // Core warning panel — shown only when coreMode is on.
     const coreWarning = state.coreMode
-        ? el(‘div’, { class: ‘core-warning’ },
-            ‘tiny11 Core builds a significantly smaller image, but the output is not serviceable: ‘ +
-            ‘you cannot install Windows Updates, add languages, or enable Windows features after install. ‘ +
-            ‘Suitable for VM testing or short-lived development environments — not as a daily-driver Windows install.’
+        ? el('div', { class: 'core-warning' },
+            'tiny11 Core builds a significantly smaller image, but the output is not serviceable: ' +
+            'you cannot install Windows Updates, add languages, or enable Windows features after install. ' +
+            'Suitable for VM testing or short-lived development environments — not as a daily-driver Windows install.'
           )
         : null;
 
     // .NET 3.5 checkbox + hint — shown only when coreMode is on.
     const net35Row = state.coreMode
         ? [
-            el(‘label’, { class: ‘checkbox-label’ },
-                el(‘input’, {
-                    id: ‘enable-net35’, type: ‘checkbox’,
+            el('label', { class: 'checkbox-label' },
+                el('input', {
+                    id: 'enable-net35', type: 'checkbox',
                     checked: state.enableNet35,
                     onchange: e => { state.enableNet35 = e.target.checked; }
                 }),
-                ‘Enable .NET 3.5 (legacy app compatibility)’
+                'Enable .NET 3.5 (legacy app compatibility)'
             ),
-            el(‘p’, { class: ‘hint’ },
-                ‘.NET 3.5 must be enabled at build time — cannot be added after install. Adds ~100 MB.’
+            el('p', { class: 'hint' },
+                '.NET 3.5 must be enabled at build time — cannot be added after install. Adds ~100 MB.'
             ),
           ]
         : [];
 
-    const section = el(‘section’, { class: ‘form’ },
-        el(‘label’, null, ‘Windows 11 ISO’),
-        el(‘div’, { class: ‘row’ },
-            el(‘input’, {
-                id: ‘src-input’, type: ‘text’, value: state.source || ‘’,
-                placeholder: ‘C:\\path\\to\\Win11.iso or drive letter where Windows 11 DVD or ISO are mounted (ex. E:)’,
+    const section = el('section', { class: 'form' },
+        el('label', null, 'Windows 11 ISO'),
+        el('div', { class: 'row' },
+            el('input', {
+                id: 'src-input', type: 'text', value: state.source || '',
+                placeholder: 'C:\\path\\to\\Win11.iso or drive letter where Windows 11 DVD or ISO are mounted (ex. E:)',
                 onchange: e => {
                     state.source = e.target.value;
                     state.editions = null;
                     state.edition = null;
-                    ps({ type: ‘validate-iso’, payload: { path: state.source } });
+                    ps({ type: 'validate-iso', payload: { path: state.source } });
                     renderStep();
                 }
             }),
-            el(‘button’, { id: ‘src-browse’, onclick: () => ps({ type: ‘browse-file’, payload: { context: ‘source’, title: ‘Select Win11 ISO’, filter: ‘ISO files|*.iso|All files|*.*’ } }) }, ‘Browse...’)
+            el('button', { id: 'src-browse', onclick: () => ps({ type: 'browse-file', payload: { context: 'source', title: 'Select Win11 ISO', filter: 'ISO files|*.iso|All files|*.*' } }) }, 'Browse...')
         ),
         errorBanner,
-        el(‘label’, null, ‘Edition’),
-        el(‘div’, { class: ‘row’ },
-            el(‘select’, {
-                id: ‘edition-select’,
+        el('label', null, 'Edition'),
+        el('div', { class: 'row' },
+            el('select', {
+                id: 'edition-select',
                 disabled: !state.editions,
                 onchange: e => { state.edition = parseInt(e.target.value, 10); updateNav(); }
             }, editionsOptions),
-            el(‘button’, { class: ‘browse-spacer’, ‘aria-hidden’: ‘true’, tabindex: ‘-1’ }, ‘Browse...’)
+            el('button', { class: 'browse-spacer', 'aria-hidden': 'true', tabindex: '-1' }, 'Browse...')
         ),
-        el(‘label’, null, ‘Scratch directory’),
-        el(‘div’, { class: ‘row’ },
-            el(‘input’, {
-                id: ‘scratch-input’, type: ‘text’, value: state.scratchDir || ‘’,
+        el('label', null, 'Scratch directory'),
+        el('div', { class: 'row' },
+            el('input', {
+                id: 'scratch-input', type: 'text', value: state.scratchDir || '',
                 onchange: e => { state.scratchDir = e.target.value; prefillOutputIfEmpty(); }
             }),
-            el(‘button’, { onclick: () => ps({ type: ‘browse-folder’, payload: { context: ‘scratch’, title: ‘Select scratch directory’ } }) }, ‘Browse...’)
+            el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
         ),
-        el(‘label’, { class: ‘checkbox-label’ },
-            el(‘input’, {
-                id: ‘unmount-source’, type: ‘checkbox’,
+        el('label', { class: 'checkbox-label' },
+            el('input', {
+                id: 'unmount-source', type: 'checkbox',
                 checked: state.unmountSource,
                 onchange: e => state.unmountSource = e.target.checked
             }),
-            ‘Unmount source ISO when build finishes’
+            'Unmount source ISO when build finishes'
         ),
         ...fastBuildRow,
-        el(‘label’, { class: ‘checkbox-label’ },
-            el(‘input’, {
-                id: ‘core-mode’, type: ‘checkbox’,
+        el('label', { class: 'checkbox-label' },
+            el('input', {
+                id: 'core-mode', type: 'checkbox',
                 checked: state.coreMode,
                 onchange: e => {
                     state.coreMode = e.target.checked;
@@ -623,7 +623,7 @@ function renderSourceStep() {
                     renderStep();
                 }
             }),
-            ‘Build tiny11 Core (smaller, non-serviceable)’
+            'Build tiny11 Core (smaller, non-serviceable)'
         ),
         coreWarning,
         ...net35Row
