@@ -509,6 +509,65 @@ function Invoke-Tiny11CoreImageExport {
     }
 }
 
+# The destructive WinSxS wipe — Core's signature operation.
+# Sequence:
+#   1. takeown + icacls on <scratch>\Windows\WinSxS (recursive, ~5 min)
+#   2. Create <scratch>\Windows\WinSxS_edit
+#   3. For each pattern in the architecture-specific keep-list, copy
+#      matching subdirs (or top-level dirs like Catalogs/Manifests) from
+#      WinSxS into WinSxS_edit
+#   4. Delete <scratch>\Windows\WinSxS recursively
+#   5. Rename <scratch>\Windows\WinSxS_edit to WinSxS
+#
+# Failure modes:
+#   - Zero patterns matched anywhere in WinSxS -> throw (architecture
+#     mismatch or unexpected ISO layout; better to fail loudly than
+#     produce a corrupted image)
+#   - Mid-flight cancel -> non-resumable state; cleanup-command UI guides
+#     user recovery (documented in build-progress + build-failed UIs)
+function Invoke-Tiny11CoreWinSxsWipe {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ScratchDir,
+        [Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Architecture
+    )
+
+    $winSxs = Join-Path $ScratchDir 'Windows\WinSxS'
+    $winSxsEdit = Join-Path $ScratchDir 'Windows\WinSxS_edit'
+    $keepList = Get-Tiny11CoreWinSxsKeepList -Architecture $Architecture
+
+    Write-Verbose "Taking ownership of $winSxs (recursive)..."
+    Invoke-CoreTakeown -Path $winSxs -Recurse | Out-Null
+    Invoke-CoreIcacls  -Path $winSxs -Recurse | Out-Null
+
+    Write-Verbose "Creating $winSxsEdit..."
+    New-Item -Path $winSxsEdit -ItemType Directory -Force | Out-Null
+
+    $totalMatches = 0
+    foreach ($pattern in $keepList) {
+        $patternMatches = Get-ChildItem -Path $winSxs -Filter $pattern -Directory -ErrorAction SilentlyContinue
+        if (-not $patternMatches) {
+            Write-Verbose "Keep-list pattern '$pattern' matched zero entries (non-fatal per-pattern)"
+            continue
+        }
+        foreach ($match in $patternMatches) {
+            $totalMatches++
+            $dest = Join-Path $winSxsEdit $match.Name
+            Copy-Item -Path $match.FullName -Destination $dest -Recurse -Force
+        }
+    }
+
+    if ($totalMatches -eq 0) {
+        throw "WinSxS wipe: zero keep-list patterns matched any subdirectory under $winSxs (Architecture=$Architecture). Source ISO may not be a $Architecture Win11 image, or its WinSxS layout differs from the expected layout."
+    }
+
+    Write-Verbose "Deleting original WinSxS..."
+    Remove-Item -Path $winSxs -Recurse -Force
+
+    Write-Verbose "Renaming WinSxS_edit -> WinSxS..."
+    Rename-Item -Path $winSxsEdit -NewName 'WinSxS'
+}
+
 Export-ModuleMember -Function `
     Get-Tiny11CoreAppxPrefixes, `
     Get-Tiny11CoreSystemPackagePatterns, `
@@ -518,4 +577,5 @@ Export-ModuleMember -Function `
     Get-Tiny11CoreRegistryTweaks, `
     Invoke-Tiny11CoreSystemPackageRemoval, `
     Invoke-Tiny11CoreNet35Enable, `
-    Invoke-Tiny11CoreImageExport
+    Invoke-Tiny11CoreImageExport, `
+    Invoke-Tiny11CoreWinSxsWipe

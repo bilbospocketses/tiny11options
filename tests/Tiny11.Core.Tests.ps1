@@ -348,6 +348,70 @@ Describe 'Invoke-Tiny11CoreNet35Enable' {
     }
 }
 
+Describe 'Invoke-Tiny11CoreWinSxsWipe' {
+    BeforeAll {
+        $script:modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $script:modulePath -Force
+    }
+
+    It 'orchestrates takeown -> copy retained -> delete WinSxS -> rename WinSxS_edit' {
+        InModuleScope 'Tiny11.Core' {
+            $script:callOrder = @()
+            Mock Invoke-CoreTakeown { $script:callOrder += "takeown:$Path"; @{ ExitCode = 0 } }
+            Mock Invoke-CoreIcacls  { $script:callOrder += "icacls:$Path";  @{ ExitCode = 0 } }
+            Mock Get-ChildItem {
+                @([pscustomobject]@{ Name = "$Filter-fake"; FullName = "$Path\$Filter-fake" })
+            }
+            Mock New-Item { }
+            Mock Copy-Item { $script:callOrder += "copy:$Path->$Destination" }
+            Mock Remove-Item { $script:callOrder += "remove:$Path" }
+            Mock Rename-Item { $script:callOrder += "rename:$Path->$NewName" }
+
+            Invoke-Tiny11CoreWinSxsWipe -ScratchDir 'C:\mount' -Architecture 'amd64'
+
+            # Sanity: takeown happens before any copies
+            $script:callOrder[0] | Should -Match '^takeown:'
+            # Find the deletion of WinSxS itself (not WinSxS_edit)
+            ($script:callOrder -join '|') | Should -Match 'remove:.*\\WinSxS'
+            ($script:callOrder -join '|') | Should -Match 'rename:.*WinSxS_edit'
+        }
+    }
+
+    It 'throws when zero keep-list patterns match (architecture mismatch)' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Invoke-CoreTakeown { @{ ExitCode = 0 } }
+            Mock Invoke-CoreIcacls  { @{ ExitCode = 0 } }
+            Mock New-Item { }
+            Mock Get-ChildItem { @() }   # nothing matches anywhere
+
+            { Invoke-Tiny11CoreWinSxsWipe -ScratchDir 'C:\mount' -Architecture 'amd64' } |
+                Should -Throw -ExpectedMessage '*WinSxS*amd64*'
+        }
+    }
+
+    It 'uses arm64 keep-list when -Architecture arm64' {
+        InModuleScope 'Tiny11.Core' {
+            $script:filterCalls = @()
+            Mock Invoke-CoreTakeown { @{ ExitCode = 0 } }
+            Mock Invoke-CoreIcacls  { @{ ExitCode = 0 } }
+            Mock New-Item { }
+            Mock Get-ChildItem {
+                $script:filterCalls += $Filter
+                @([pscustomobject]@{ Name = "$Filter-fake"; FullName = "$Path\$Filter-fake" })
+            }
+            Mock Copy-Item { }
+            Mock Remove-Item { }
+            Mock Rename-Item { }
+
+            Invoke-Tiny11CoreWinSxsWipe -ScratchDir 'C:\mount' -Architecture 'arm64'
+
+            # arm64 list contains specific patterns that amd64 doesn't
+            ($script:filterCalls -join '|') | Should -Match 'arm64_microsoft.vc80.crt'
+            ($script:filterCalls -join '|') | Should -Not -Match '^amd64_'
+        }
+    }
+}
+
 Describe 'Invoke-Tiny11CoreImageExport' {
     BeforeAll {
         $script:modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
