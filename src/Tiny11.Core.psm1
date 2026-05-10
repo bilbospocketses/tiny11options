@@ -483,6 +483,32 @@ function Invoke-Tiny11CoreNet35Enable {
     }
 }
 
+# DISM /Export-Image wrapper. Used twice during a Core build:
+#   1. install.wim -> install2.wim with /Compress:max (intermediate)
+#   2. install2.wim (renamed install.wim) -> install.esd with /Compress:recovery (final)
+# Throws on non-zero exit. Caller is responsible for the rename + cleanup.
+function Invoke-Tiny11CoreImageExport {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$SourceImageFile,
+        [Parameter(Mandatory)][string]$DestinationImageFile,
+        [Parameter(Mandatory)][int]$SourceIndex,
+        [Parameter(Mandatory)][ValidateSet('max', 'recovery')][string]$Compress
+    )
+
+    $result = Invoke-CoreDism -Arguments @(
+        '/English',
+        '/Export-Image',
+        "/SourceImageFile:$SourceImageFile",
+        "/SourceIndex:$SourceIndex",
+        "/DestinationImageFile:$DestinationImageFile",
+        "/Compress:$Compress"
+    )
+    if ($result.ExitCode -ne 0) {
+        throw "DISM /Export-Image $SourceImageFile -> $DestinationImageFile (Compress:$Compress) failed (exit $($result.ExitCode)): $($result.Output)"
+    }
+}
+
 Export-ModuleMember -Function `
     Get-Tiny11CoreAppxPrefixes, `
     Get-Tiny11CoreSystemPackagePatterns, `
@@ -491,4 +517,5 @@ Export-ModuleMember -Function `
     Get-Tiny11CoreWinSxsKeepList, `
     Get-Tiny11CoreRegistryTweaks, `
     Invoke-Tiny11CoreSystemPackageRemoval, `
-    Invoke-Tiny11CoreNet35Enable
+    Invoke-Tiny11CoreNet35Enable, `
+    Invoke-Tiny11CoreImageExport

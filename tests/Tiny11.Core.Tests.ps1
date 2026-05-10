@@ -347,3 +347,58 @@ Describe 'Invoke-Tiny11CoreNet35Enable' {
         }
     }
 }
+
+Describe 'Invoke-Tiny11CoreImageExport' {
+    BeforeAll {
+        $script:modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $script:modulePath -Force
+    }
+
+    It 'invokes DISM /Export-Image with /Compress:max' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Invoke-CoreDism { @{ ExitCode = 0; Output = '' } }
+
+            Invoke-Tiny11CoreImageExport `
+                -SourceImageFile 'C:\source\install.wim' `
+                -DestinationImageFile 'C:\source\install2.wim' `
+                -SourceIndex 6 `
+                -Compress 'max'
+
+            Should -Invoke Invoke-CoreDism -Exactly 1 -ParameterFilter {
+                ($Arguments -join ' ') -match '/Export-Image' -and
+                ($Arguments -join ' ') -match '/SourceImageFile:C:\\source\\install.wim' -and
+                ($Arguments -join ' ') -match '/DestinationImageFile:C:\\source\\install2.wim' -and
+                ($Arguments -join ' ') -match '/SourceIndex:6' -and
+                ($Arguments -join ' ') -match '/Compress:max'
+            }
+        }
+    }
+
+    It 'invokes DISM /Export-Image with /Compress:recovery' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Invoke-CoreDism { @{ ExitCode = 0; Output = '' } }
+
+            Invoke-Tiny11CoreImageExport `
+                -SourceImageFile 'C:\source\install.wim' `
+                -DestinationImageFile 'C:\source\install.esd' `
+                -SourceIndex 1 `
+                -Compress 'recovery'
+
+            Should -Invoke Invoke-CoreDism -Exactly 1 -ParameterFilter {
+                ($Arguments -join ' ') -match '/Compress:recovery'
+            }
+        }
+    }
+
+    It 'throws on DISM exit code != 0' {
+        InModuleScope 'Tiny11.Core' {
+            Mock Invoke-CoreDism { @{ ExitCode = 5; Output = 'mock dism error' } }
+
+            { Invoke-Tiny11CoreImageExport `
+                -SourceImageFile 'C:\src.wim' `
+                -DestinationImageFile 'C:\dest.wim' `
+                -SourceIndex 1 `
+                -Compress 'max' } | Should -Throw -ExpectedMessage '*Export-Image*'
+        }
+    }
+}
