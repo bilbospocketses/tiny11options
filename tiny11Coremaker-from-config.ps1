@@ -1,4 +1,4 @@
-# tiny11 Core build wrapper — invoked by launcher/Gui/Handlers/BuildHandlers.cs
+﻿# tiny11 Core build wrapper — invoked by launcher/Gui/Handlers/BuildHandlers.cs
 # as a powershell.exe subprocess when the user picks Core mode in the Step 1
 # wizard. Differs from tiny11maker-from-config.ps1: no -ConfigPath / no
 # selections payload (Core has no catalog), and adds -EnableNet35 (the

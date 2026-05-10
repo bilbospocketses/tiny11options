@@ -1,4 +1,4 @@
-# tiny11 Core build mode — data accessors + operation orchestrators.
+﻿# tiny11 Core build mode — data accessors + operation orchestrators.
 # Backs tiny11Coremaker-from-config.ps1 (the launcher's Core build wrapper).
 #
 # Reuses these existing modules where operations overlap with the standard
