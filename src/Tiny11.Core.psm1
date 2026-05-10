@@ -11,6 +11,31 @@
 
 Set-StrictMode -Version Latest
 
+# ---------- Build log infrastructure ----------
+# Persistent on-disk log of every Core build, written to $ScratchDir\tiny11-core-build.log.
+# Survives the post-failure cleanup commands (those only nuke `mount/` and `source/` subdirs of the scratch root).
+# All external command invocations (DISM, takeown, icacls, reg, oscdimg) flow through Start-CoreProcess
+# and get EXEC / EXIT / OUTPUT lines logged automatically. Phase boundaries log via the wrapped
+# ProgressCallback. Wrapper script logs its own params + any caught exceptions.
+
+$script:Tiny11CoreLogPath = $null
+
+function Set-Tiny11CoreLogPath {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    $script:Tiny11CoreLogPath = $Path
+    # Truncate any prior log so each run starts clean (swallow if dir is gone or unwritable).
+    try { Set-Content -LiteralPath $Path -Value '' -Encoding UTF8 -ErrorAction Stop } catch { }
+}
+
+function Write-CoreLog {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Message)
+    if (-not $script:Tiny11CoreLogPath) { return }
+    $line = '[{0}] {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'), $Message
+    try { Add-Content -LiteralPath $script:Tiny11CoreLogPath -Value $line -Encoding UTF8 -ErrorAction Stop } catch { }
+}
+
 # Hardcoded provisioned-appx package prefixes that Core removes from every
 # build. List ported verbatim from upstream tiny11Coremaker.ps1 line 119.
 # Each entry is a wildcard-prefix used by DISM /Remove-ProvisionedAppxPackage
@@ -355,16 +380,23 @@ function Get-Tiny11CoreRegistryTweaks {
 # exit code + output. Wrapped as a named function so Pester `Mock` can
 # intercept cleanly during unit tests (the `&` call operator is harder
 # to mock reliably). Not exported.
+# Logs EXEC / EXIT / OUTPUT to the build log if Set-Tiny11CoreLogPath has been called.
 function Start-CoreProcess {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$FileName,
         [string[]]$Arguments = @()
     )
+    $argDisplay = ($Arguments | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
+    Write-CoreLog "EXEC: $FileName $argDisplay"
     $output = & $FileName @Arguments 2>&1
+    $exit = $LASTEXITCODE
+    $outStr = $output -join "`n"
+    Write-CoreLog "EXIT: $exit"
+    if ($outStr.Trim()) { Write-CoreLog ("OUTPUT:`n" + $outStr) }
     [pscustomobject]@{
-        ExitCode = $LASTEXITCODE
-        Output   = $output -join "`n"
+        ExitCode = $exit
+        Output   = $outStr
     }
 }
 
@@ -607,6 +639,17 @@ function Invoke-Tiny11CoreBuildPipeline {
     Import-Module (Join-Path $PSScriptRoot 'Tiny11.Iso.psm1')   -Force
     Import-Module (Join-Path $PSScriptRoot 'Tiny11.Hives.psm1') -Force
 
+    Write-CoreLog '==== Invoke-Tiny11CoreBuildPipeline start ===='
+    Write-CoreLog "Pipeline params: Source=$Source ImageIndex=$ImageIndex ScratchDir=$ScratchDir OutputIso=$OutputIso EnableNet35=$EnableNet35 UnmountSource=$UnmountSource"
+
+    # Wrap ProgressCallback so every phase transition lands in the log without touching every call site.
+    $userProgressCallback = $ProgressCallback
+    $ProgressCallback = {
+        param($p)
+        Write-CoreLog "PHASE: $($p.phase) | $($p.step) | $($p.percent)%"
+        & $userProgressCallback $p
+    }.GetNewClosure()
+
     $sourceDir = Join-Path $ScratchDir 'source'
     $mountDir  = Join-Path $ScratchDir 'mount'
     $sxsSourcePath = Join-Path $sourceDir 'sources\sxs'
@@ -795,7 +838,16 @@ function Invoke-Tiny11CoreBuildPipeline {
         # OOS-7 — /Discard on pipeline failure protects against committing partially-corrupt edits; upstream always /Commits.
         $unmountFlag = if ($pipelineSucceeded) { '/Commit' } else { '/Discard' }
         & $ProgressCallback @{ phase='unmount-install'; step="Unmounting install.wim with $unmountFlag"; percent=86 }
-        Invoke-CoreDism -Arguments @('/English', '/Unmount-Image', "/MountDir:$mountDir", $unmountFlag) | Out-Null
+        $installUnmountResult = Invoke-CoreDism -Arguments @('/English', '/Unmount-Image', "/MountDir:$mountDir", $unmountFlag)
+        if ($installUnmountResult.ExitCode -ne 0) {
+            # Finally-context: only throw if pipeline succeeded (i.e. no in-flight exception to replace).
+            # On the failure path we Write-Warning so the original cause is preserved.
+            if ($pipelineSucceeded) {
+                throw "DISM /Unmount-Image $unmountFlag (install.wim) failed (exit $($installUnmountResult.ExitCode)): $($installUnmountResult.Output)"
+            } else {
+                Write-Warning "DISM /Unmount-Image /Discard (install.wim) failed during cleanup (exit $($installUnmountResult.ExitCode)): $($installUnmountResult.Output)"
+            }
+        }
     }
 
     if (-not $pipelineSucceeded) {
@@ -817,7 +869,10 @@ function Invoke-Tiny11CoreBuildPipeline {
     Invoke-CoreIcacls  -Path $bootWim | Out-Null
     # D21.2 — -EA SilentlyContinue: takeown+icacls usually clears RO already; tolerate residual case (upstream halts here without try/catch).
     Set-ItemProperty -Path $bootWim -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
-    Invoke-CoreDism -Arguments @('/English', '/Mount-Image', "/ImageFile:$bootWim", '/Index:2', "/MountDir:$mountDir") | Out-Null
+    $bootMountResult = Invoke-CoreDism -Arguments @('/English', '/Mount-Image', "/ImageFile:$bootWim", '/Index:2', "/MountDir:$mountDir")
+    if ($bootMountResult.ExitCode -ne 0) {
+        throw "DISM /Mount-Image (boot.wim index 2) failed (exit $($bootMountResult.ExitCode)): $($bootMountResult.Output)"
+    }
     try {
         foreach ($hive in @('COMPONENTS', 'DEFAULT', 'NTUSER', 'SOFTWARE', 'SYSTEM')) {
             Mount-Tiny11Hive -Hive $hive -ScratchDir $mountDir
@@ -891,6 +946,8 @@ function Invoke-Tiny11CoreBuildPipeline {
 }
 
 Export-ModuleMember -Function `
+    Set-Tiny11CoreLogPath, `
+    Write-CoreLog, `
     Get-Tiny11CoreAppxPrefixes, `
     Get-Tiny11CoreSystemPackagePatterns, `
     Get-Tiny11CoreFilesystemTargets, `

@@ -696,6 +696,9 @@ onPs(msg => {
             el('h2', null, 'Build failed'),
             el('p', null, p.message || 'Unknown error'),
         ];
+        if (p.logPath) {
+            children.push(el('p', { class: 'log-hint' }, 'Full build log: ', el('code', null, p.logPath)));
+        }
         if (state.coreMode && state.scratchDir) {
             const block = renderCoreCleanupBlock();
             if (block) children.push(block);
