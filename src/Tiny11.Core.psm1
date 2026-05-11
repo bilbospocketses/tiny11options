@@ -863,13 +863,12 @@ function New-Tiny11CoreWuEnforceTaskXml {
       <Delay>PT2M</Delay>
     </BootTrigger>
     <TimeTrigger>
-      <Repetition>
-        <Interval>PT1M</Interval>
-        <Duration>P10675199DT2H48M5.4775807S</Duration>
-        <StopAtDurationEnd>false</StopAtDurationEnd>
-      </Repetition>
       <StartBoundary>2026-01-01T00:00:00</StartBoundary>
       <Enabled>true</Enabled>
+      <Repetition>
+        <Interval>PT1M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
     </TimeTrigger>
     <CalendarTrigger>
       <StartBoundary>2026-01-01T03:00:00</StartBoundary>

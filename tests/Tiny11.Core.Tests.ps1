@@ -774,6 +774,37 @@ Describe 'New-Tiny11CoreWuEnforceTaskXml' {
         $xml | Should -Match '<StopAtDurationEnd>false</StopAtDurationEnd>'
     }
 
+    # Regression guard for the 2026-05-11 task-registration bug. The original
+    # TimeTrigger placed <Repetition> before <StartBoundary>/<Enabled> and included
+    # a magic-number <Duration> alongside StopAtDurationEnd=false. Either of those
+    # can make schtasks /create /xml reject the WHOLE task (not just the trigger),
+    # silently leaving \tiny11options\ unregistered post-install.
+    It 'TimeTrigger has canonical element order (StartBoundary, Enabled, Repetition) and no Duration' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $parsed = [xml]$xml
+        $ns = New-Object System.Xml.XmlNamespaceManager($parsed.NameTable)
+        $ns.AddNamespace('t', 'http://schemas.microsoft.com/windows/2004/02/mit/task')
+
+        $timeTrigger = $parsed.SelectSingleNode('//t:TimeTrigger', $ns)
+        $timeTrigger | Should -Not -BeNullOrEmpty
+
+        $childOrder = @($timeTrigger.ChildNodes | ForEach-Object { $_.LocalName })
+        $startBoundaryIdx = $childOrder.IndexOf('StartBoundary')
+        $enabledIdx       = $childOrder.IndexOf('Enabled')
+        $repetitionIdx    = $childOrder.IndexOf('Repetition')
+
+        $startBoundaryIdx | Should -BeGreaterOrEqual 0
+        $enabledIdx       | Should -BeGreaterOrEqual 0
+        $repetitionIdx    | Should -BeGreaterOrEqual 0
+        $startBoundaryIdx | Should -BeLessThan $repetitionIdx
+        $enabledIdx       | Should -BeLessThan $repetitionIdx
+
+        $repetition = $timeTrigger.SelectSingleNode('t:Repetition', $ns)
+        $repetition.SelectSingleNode('t:Duration', $ns) | Should -BeNullOrEmpty
+        $repetition.SelectSingleNode('t:Interval', $ns).InnerText           | Should -Be 'PT1M'
+        $repetition.SelectSingleNode('t:StopAtDurationEnd', $ns).InnerText  | Should -Be 'false'
+    }
+
     It 'runs as SYSTEM (S-1-5-18) with HighestAvailable privilege' {
         $xml = New-Tiny11CoreWuEnforceTaskXml
         $xml | Should -Match '<UserId>S-1-5-18</UserId>'
