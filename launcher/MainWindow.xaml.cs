@@ -9,6 +9,7 @@ using Tiny11Options.Launcher.Gui.Bridge;
 using Tiny11Options.Launcher.Gui.Handlers;
 using Tiny11Options.Launcher.Gui.Settings;
 using Tiny11Options.Launcher.Gui.Subprocess;
+using Tiny11Options.Launcher.Gui.Theme;
 using Tiny11Options.Launcher.Gui.Updates;
 
 namespace Tiny11Options.Launcher;
@@ -44,6 +45,12 @@ public partial class MainWindow : Window
             _settings.Save();
         };
 
+        // Apply an initial title-bar theme based on the system setting BEFORE JS boots.
+        // JS will report the actual in-app theme via the `theme-changed` bridge message
+        // a moment after WebView2 finishes navigating (~200ms); the system-theme guess
+        // bridges the gap so the window doesn't briefly show a default-light title bar
+        // on a dark-mode system.
+        Loaded += (_, _) => TitleBarThemeApplier.Apply(this, TitleBarThemeApplier.IsSystemDark());
         Loaded += async (_, _) => await InitializeWebViewAsync();
     }
 
@@ -170,6 +177,12 @@ public partial class MainWindow : Window
         bridge.Register(new BrowseHandlers(new WpfFilePicker(), _settings));
         bridge.Register(new ProfileHandlers(_settings, pwshRunner, _resourcesDir!));
         bridge.Register(new WindowHandlers());
+        // theme-changed routes here from JS initTheme() + theme-toggle click; applies
+        // DWMWA_USE_IMMERSIVE_DARK_MODE to the title bar. Distinct from the old
+        // ThemeHandlers (deleted 2026-05-08, audit A8) that owned theme state in C#.
+        // Callback marshals to UI thread before touching the window handle.
+        bridge.Register(new TitleBarThemeHandlers(isDark =>
+            Dispatcher.Invoke(() => TitleBarThemeApplier.Apply(this, isDark))));
         // SelectionHandlers + reconcile-selections type intentionally not
         // registered — JS does its own client-side reconcile() at app.js:249
         // mirroring Tiny11.Selections.psm1 skip-cascade semantics. C# handler

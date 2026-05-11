@@ -251,6 +251,23 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
+### UX: WPF title bar follows in-app theme via DWMWA_USE_IMMERSIVE_DARK_MODE (2026-05-11)
+
+The Windows-managed title bar (non-client area) stayed white regardless of the in-app theme — visually jarring against a dark wizard body. CSS can't reach the title bar; the WPF host has to opt in via DWM.
+
+#### Added
+- **`launcher/Gui/Theme/TitleBarThemeApplier.cs`** — static helper exposing `Apply(Window, bool isDark)` + `IsSystemDark()`. P/Invokes `DwmSetWindowAttribute` from `dwmapi.dll` with attribute IDs 19 (Win10 1809-19041) and 20 (Win10 19041+ / Win11). Calling both is safe — the OS silently ignores unrecognized IDs.
+- **`launcher/Gui/Handlers/TitleBarThemeHandlers.cs`** — `IBridgeHandler` for the new one-way `theme-changed` message from JS. Takes an `Action<bool>` callback (not a `Window` directly) so the handler is xUnit-testable without WPF STA-dispatcher setup. Production wiring (`MainWindow.BuildBridge`) injects a callback that marshals to the UI thread before invoking `TitleBarThemeApplier.Apply`.
+- **`launcher/MainWindow.xaml.cs`** — `Loaded` handler now reads `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize\AppsUseLightTheme` and applies the corresponding dark/light initial state via DWM, so the title bar matches the system theme even before JS boots. ~200ms later when JS bootstraps, it sends `theme-changed` with the actual in-app theme (which may differ from system if the user previously toggled), and the title bar updates to match.
+- **`ui/app.js`** — `initTheme()` now sends `theme-changed` on init (after resolving the effective theme from `localStorage` or `prefers-color-scheme`), and the theme-toggle click handler sends it on every toggle. JS retains full ownership of the theme model; the `theme-changed` message is a one-way chrome-rendering hint to the host.
+- 5 new xUnit tests in `launcher/Tests/TitleBarThemeHandlersTests.cs` covering: `HandledTypes` includes `"theme-changed"`; dark/light payloads route to the expected callback value; null payload defaults to light; unknown theme value (`"system"` etc.) defaults to light.
+
+#### Compatibility
+DWM attribute IDs 19 / 20 are recognized starting Win10 build 18985 (1809+). On older Windows (Win7/Win8/early Win10) the call returns a non-zero HRESULT and the title bar stays at system default — graceful degradation, no error surfaced.
+
+#### Notes
+This is NOT a re-introduction of the old `apply-theme` / `get-theme` handlers deleted in the 2026-05-08 Phase 4.5 audit. Those were dead-code C# theme ownership; JS still owns the model. The new handler is a one-way notification for chrome rendering only — no response, no persistence.
+
 ### UX: Step 1 text polish — label reorder, scratch placeholder, checkbox text (2026-05-11)
 
 - Source field label: *"Windows 11 DVD/ISO"* → *"Windows 11 ISO/DVD"* (ISO first since that's the more common input).

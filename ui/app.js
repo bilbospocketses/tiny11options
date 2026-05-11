@@ -16,14 +16,23 @@ function applyTheme(theme) {
         btn.title = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
     }
 }
+// Notify the WPF host of the current theme so it can apply DWMWA_USE_IMMERSIVE_DARK_MODE
+// to the Windows-managed title bar. JS owns the theme model; this message is purely a
+// chrome-rendering hint. No response expected.
+function notifyHostThemeChanged(theme) {
+    try { ps({ type: 'theme-changed', payload: { theme: theme } }); } catch (_) { /* WebView2 not ready yet — initial apply happens C#-side from system theme until JS boots */ }
+}
+
 function initTheme() {
     const stored = localStorage.getItem('tiny11-theme');
     const theme = (stored === 'light' || stored === 'dark') ? stored : detectSystemTheme();
     applyTheme(theme);
+    notifyHostThemeChanged(theme);
     document.getElementById('theme-toggle').addEventListener('click', () => {
         const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
         localStorage.setItem('tiny11-theme', next);
         applyTheme(next);
+        notifyHostThemeChanged(next);
     });
 }
 
