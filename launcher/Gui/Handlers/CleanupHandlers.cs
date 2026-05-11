@@ -36,6 +36,10 @@ public class CleanupHandlers : IBridgeHandler
     {
         var mountDir = payload?["mountDir"]?.ToString() ?? "";
         var sourceDir = payload?["sourceDir"]?.ToString() ?? "";
+        // Optional: build-complete cleanup carries the output ISO path so the
+        // PS script can refuse to wipe a target that contains the deliverable.
+        // Cancel/error cleanup omits it (no completed ISO to protect).
+        var outputIso = payload?["outputIso"]?.ToString() ?? "";
 
         if (string.IsNullOrWhiteSpace(mountDir) || string.IsNullOrWhiteSpace(sourceDir))
         {
@@ -46,7 +50,7 @@ public class CleanupHandlers : IBridgeHandler
             };
         }
 
-        var psArgs = BuildCleanupArgs(_resourcesDir, mountDir, sourceDir);
+        var psArgs = BuildCleanupArgs(_resourcesDir, mountDir, sourceDir, outputIso);
         var psi = new ProcessStartInfo
         {
             FileName = "powershell.exe",
@@ -126,13 +130,17 @@ public class CleanupHandlers : IBridgeHandler
     // Extracted for testability: builds the powershell.exe -Arguments string.
     // Callers that need to unit-test the routing can invoke this directly via
     // reflection without spawning a real process.
-    internal static string BuildCleanupArgs(string resourcesDir, string mountDir, string sourceDir)
+    internal static string BuildCleanupArgs(string resourcesDir, string mountDir, string sourceDir, string outputIso = "")
     {
         var script = Path.Combine(resourcesDir, "tiny11-cancel-cleanup.ps1");
         var args = new System.Text.StringBuilder("-ExecutionPolicy Bypass -NoProfile -File ");
         args.Append('"').Append(script).Append('"');
         args.Append(" -MountDir \"").Append(mountDir).Append('"');
         args.Append(" -SourceDir \"").Append(sourceDir).Append('"');
+        if (!string.IsNullOrWhiteSpace(outputIso))
+        {
+            args.Append(" -OutputIso \"").Append(outputIso).Append('"');
+        }
         return args.ToString();
     }
 

@@ -20,7 +20,12 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$MountDir,
-    [Parameter(Mandatory)][string]$SourceDir
+    [Parameter(Mandatory)][string]$SourceDir,
+    # Optional. When supplied (build-complete cleanup case), the script refuses to
+    # run if the output ISO falls inside either cleanup target -- defensive guard
+    # against deleting the user's deliverable. The cancel/error case can omit this
+    # because there is no completed output ISO to protect at that point.
+    [string]$OutputIso = ''
 )
 
 Set-StrictMode -Version Latest
@@ -29,6 +34,24 @@ $ErrorActionPreference = 'Continue'
 function Write-Marker($Type, [hashtable]$Payload) {
     $obj = @{ type = $Type; payload = $Payload }
     [Console]::WriteLine(($obj | ConvertTo-Json -Compress -Depth 10))
+}
+
+# Defensive: if the caller supplied an OutputIso path and it falls inside one of
+# the cleanup target dirs, refuse rather than delete the user's freshly-built
+# ISO. The launcher UI also gates this client-side, but the script-side guard
+# protects against direct CLI invocations and against future UI bugs.
+if ($OutputIso) {
+    $normalizedOutput = [System.IO.Path]::GetFullPath($OutputIso)
+    foreach ($target in @($MountDir, $SourceDir)) {
+        if (-not $target) { continue }
+        $normalizedTarget = [System.IO.Path]::GetFullPath($target).TrimEnd('\') + '\'
+        if ($normalizedOutput.StartsWith($normalizedTarget, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Marker 'cleanup-error' @{
+                message = "Refusing to clean up: output ISO '$OutputIso' is inside cleanup target '$target'. Move the ISO out of the scratch subdirectories first, or run cleanup manually."
+            }
+            exit 1
+        }
+    }
 }
 
 try {

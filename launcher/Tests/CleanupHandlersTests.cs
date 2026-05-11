@@ -99,7 +99,7 @@ public class CleanupHandlersTests
             BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)!;
         var result = (string)method.Invoke(null, new object[]
         {
-            @"C:\resources", @"C:\Temp\scratch\mount", @"C:\Temp\scratch\source"
+            @"C:\resources", @"C:\Temp\scratch\mount", @"C:\Temp\scratch\source", ""
         })!;
 
         Assert.Contains("tiny11-cancel-cleanup.ps1", result);
@@ -107,6 +107,38 @@ public class CleanupHandlersTests
         Assert.Contains("-SourceDir \"C:\\Temp\\scratch\\source\"", result);
         Assert.Contains("-NoProfile", result);
         Assert.Contains("-ExecutionPolicy Bypass", result);
+    }
+
+    [Fact]
+    public void BuildCleanupArgs_OmitsOutputIso_WhenEmpty()
+    {
+        // Cancel/error case: outputIso isn't known yet, so the param must not
+        // be emitted (PS script's [string]$OutputIso = '' default takes over).
+        var method = typeof(CleanupHandlers).GetMethod(
+            "BuildCleanupArgs",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)!;
+        var result = (string)method.Invoke(null, new object[]
+        {
+            @"C:\resources", @"C:\Temp\scratch\mount", @"C:\Temp\scratch\source", ""
+        })!;
+
+        Assert.DoesNotContain("-OutputIso", result);
+    }
+
+    [Fact]
+    public void BuildCleanupArgs_EmitsOutputIso_WhenSupplied()
+    {
+        // Build-complete cleanup carries the output ISO path so the PS script
+        // can refuse to wipe a target containing the deliverable.
+        var method = typeof(CleanupHandlers).GetMethod(
+            "BuildCleanupArgs",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)!;
+        var result = (string)method.Invoke(null, new object[]
+        {
+            @"C:\resources", @"C:\Temp\scratch\mount", @"C:\Temp\scratch\source", @"D:\out\tiny11.iso"
+        })!;
+
+        Assert.Contains("-OutputIso \"D:\\out\\tiny11.iso\"", result);
     }
 
     [Fact]

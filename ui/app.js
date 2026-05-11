@@ -278,6 +278,13 @@ function renderBuildStep() {
             class: 'primary',
             onclick: () => {
                 state.building = true;
+                // Reset cleanup state from any prior build in this session so
+                // the new run starts with a fresh one-shot button. Mount/source
+                // dirs get refreshed by the mount-state marker when install.wim
+                // mounts in the new build.
+                state.cleanupRequested = false;
+                state.cleanupStatus = null;
+                state.mountActive = false;
                 renderStep();
                 ps({
                     type: 'start-build',
@@ -434,13 +441,66 @@ function renderProgress() {
     );
 }
 
+// Build-complete cleanup block. Simpler styling than renderCleanupBlock (no
+// warning border) since the operation is safe by this point: install.wim is
+// unmounted, the scratch subdirs are inert leftovers from the build, and the
+// output ISO is the user's deliverable. Note explicitly tells the user the
+// ISO is preserved; the PS script also enforces this as a script-side guard.
+function renderCompletionCleanupBlock() {
+    const mount  = state.mountDir  || '';
+    const source = state.sourceDir || '';
+    if (!mount || !source) return null;
+
+    const tooltip = 'Deletes the temporary directories created during the build. The output ISO at the path above is preserved -- the script refuses to run if the ISO falls inside one of the cleanup targets.';
+
+    const cleanupButton = el('button', {
+        class: 'cleanup-button',
+        title: tooltip,
+        disabled: state.cleanupRequested,
+        style: 'padding: 8px 16px; border-radius: 4px; cursor: ' + (state.cleanupRequested ? 'not-allowed' : 'pointer') + ';' + (state.cleanupRequested ? ' opacity: 0.55;' : ''),
+        onclick: () => {
+            if (state.cleanupRequested) return;
+            state.cleanupRequested = true;
+            state.cleanupStatus = { kind: 'progress', message: 'Starting cleanup...' };
+            ps({ type: 'start-cleanup', payload: {
+                mountDir: mount,
+                sourceDir: source,
+                outputIso: state.outputPath || '',
+            } });
+            renderStep();
+        },
+    }, 'Clean up scratch directory');
+
+    let statusEl = null;
+    if (state.cleanupStatus) {
+        if (state.cleanupStatus.kind === 'progress') {
+            statusEl = el('div', { class: 'cleanup-status', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em;' }, state.cleanupStatus.message);
+        } else if (state.cleanupStatus.kind === 'success') {
+            statusEl = el('div', { class: 'cleanup-status cleanup-status-success', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em; color: #2e7d32; font-weight: 600;' }, '✓ ' + state.cleanupStatus.message);
+        } else {
+            statusEl = el('div', { class: 'cleanup-status cleanup-status-error', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em; color: #c62828; font-weight: 600;' }, '✗ Cleanup failed: ' + state.cleanupStatus.message);
+        }
+    }
+
+    return el('div', { class: 'completion-cleanup', style: 'margin-top: 20px; padding: 12px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa;' },
+        el('p', { style: 'margin: 0 0 8px 0;' },
+            'Optional: remove temporary scratch directories used during the build. The output ISO at ',
+            el('code', null, state.outputPath || '—'),
+            ' will NOT be touched -- only the work subdirectories under the scratch root.'
+        ),
+        cleanupButton,
+        statusEl
+    );
+}
+
 function renderComplete() {
     const c = state.completed;
     return el('section', { class: 'complete' },
         el('h2', null, 'Build complete'),
         el('p', null, `Output: ${c.outputPath}`),
         el('button', { onclick: () => ps({ type: 'open-folder', payload: { path: c.outputPath } }) }, 'Open output folder'),
-        el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close')
+        el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close'),
+        renderCompletionCleanupBlock()
     );
 }
 

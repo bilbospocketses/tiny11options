@@ -82,4 +82,16 @@ Describe 'tiny11-cancel-cleanup.ps1 — structural contract' {
         $script:content | Should -Match 'exit 0'
         $script:content | Should -Match 'exit 1'
     }
+
+    It 'declares optional OutputIso parameter (build-complete safety guard)' {
+        $script:content | Should -Match '\[string\]\$OutputIso = '''''
+    }
+
+    It 'refuses to run when OutputIso falls inside MountDir or SourceDir' {
+        # The defensive guard at the top of the script: if $OutputIso is non-empty
+        # and starts with $MountDir or $SourceDir (after path normalization), emit
+        # cleanup-error and exit 1 before doing anything destructive.
+        $script:content | Should -Match 'StartsWith\(\$normalizedTarget'
+        $script:content | Should -Match "Refusing to clean up: output ISO"
+    }
 }
