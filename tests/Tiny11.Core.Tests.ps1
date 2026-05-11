@@ -518,6 +518,26 @@ Describe 'Invoke-Tiny11CoreImageExport' {
         }
     }
 
+    It 'accepts /Compress:fast for FastBuild narrow-but-no-recompress' {
+        # FastBuild Phase 20 uses /Compress:fast to narrow the multi-edition install.wim
+        # to the user's selected index without paying the LZX cost. Without this support
+        # the export call would fail with a parameter binding error and the user would
+        # be prompted for an edition at install time.
+        InModuleScope 'Tiny11.Core' {
+            Mock Invoke-CoreDism { @{ ExitCode = 0; Output = '' } }
+
+            Invoke-Tiny11CoreImageExport `
+                -SourceImageFile 'C:\source\install.wim' `
+                -DestinationImageFile 'C:\source\install2.wim' `
+                -SourceIndex 6 `
+                -Compress 'fast'
+
+            Should -Invoke Invoke-CoreDism -Exactly 1 -ParameterFilter {
+                ($Arguments -join ' ') -match '/Compress:fast'
+            }
+        }
+    }
+
     It 'throws on DISM exit code != 0' {
         InModuleScope 'Tiny11.Core' {
             Mock Invoke-CoreDism { @{ ExitCode = 5; Output = 'mock dism error' } }

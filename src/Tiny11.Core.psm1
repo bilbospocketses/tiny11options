@@ -570,9 +570,13 @@ function Invoke-Tiny11CoreNet35Enable {
     }
 }
 
-# DISM /Export-Image wrapper. Used twice during a Core build:
-#   1. install.wim -> install2.wim with /Compress:max (intermediate)
-#   2. install2.wim (renamed install.wim) -> install.esd with /Compress:recovery (final)
+# DISM /Export-Image wrapper. Used during a Core build:
+#   1. install.wim -> install2.wim with /Compress:max (intermediate, standard build)
+#      or /Compress:fast (FastBuild — narrows to single edition without paying LZX cost)
+#   2. install2.wim (renamed install.wim) -> install.esd with /Compress:recovery (final,
+#      standard build only — FastBuild skips this entirely since narrowing already happened)
+# /Compress values: 'max' (LZX, smallest), 'recovery' (LZMS, even smaller, slower),
+# 'fast' (XPRESS, ~5-8x faster than max, modest size penalty), 'none' (no compression).
 # Throws on non-zero exit. Caller is responsible for the rename + cleanup.
 function Invoke-Tiny11CoreImageExport {
     [CmdletBinding()]
@@ -580,7 +584,7 @@ function Invoke-Tiny11CoreImageExport {
         [Parameter(Mandatory)][string]$SourceImageFile,
         [Parameter(Mandatory)][string]$DestinationImageFile,
         [Parameter(Mandatory)][int]$SourceIndex,
-        [Parameter(Mandatory)][ValidateSet('max', 'recovery')][string]$Compress
+        [Parameter(Mandatory)][ValidateSet('max', 'recovery', 'fast', 'none')][string]$Compress
     )
 
     $result = Invoke-CoreDism -Arguments @(
@@ -1293,12 +1297,21 @@ function Invoke-Tiny11CoreBuildPipeline {
         throw 'Core build pipeline failed mid-flight (see preceding error). install.wim unmounted with /Discard.'
     }
 
-    # Phase 20: export-install with /Compress:max -> install2.wim, then rename (upstream lines 484-487)
-    # FastBuild skips this entirely — install.wim stays in its post-Unmount-Save form (multi-index,
-    # uncompressed). Windows Setup accepts that just fine; the ISO is larger but boots identically.
-    # Mirrors the Tiny11.Worker.psm1 fast-build pattern (lines 109-116).
+    # Phase 20: export-install -> install2.wim, then rename (upstream lines 484-487)
+    # Phase 20 does TWO jobs at once: compresses install.wim AND narrows it to the user's
+    # selected edition (multi-edition wim -> single-edition wim). Without it, Windows Setup
+    # prompts the user to pick an edition at install time even though they already chose one
+    # in Step 1. Upstream tiny11Coremaker conflates these because /Compress:max + per-index
+    # export are the same DISM call.
+    # FastBuild keeps the narrowing but swaps /Compress:max (LZX, slow) for /Compress:fast
+    # (XPRESS, ~5-8x faster). The output install.wim is single-edition and modestly larger
+    # than the max-compressed equivalent, but still much smaller than no-compression.
     if ($FastBuild) {
-        & $ProgressCallback @{ phase='export-install-skip'; step='Skipping /Compress:max export (FastBuild)'; percent=89 }
+        & $ProgressCallback @{ phase='export-install-narrow'; step='Narrowing install.wim to selected edition with /Compress:fast (FastBuild)'; percent=89 }
+        $installWim2 = Join-Path $sourceDir 'sources\install2.wim'
+        Invoke-Tiny11CoreImageExport -SourceImageFile $installWim -DestinationImageFile $installWim2 -SourceIndex $ImageIndex -Compress 'fast'
+        Remove-Item -Path $installWim -Force
+        Rename-Item -Path $installWim2 -NewName 'install.wim'
     } else {
         & $ProgressCallback @{ phase='export-install'; step='Exporting install.wim with /Compress:max'; percent=89 }
         $installWim2 = Join-Path $sourceDir 'sources\install2.wim'

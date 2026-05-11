@@ -314,7 +314,7 @@ function renderProgress() {
         : (state.edition !== null ? `index ${state.edition}` : '—');
     const buildMode = state.coreMode
         ? (state.fastBuild
-            ? 'Core + Fast build (WinSxS wipe, skips /Compress:max + /Compress:recovery — ~20–40 min faster, ISO is larger)'
+            ? 'Core + Fast build (WinSxS wipe, /Compress:fast on selected edition, no recovery .esd — ~15–30 min faster, modestly larger ISO)'
             : 'Core (WinSxS wipe + /Compress:max + /Compress:recovery — smallest ISO, slowest build)')
         : state.fastBuild
             ? 'Fast build (no recovery compression — output ISO typically 7–8 GB)'
@@ -600,9 +600,11 @@ function renderSourceStep() {
     //   (Tiny11.Core.psm1). Hint copy is mode-aware so the user knows what's getting
     //   skipped in their current mode.
     const fastBuildHint = state.coreMode
-        ? 'In Core mode, skips DISM /Export-Image /Compress:max (Phase 20) and ' +
-          '/Compress:recovery (Phase 22). Saves roughly 20–40 minutes per Core build; ' +
-          'output ISO is larger but boots and installs identically. Recommended for VM ' +
+        ? 'In Core mode, swaps DISM /Export-Image /Compress:max for the much faster ' +
+          '/Compress:fast (XPRESS) in Phase 20, and skips the /Compress:recovery esd ' +
+          'export in Phase 22 entirely. Phase 20 still narrows install.wim to your ' +
+          'selected edition (no edition prompt at install time). Saves roughly 15–30 ' +
+          'minutes per Core build; output ISO is modestly larger. Recommended for VM ' +
           'testing and iterative Core builds.'
         : 'Skips DISM /Cleanup-Image and /Export-Image /Compress:recovery. ' +
           'Saves 25–40 minutes per build. With fast build the output ISO is typically ' +
