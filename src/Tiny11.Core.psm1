@@ -1096,6 +1096,12 @@ function Invoke-Tiny11CoreBuildPipeline {
     $mountResult = Invoke-CoreDism -Arguments @('/English', '/Mount-Image', "/ImageFile:$installWim", "/Index:$ImageIndex", "/MountDir:$mountDir")
     if ($mountResult.ExitCode -ne 0) { throw "DISM /Mount-Image failed: $($mountResult.Output)" }
 
+    # Emit a mount-state marker so the UI can surface the "Run cleanup automatically"
+    # button on cancel/error. The marker carries the mount + source paths because the
+    # cleanup script needs both; carrying them inline avoids JS having to derive paths
+    # from $ScratchDir (which differs between Core and Worker layouts).
+    & $ProgressCallback @{ phase='mount-state'; step="install.wim mounted at $mountDir"; percent=10; mountActive=$true; mountDir=$mountDir; sourceDir=$sourceDir }
+
     $pipelineSucceeded = $false
     try {
         # Phase 3: detect language code from mounted image (used by system-package patterns)
@@ -1282,6 +1288,9 @@ function Invoke-Tiny11CoreBuildPipeline {
         $unmountFlag = if ($pipelineSucceeded) { '/Commit' } else { '/Discard' }
         & $ProgressCallback @{ phase='unmount-install'; step="Unmounting install.wim with $unmountFlag"; percent=86 }
         $installUnmountResult = Invoke-CoreDism -Arguments @('/English', '/Unmount-Image', "/MountDir:$mountDir", $unmountFlag)
+        # mount-state cleared — install.wim is no longer mounted regardless of /Commit or /Discard.
+        # Emitted unconditionally; the cleanup button hides on the next render.
+        & $ProgressCallback @{ phase='mount-state'; step="install.wim unmounted ($unmountFlag)"; percent=86; mountActive=$false }
         if ($installUnmountResult.ExitCode -ne 0) {
             # Finally-context: only throw if pipeline succeeded (i.e. no in-flight exception to replace).
             # On the failure path we Write-Warning so the original cause is preserved.
@@ -1332,6 +1341,8 @@ function Invoke-Tiny11CoreBuildPipeline {
     if ($bootMountResult.ExitCode -ne 0) {
         throw "DISM /Mount-Image (boot.wim index 2) failed (exit $($bootMountResult.ExitCode)): $($bootMountResult.Output)"
     }
+    # Brief second mount window (boot.wim) — cleanup applies to same $mountDir path.
+    & $ProgressCallback @{ phase='mount-state'; step="boot.wim mounted at $mountDir"; percent=93; mountActive=$true; mountDir=$mountDir; sourceDir=$sourceDir }
     try {
         foreach ($hive in @('COMPONENTS', 'DEFAULT', 'NTUSER', 'SOFTWARE', 'SYSTEM')) {
             Mount-Tiny11Hive -Hive $hive -ScratchDir $mountDir
@@ -1359,6 +1370,7 @@ function Invoke-Tiny11CoreBuildPipeline {
         # D21.3 — finally-context: capture exit code and surface as Write-Warning rather than throw, so any
         # in-flight pipeline exception (e.g. registry-write failure inside the inner try) isn't replaced.
         $bootUnmountResult = Invoke-CoreDism -Arguments @('/English', '/Unmount-Image', "/MountDir:$mountDir", '/Commit')
+        & $ProgressCallback @{ phase='mount-state'; step='boot.wim unmounted'; percent=94; mountActive=$false }
         if ($bootUnmountResult.ExitCode -ne 0) {
             Write-Warning "dism /Unmount-Image /Commit (boot.wim) failed (exit $($bootUnmountResult.ExitCode)): $($bootUnmountResult.Output)"
         }

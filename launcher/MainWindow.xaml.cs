@@ -192,6 +192,7 @@ public partial class MainWindow : Window
         // ThemeHandlers + apply-theme/get-theme types intentionally not
         // registered — JS owns theme via localStorage. Audit 2026-05-08.
         bridge.Register(new BuildHandlers(bridge, _resourcesDir!));
+        bridge.Register(new CleanupHandlers(bridge, _resourcesDir!));
         bridge.Register(new UpdateHandlers(notifier));
 
         return (bridge, notifier);

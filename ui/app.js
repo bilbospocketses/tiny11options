@@ -87,6 +87,21 @@ const state = {
     completed: null,
     progress: null,
     buildDetailsOpen: false,
+    // mount-state tracking for the cancel-cleanup button. PS pipeline emits
+    // build-progress {phase: 'mount-state', mountActive, mountDir, sourceDir}
+    // when install.wim is mounted, and clears it on unmount. The cleanup
+    // section renders only when mountActive === true; mountDir/sourceDir
+    // are carried in the marker so JS doesn't have to derive them (Core
+    // and Worker use different scratch-layout conventions).
+    mountActive: false,
+    mountDir: null,
+    sourceDir: null,
+    // cleanup button is one-shot per the v1.0.0 design: disabled on click,
+    // never re-enabled. cleanupRequested flips true on click and stays true.
+    // cleanupStatus carries the latest cleanup-* marker payload for the
+    // status line below the button: { kind: 'progress'|'success'|'error', message }.
+    cleanupRequested: false,
+    cleanupStatus: null,
 };
 
 // Snapshot of selections taken when "Save profile..." is clicked, used after the
@@ -283,11 +298,24 @@ function renderBuildStep() {
     );
 }
 
-function renderCoreCleanupBlock() {
-    const sd = (state.scratchDir || '').replace(/[\\/]+$/, '');
-    if (!sd) return null;
-    const mount = `${sd}\\mount`;
-    const source = `${sd}\\source`;
+// Renders the cancel-cleanup section. Mode-agnostic — works for both Core and
+// catalog-driven Worker builds, since the mount-state marker carries the
+// mountDir + sourceDir paths directly. Returns null when no install.wim is
+// currently mounted (cancel/error outside the danger window doesn't need
+// any cleanup beyond ordinary directory deletion).
+//
+// Layout (top to bottom):
+//   1. Yellow-bordered "⚠ Run cleanup automatically" button + tooltip
+//   2. Status line (empty until button clicked; then live progress, then
+//      success or error)
+//   3. Copy-paste fallback block with the 6 commands for users who prefer
+//      manual control or whose automatic run failed
+function renderCleanupBlock() {
+    if (!state.mountActive) return null;
+    const mount  = state.mountDir  || '';
+    const source = state.sourceDir || '';
+    if (!mount || !source) return null;
+
     const cmds = [
         `dism /unmount-image /mountdir:"${mount}" /discard`,
         `dism /cleanup-mountpoints`,
@@ -296,10 +324,54 @@ function renderCoreCleanupBlock() {
         `Remove-Item -Path "${mount}" -Recurse -Force -ErrorAction SilentlyContinue`,
         `Remove-Item -Path "${source}" -Recurse -Force -ErrorAction SilentlyContinue`,
     ];
-    return el('div', { class: 'core-cleanup' },
+
+    const tooltip = 'Runs the six cleanup commands automatically. WARNING: dism /cleanup-mountpoints clears the system-wide DISM mount-point cache — only click this if no other DISM operations are running on this machine.';
+
+    // Button style: yellow warning border with caution-glyph in the label.
+    // Inline styles because this button is uniquely treated (not a reusable class).
+    // Disabled state is the one-shot lock: once clicked, never re-enabled.
+    const cleanupButton = el('button', {
+        class: 'cleanup-button',
+        title: tooltip,
+        disabled: state.cleanupRequested,
+        style: 'border: 2px solid #f4c430; background-color: #fff8e1; color: #5d4e00; padding: 8px 16px; font-weight: 600; border-radius: 4px; cursor: ' + (state.cleanupRequested ? 'not-allowed' : 'pointer') + '; font-size: 1em;' + (state.cleanupRequested ? ' opacity: 0.55;' : ''),
+        onclick: () => {
+            if (state.cleanupRequested) return;
+            state.cleanupRequested = true;
+            state.cleanupStatus = { kind: 'progress', message: 'Starting cleanup...' };
+            ps({ type: 'start-cleanup', payload: { mountDir: mount, sourceDir: source } });
+            renderStep();
+        },
+    }, '⚠ Run cleanup automatically');
+
+    // Status line: empty (placeholder) until cleanup is requested, then
+    // shows live progress / success / error messages.
+    let statusEl;
+    if (!state.cleanupStatus) {
+        statusEl = el('div', { class: 'cleanup-status', style: 'margin-top: 10px; min-height: 1.2em; font-family: monospace; font-size: 0.9em;' }, '');
+    } else if (state.cleanupStatus.kind === 'progress') {
+        statusEl = el('div', { class: 'cleanup-status cleanup-status-progress', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em;' }, state.cleanupStatus.message);
+    } else if (state.cleanupStatus.kind === 'success') {
+        statusEl = el('div', { class: 'cleanup-status cleanup-status-success', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em; color: #2e7d32; font-weight: 600;' }, '✓ ' + state.cleanupStatus.message);
+    } else {
+        // 'error' — render the failure plus an instruction telling the user
+        // to run the commands manually in an elevated PowerShell window
+        // (the copy-paste block immediately below provides them).
+        statusEl = el('div', { class: 'cleanup-status cleanup-status-error', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em; color: #c62828; font-weight: 600;' },
+            el('div', null, '✗ Cleanup failed: ' + state.cleanupStatus.message),
+            el('div', { style: 'margin-top: 6px; font-weight: 400; color: #5d4037;' },
+                'Run the commands below manually in another elevated PowerShell window.'
+            )
+        );
+    }
+
+    return el('div', { class: 'core-cleanup', style: 'margin-top: 16px; padding: 12px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa;' },
         el('p', { class: 'core-cleanup-intro' },
-            '⚠ If you cancel during the WinSxS wipe phase, the scratch directory is left in a non-resumable state. To clean up, run these in an elevated PowerShell prompt before starting another build:'
+            '⚠ install.wim is currently mounted at the path below. If you cancel or the build failed, the scratch directory is left in a non-resumable state. Click the button to run cleanup automatically, or run the commands in an elevated PowerShell window manually:'
         ),
+        cleanupButton,
+        statusEl,
+        el('p', { style: 'margin-top: 12px; font-size: 0.9em;' }, 'Manual fallback (run in elevated PowerShell):'),
         el('pre', { class: 'cleanup-cmd' }, cmds.join('\n'))
     );
 }
@@ -330,7 +402,7 @@ function renderProgress() {
                 el('dt', null, 'Build mode'), el('dd', null, buildMode),
                 el('dt', null, 'Output ISO'), el('dd', null, state.outputPath || '—')
             ),
-            renderCoreCleanupBlock(),
+            renderCleanupBlock(),
           ]
         : [
             el('dl', { class: 'build-details-summary' },
@@ -342,6 +414,7 @@ function renderProgress() {
             el('ul', { class: 'build-details-items' },
                 appliedItems.map(it => el('li', null, it.displayName))
             ),
+            renderCleanupBlock(),
           ];
 
     return el('section', { class: 'progress' },
@@ -762,6 +835,17 @@ onPs(msg => {
 onPs(msg => {
     const p = msg.payload || {};
     if (msg.type === 'build-progress') {
+        // mount-state markers carry mountActive / mountDir / sourceDir. They
+        // also flow through state.progress so any UI element that watches
+        // progress still works, but the dedicated fields are what
+        // renderCleanupBlock reads to decide whether to show the button.
+        if (p.phase === 'mount-state') {
+            state.mountActive = (p.mountActive === true);
+            if (p.mountActive === true) {
+                if (p.mountDir)  state.mountDir  = p.mountDir;
+                if (p.sourceDir) state.sourceDir = p.sourceDir;
+            }
+        }
         state.progress = p;
         renderStep();
     } else if (msg.type === 'build-complete') {
@@ -779,12 +863,31 @@ onPs(msg => {
         if (p.logPath) {
             children.push(el('p', { class: 'log-hint' }, 'Full build log: ', el('code', null, p.logPath)));
         }
-        if (state.coreMode && state.scratchDir) {
-            const block = renderCoreCleanupBlock();
-            if (block) children.push(block);
-        }
+        // Cleanup section renders for both Core and Worker; the function
+        // self-gates on state.mountActive so it returns null outside the
+        // mount window.
+        const cleanupBlock = renderCleanupBlock();
+        if (cleanupBlock) children.push(cleanupBlock);
         children.push(el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close'));
         root.appendChild(el('section', { class: 'error' }, ...children));
+    } else if (msg.type === 'cleanup-progress') {
+        state.cleanupStatus = { kind: 'progress', message: `(${p.percent || 0}%) ${p.step || ''}` };
+        renderStep();
+    } else if (msg.type === 'cleanup-complete') {
+        state.cleanupStatus = { kind: 'success', message: p.message || 'Cleanup complete.' };
+        // Mark mount as cleared so the section will hide on the next non-error
+        // render (e.g. if user starts a new build). On the current cancel/error
+        // screen the section keeps showing the success line until the user
+        // navigates away.
+        state.mountActive = false;
+        renderStep();
+    } else if (msg.type === 'cleanup-error') {
+        state.cleanupStatus = { kind: 'error', message: p.message || 'Unknown cleanup error.' };
+        renderStep();
+    } else if (msg.type === 'cleanup-started') {
+        // Acknowledgement that the handler accepted the request and spawned
+        // pwsh. No UI change needed — cleanup-progress markers carry the
+        // narrative from here.
     } else if (msg.type === 'profile-saved') {
         // v1: log only; future: transient toast.
         console.log('Profile saved:', p.path);
