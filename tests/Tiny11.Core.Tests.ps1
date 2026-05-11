@@ -731,6 +731,20 @@ Describe 'New-Tiny11CoreWuEnforceTaskXml' {
         $xml | Should -Match 'EventID=19'
     }
 
+    It 'has EventTrigger subscribing to Service Control Manager event ID 7040 (start type change)' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Match "Provider\[@Name='Service Control Manager'\]"
+        $xml | Should -Match 'EventID=7040'
+        $xml | Should -Match 'Path="System"'
+    }
+
+    It 'has 4 trigger nodes total (BootTrigger + CalendarTrigger + 2 EventTriggers)' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $parsed = [xml]$xml
+        $triggerCount = $parsed.Task.Triggers.ChildNodes.Count
+        $triggerCount | Should -Be 4
+    }
+
     It 'runs as SYSTEM (S-1-5-18) with HighestAvailable privilege' {
         $xml = New-Tiny11CoreWuEnforceTaskXml
         $xml | Should -Match '<UserId>S-1-5-18</UserId>'

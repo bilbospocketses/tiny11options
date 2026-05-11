@@ -812,9 +812,15 @@ Write-EnforceLog '==== tiny11-wu-enforce done ===='
 }
 
 # Returns the tiny11-wu-enforce.xml scheduled task definition. Registers as
-# "tiny11options\Keep WU Disabled". Three triggers: AtStartup+2min delay, daily 03:00,
-# and on WindowsUpdateClient/Operational event 19 (CU installed). Runs as SYSTEM with
-# HighestAvailable privilege. 10-min ExecutionTimeLimit (rarely needed — script is fast).
+# "tiny11options\Keep WU Disabled". Four triggers:
+#   1. BootTrigger PT2M delay — catches whatever Windows OOBE/post-OOBE does at boot
+#   2. CalendarTrigger daily 03:00 — catches mid-day restorations
+#   3. EventTrigger WindowsUpdateClient/Operational EventID 19 — fires on CU install
+#   4. EventTrigger System / Service Control Manager EventID 7040 — fires within
+#      seconds of ANY service start type change (catches Windows un-correcting
+#      wuauserv from Disabled to Demand Start, observed ~88-second flip cycle).
+# Runs as SYSTEM with HighestAvailable privilege. 10-min ExecutionTimeLimit
+# (rarely needed — script is fast).
 function New-Tiny11CoreWuEnforceTaskXml {
     [CmdletBinding()]
     param()
@@ -843,6 +849,10 @@ function New-Tiny11CoreWuEnforceTaskXml {
     <EventTrigger>
       <Enabled>true</Enabled>
       <Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="Microsoft-Windows-WindowsUpdateClient/Operational"&gt;&lt;Select Path="Microsoft-Windows-WindowsUpdateClient/Operational"&gt;*[System[(EventID=19)]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>
+    </EventTrigger>
+    <EventTrigger>
+      <Enabled>true</Enabled>
+      <Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="System"&gt;&lt;Select Path="System"&gt;*[System[Provider[@Name='Service Control Manager'] and (EventID=7040)]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>
     </EventTrigger>
   </Triggers>
   <Principals>

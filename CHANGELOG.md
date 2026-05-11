@@ -251,6 +251,26 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
+### Event 7040 trigger for the Keep-WU-Disabled task (2026-05-10)
+
+Phase 7 C4 diagnostic surfaced that Windows is **actively re-enabling wuauserv** between enforcement-task fires. The user's Get-WinEvent query against `Service Control Manager` (event ID 7040) captured the actual flip cycle:
+
+```
+22:50:57  demand start -> disabled    (enforcement task fire)
+22:52:25  disabled -> demand start    (Windows un-corrected within 88 seconds!)
+```
+
+Without an event-driven trigger, the next enforcement fire wouldn't happen until daily 03:00, leaving wuauserv potentially running for 4+ hours. Solution: subscribe to the same SCM event 7040 that surfaced the diagnostic. Whenever ANY service start type changes on the system, our enforcement task fires within seconds. The existing `tiny11-wu-enforce.ps1` already does both start-type correction AND stop-if-running idempotently — no script change needed; the new trigger just fires it more often.
+
+#### Changed
+- **fix(core)**: `New-Tiny11CoreWuEnforceTaskXml` adds a fourth `<EventTrigger>` subscribing to System log, Provider `Service Control Manager`, Event ID 7040. Filter is broad (any service start type change, not wuauserv-specific) for two reasons: avoids EventData parameter-filtering risk on multi-locale systems where the wuauserv display name varies, and the enforcement script is already idempotent so spurious fires from other services' legitimate boot-time start type changes cost ~1 second of log noise.
+
+#### Pester additions
+- 2 new tests on `New-Tiny11CoreWuEnforceTaskXml`: assert Service Control Manager + EventID=7040 + Path="System" appear in the subscription, and that total trigger node count is 4 (BootTrigger + CalendarTrigger + 2 EventTriggers).
+
+#### Architecture
+Four triggers now: AtStartup+2min delay (catches post-OOBE), daily 03:00 (catches mid-day), event 19 (CU installed), **event 7040 (start type change — the new event-driven re-correction)**. Worst-case response time goes from ~24 hours to ~seconds.
+
 ### Persistent Keep-WU-Disabled scheduled task (2026-05-10)
 
 Pulling forward the v1.0.1 "post-boot cleanup scheduled task" as a v1.0.0 belt-and-suspenders mechanism: even with the offline WUB recipe (commit `79ad03e`) applied, if Windows manages to resurrect any of the WU machinery (recreate a scheduled task folder, flip wuauserv back to Manual, clear an IFEO entry), a recurring task re-applies the entire recipe on every boot, daily, and on every Windows Update event. Idempotent — when state is already correct, every check is a `Test-Path` / `Get-ItemProperty` read-and-skip; common-case runtime is sub-second.
