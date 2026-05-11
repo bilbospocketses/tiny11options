@@ -117,7 +117,11 @@ try {
         -FastBuild $FastBuild.IsPresent `
         -ProgressCallback {
             param($p)
-            Write-Marker 'build-progress' @{ phase = $p.phase; step = $p.step; percent = $p.percent }
+            # Forward the entire payload — Worker pipeline emits mount-state
+            # markers carrying mountActive/mountDir/sourceDir that the launcher
+            # cleanup button reads. Per-key whitelisting drops them silently.
+            # See tiny11Coremaker-from-config.ps1 for the matching change.
+            Write-Marker 'build-progress' $p
         }
 
     # PORTED: tiny11maker.ps1:279 — legacy emits build-complete with {outputPath}.

@@ -105,6 +105,28 @@ public class BuildHandlersTests
     }
 
     [Fact]
+    public async Task CancelBuild_SetsTerminalMarkerSeen_ToSuppressStderrFallback()
+    {
+        // Regression: without _terminalMarkerSeen=true on cancel, the stderr-
+        // fallback Task fires "Build process exited with code -1 and no output"
+        // after Process.Kill, overwriting the friendly "Build cancelled by user."
+        // message in JS (each build-error clears and re-renders).
+        //
+        // No _activeBuild is set, so HandleAsync skips the Kill call and the
+        // stderr-fallback Task isn't spawned -- but the _terminalMarkerSeen flag
+        // assignment still runs. Probe it via reflection.
+        var bridge = new Bridge(Array.Empty<IBridgeHandler>());
+        var bh = new BuildHandlers(bridge, Path.GetTempPath());
+
+        await bh.HandleAsync("cancel-build", new JsonObject());
+
+        var flag = (bool)bh.GetType()
+            .GetField("_terminalMarkerSeen", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(bh)!;
+        Assert.True(flag, "_terminalMarkerSeen must be true after cancel-build to suppress the stderr-fallback duplicate build-error.");
+    }
+
+    [Fact]
     public void BuildCoreArgs_OmitsConfigPath_Always()
     {
         // Core mode has no catalog and so no -ConfigPath, regardless of any other flag.

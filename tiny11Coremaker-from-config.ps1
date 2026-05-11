@@ -104,7 +104,15 @@ try {
         -FastBuild $FastBuild.IsPresent `
         -ProgressCallback {
             param($p)
-            Write-Marker 'build-progress' @{ phase = $p.phase; step = $p.step; percent = $p.percent }
+            # Forward the entire payload, not just phase/step/percent. The Core
+            # pipeline emits mount-state markers with extra fields (mountActive,
+            # mountDir, sourceDir) that the launcher's auto-cleanup button
+            # depends on. Per-key whitelisting drops those fields silently, so
+            # JS never sees state.mountActive=true and the cleanup section
+            # self-gates off. Pass $p through directly — Write-Marker already
+            # declares [hashtable]$Payload so any keys present flow through to
+            # ConvertTo-Json verbatim.
+            Write-Marker 'build-progress' $p
         }
 
     Write-CoreLog '==== Tiny11 Core build SUCCESS ===='

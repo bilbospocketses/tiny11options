@@ -36,6 +36,13 @@ public class BuildHandlers : IBridgeHandler
             // progress state cleanly. The Process.Kill stops the actual work; this
             // bridge message stops the UI hang.
             _activeBuild?.Kill(entireProcessTree: true);
+            // Flip the terminal-marker flag BEFORE returning so the stderr-fallback
+            // Task doesn't fire a duplicate build-error like "Build process exited
+            // with code -1 and no output" after Process.Kill resolves. Without this,
+            // JS sees two build-error messages and the second one (the spurious
+            // "exit -1" one) overwrites the friendly "Build cancelled by user."
+            // message because each build-error handler clears and re-renders.
+            _terminalMarkerSeen = true;
             return new Bridge.BridgeMessage
             {
                 Type = "build-error",
