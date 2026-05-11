@@ -251,6 +251,10 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
+### UX: Step 1 source-field placeholder rewording (2026-05-11)
+
+Placeholder text updated from *"C:\path\to\Win11.iso or drive letter where Windows 11 DVD or ISO are mounted (ex. E:)"* to *"ISO or drive letter where Windows 11 media is located (ex - E: or C:\path\win11.iso)"*. Leads with the more flexible parsing ("ISO or drive letter") and pairs both examples together so the user sees the two valid input shapes in one parenthetical.
+
 ### UX: Step 1 source-field label clarified to "Windows 11 DVD/ISO" (2026-05-11)
 
 The label read *"Windows 11 ISO"* but the field already accepts both a full `.iso` path AND a drive letter (`E:`) for a physical DVD drive or a pre-mounted ISO (the placeholder text documents both). Updated label to *"Windows 11 DVD/ISO"* so users with a physical DVD or pre-mounted ISO don't assume the field is for `.iso` files only.

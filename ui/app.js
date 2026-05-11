@@ -646,7 +646,7 @@ function renderSourceStep() {
         el('div', { class: 'row' },
             el('input', {
                 id: 'src-input', type: 'text', value: state.source || '',
-                placeholder: 'C:\\path\\to\\Win11.iso or drive letter where Windows 11 DVD or ISO are mounted (ex. E:)',
+                placeholder: 'ISO or drive letter where Windows 11 media is located (ex - E: or C:\\path\\win11.iso)',
                 onchange: e => {
                     state.source = e.target.value;
                     state.editions = null;
