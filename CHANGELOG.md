@@ -251,6 +251,18 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
+### UX: validation spinner next to the editions dropdown (2026-05-11)
+
+The validate-iso round-trip (mount + `Get-Tiny11Editions` + dismount) takes up to ~10s on retail multi-edition ISOs. Without visible feedback, users alt-tab away or attempt to proceed before editions populate. Added an inline spinner with two-stage status text right of the dropdown.
+
+#### Added
+- **`ui/app.js`**: `state.validating` + `state.validatingStart` tracking, plus `startValidationSpinner` / `stopValidationSpinner` / `updateValidationSpinnerText` helpers. Start fires on src-input change + browse-result source pick. Stop fires on iso-validated + iso-error. Counter ticks every 1 second; text content updates directly on the `#wizard-spinner-text` node (no full re-render churn).
+  - Stage 1 (0-2s): *"Mounting iso..."*
+  - Stage 2 (2-5s): *"Mounting iso... finished. Determining editions..."*
+  - Stage 3 (5s+): *"Mounting iso... finished. Determining editions... (Ns)"* — N is `Math.floor(elapsed/5)*5`, so 5s, 10s, 15s, etc.
+- **`ui/style.css`**: `.wizard-spinner-wrap` (inline-flex, gap 8px, muted color) + `.wizard-spinner` (14×14 ring with `--accent` top+right border, 0.8s linear infinite rotation) + `@keyframes wizard-spin` + `prefers-reduced-motion: reduce` override (static dot, no rotation) matching the accessibility pattern from the v0.1.0 update-badge pulse.
+- ARIA: spinner wrapper carries `role="status"` and `aria-live="polite"` so screen readers announce the state changes; the visual spinner ring is `aria-hidden="true"` since the text alongside conveys the same information.
+
 ### TimeTrigger PT1M + log rotation for Keep-WU-Disabled (2026-05-11)
 
 Phase 7 C4 7-hour soak test (~5,000 samples at 5-second intervals from 00:45 to 07:42, every sample `Stopped Disabled`) confirmed the enforcement task keeps wuauserv pinned. The Event 7040 trigger added in `8a3f8e7` empirically didn't reliably fire for wuauserv state changes despite the events being logged to System (visible via `Get-WinEvent`) — Task Scheduler appears to be more selective about which 7040 events it'll trigger on than the event-log API is. The user manually added a 60-second polling trigger as a safety net; this commit lands that pattern in the generated XML.

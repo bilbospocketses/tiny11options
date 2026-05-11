@@ -588,3 +588,41 @@ section.progress h2 {
     font-size: 13px;
     line-height: 1.4;
 }
+
+/* Validation spinner — shown next to the editions dropdown while validate-iso
+   is in flight (mount + Get-Editions + dismount can take up to ~10s). */
+.wizard-spinner-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--fg-muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.wizard-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid transparent;
+    border-top-color: var(--accent);
+    border-right-color: var(--accent);
+    border-radius: 50%;
+    animation: wizard-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes wizard-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* Accessibility — users with vestibular sensitivity get a static dot instead
+   of a rotating ring, while the text + colour change still convey "in progress". */
+@media (prefers-reduced-motion: reduce) {
+    .wizard-spinner {
+        animation: none;
+        border-color: var(--accent);
+        border-top-color: var(--accent);
+    }
+}

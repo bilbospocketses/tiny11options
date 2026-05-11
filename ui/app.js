@@ -73,6 +73,8 @@ const state = {
     drilledCategory: null,
     search: '',
     building: false,
+    validating: false,         // true while we're awaiting iso-validated / iso-error
+    validatingStart: 0,        // Date.now() when validation kicked off — drives the elapsed counter
     completed: null,
     progress: null,
     buildDetailsOpen: false,
@@ -82,6 +84,44 @@ const state = {
 // browse-save-file dialog returns a path. Decouples user click time from dialog
 // completion so concurrent state changes (rare) can't poison the saved profile.
 let pendingSaveProfileSelections = null;
+
+// Validation spinner machinery. The validate-iso round-trip can take up to ~10s
+// (mount-disk-image + Get-Tiny11Editions + dismount). Without visible feedback,
+// users alt-tab away or click Next thinking nothing happened. The spinner sits
+// inline next to the editions <select> and shows two-stage text:
+//   0-2s : "Mounting iso..."
+//   2-5s : "Mounting iso... finished. Determining editions..."
+//   5s+  : "Mounting iso... finished. Determining editions... (Ns)" — counter
+//          ticks every 5s so users see the elapsed time isn't stuck.
+let validationTimerId = null;
+
+function startValidationSpinner() {
+    state.validating = true;
+    state.validatingStart = Date.now();
+    if (validationTimerId) clearInterval(validationTimerId);
+    // Re-render once now to insert the spinner DOM, then tick the text every second.
+    renderStep();
+    validationTimerId = setInterval(updateValidationSpinnerText, 1000);
+}
+
+function stopValidationSpinner() {
+    state.validating = false;
+    if (validationTimerId) { clearInterval(validationTimerId); validationTimerId = null; }
+}
+
+function updateValidationSpinnerText() {
+    const node = document.getElementById('wizard-spinner-text');
+    if (!node) return;
+    const elapsed = Math.floor((Date.now() - state.validatingStart) / 1000);
+    if (elapsed < 2) {
+        node.textContent = 'Mounting iso...';
+    } else {
+        const tick = Math.floor(elapsed / 5) * 5;
+        node.textContent = (tick >= 5)
+            ? `Mounting iso... finished. Determining editions... (${tick}s)`
+            : 'Mounting iso... finished. Determining editions...';
+    }
+}
 
 // When the user picks or types a scratch directory, prefill the output ISO path with
 // "<scratchDir>\tiny11.iso" (or tiny11core.iso in Core mode) — but only if outputPath is
@@ -594,7 +634,7 @@ function renderSourceStep() {
                     state.editions = null;
                     state.edition = null;
                     ps({ type: 'validate-iso', payload: { path: state.source } });
-                    renderStep();
+                    startValidationSpinner();
                 }
             }),
             el('button', { id: 'src-browse', onclick: () => ps({ type: 'browse-file', payload: { context: 'source', title: 'Select Win11 ISO', filter: 'ISO files|*.iso|All files|*.*' } }) }, 'Browse...')
@@ -607,6 +647,14 @@ function renderSourceStep() {
                 disabled: !state.editions,
                 onchange: e => { state.edition = parseInt(e.target.value, 10); updateNav(); }
             }, editionsOptions),
+            // Inline validation spinner — shown only while a validate-iso round-trip is in flight.
+            // Sits to the right of the dropdown so the user's focus stays in this region.
+            state.validating
+                ? el('span', { class: 'wizard-spinner-wrap', role: 'status', 'aria-live': 'polite' },
+                      el('span', { class: 'wizard-spinner', 'aria-hidden': 'true' }),
+                      el('span', { id: 'wizard-spinner-text' }, 'Mounting iso...')
+                  )
+                : null,
             el('button', { class: 'browse-spacer', 'aria-hidden': 'true', tabindex: '-1' }, 'Browse...')
         ),
         el('label', null, 'Scratch directory'),
@@ -649,11 +697,14 @@ document.addEventListener('DOMContentLoaded', () => { initTheme(); renderStep();
 onPs(msg => {
     const p = msg.payload || {};
     if (msg.type === 'iso-validated') {
+        stopValidationSpinner();
         state.editions = p.editions;
         state.edition = (p.editions && p.editions[0] && p.editions[0].index) || null;
         state.source = p.path || state.source;
         renderStep();
     } else if (msg.type === 'iso-error') {
+        stopValidationSpinner();
+        renderStep();   // re-render to drop the spinner before the banner shows
         const banner = document.getElementById('src-error');
         if (banner) {
             banner.classList.remove('hidden');
@@ -661,7 +712,7 @@ onPs(msg => {
         }
     } else if (msg.type === 'browse-result') {
         if (!p.path) return; // user cancelled the dialog
-        if (p.context === 'source')  { state.source = p.path; renderStep(); ps({ type: 'validate-iso', payload: { path: p.path } }); }
+        if (p.context === 'source')  { state.source = p.path; ps({ type: 'validate-iso', payload: { path: p.path } }); startValidationSpinner(); }
         else if (p.context === 'scratch') { state.scratchDir = p.path; prefillOutputIfEmpty(); renderStep(); }
         else if (p.context === 'output')  { state.outputPath = p.path; renderStep(); }
         else if (p.context === 'profile-save') {
