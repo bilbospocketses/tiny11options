@@ -642,7 +642,7 @@ function renderSourceStep() {
         : [];
 
     const section = el('section', { class: 'form' },
-        el('label', null, 'Windows 11 ISO'),
+        el('label', null, 'Windows 11 DVD/ISO'),
         el('div', { class: 'row' },
             el('input', {
                 id: 'src-input', type: 'text', value: state.source || '',
