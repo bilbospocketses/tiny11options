@@ -642,7 +642,7 @@ function renderSourceStep() {
         : [];
 
     const section = el('section', { class: 'form' },
-        el('label', null, 'Windows 11 DVD/ISO'),
+        el('label', null, 'Windows 11 ISO/DVD'),
         el('div', { class: 'row' },
             el('input', {
                 id: 'src-input', type: 'text', value: state.source || '',
@@ -681,6 +681,7 @@ function renderSourceStep() {
         el('div', { class: 'row' },
             el('input', {
                 id: 'scratch-input', type: 'text', value: state.scratchDir || '',
+                placeholder: 'Choose temp file location. If empty, a temporary folder under %TEMP% is created automatically.',
                 onchange: e => { state.scratchDir = e.target.value; prefillOutputIfEmpty(); }
             }),
             el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
@@ -691,7 +692,7 @@ function renderSourceStep() {
                 checked: state.unmountSource,
                 onchange: e => state.unmountSource = e.target.checked
             }),
-            'Unmount source ISO when build finishes'
+            'Unmount source ISO/DVD when build finishes'
         ),
         ...fastBuildRow,
         el('label', { class: 'checkbox-label' },

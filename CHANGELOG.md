@@ -251,6 +251,12 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
+### UX: Step 1 text polish — label reorder, scratch placeholder, checkbox text (2026-05-11)
+
+- Source field label: *"Windows 11 DVD/ISO"* → *"Windows 11 ISO/DVD"* (ISO first since that's the more common input).
+- Scratch directory now has a placeholder: *"Choose temp file location. If empty, a temporary folder under %TEMP% is created automatically."* (Accurate to the wrapper behavior in `tiny11maker-from-config.ps1:101` / `tiny11Coremaker-from-config.ps1:56` which join `$env:TEMP` with `tiny11options-build-<pid>` / `tiny11options-corebuild-<pid>` when no `-ScratchDir` is passed.)
+- Unmount checkbox label: *"Unmount source ISO when build finishes"* → *"Unmount source ISO/DVD when build finishes"* (consistent with the label rename; dismount of a drive-letter source is a no-op via the `MountedByUs` guard in `Tiny11.Iso.psm1`).
+
 ### UX: Step 1 source-field placeholder rewording (2026-05-11)
 
 Placeholder text updated from *"C:\path\to\Win11.iso or drive letter where Windows 11 DVD or ISO are mounted (ex. E:)"* to *"ISO or drive letter where Windows 11 media is located (ex - E: or C:\path\win11.iso)"*. Leads with the more flexible parsing ("ISO or drive letter") and pairs both examples together so the user sees the two valid input shapes in one parenthetical.
