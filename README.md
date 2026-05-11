@@ -71,9 +71,11 @@ Significantly more aggressive image reduction. In addition to standard tiny11's 
 
 **Serviceability:** ❌ Windows Update is disabled and the WinSxS store is gone. You cannot install Windows Updates, add languages, or enable Windows features after install. **Not suitable as a daily-driver Windows install.**
 
-**Build time:** Core builds take ~30-45 minutes (similar to standard with recovery compression) but the WinSxS-wipe phase alone runs ~5-10 minutes — longer than any single phase in a standard build.
+**Build time:** Core builds take ~30-45 minutes with default compression. The WinSxS-wipe phase alone runs ~5-10 minutes — longer than any single phase in a standard build. **Fast Build** (checkbox in Step 1) skips Phase 22's recovery compression and swaps Phase 20's `/Compress:max` for `/Compress:fast`, saving roughly 15-30 minutes per Core build at the cost of a modestly larger ISO. Recommended for VM testing and iterative builds where ISO size doesn't matter.
 
-**Cancellation note:** if you cancel during the WinSxS-wipe phase, the scratch directory is left in a non-resumable state (locked NTFS permissions, half-populated WinSxS_edit, dangling DISM mount). The build-progress UI surfaces a six-command elevated-PowerShell cleanup sequence to recover. Standard tiny11 builds don't have this issue — cancel cleanup is automatic.
+**Cancellation cleanup:** if you cancel during the WinSxS-wipe phase, the scratch directory is left in a non-resumable state (locked NTFS permissions, half-populated WinSxS_edit, dangling DISM mount). The Build failed screen surfaces a "⚠ Run cleanup automatically" button that runs the six recovery commands for you — one click, no manual elevated-PowerShell session needed. The same six commands are shown below the button as a copy-paste fallback for manual control or if the automatic run fails. Standard tiny11 builds don't reach this state — cancel cleanup is automatic in both modes.
+
+**Post-build cleanup:** after a successful build, the Build complete screen offers an optional "Clean up scratch directory" button that removes the temporary build directories (multi-GB on Core builds). Your output ISO is preserved — the script refuses to run if the ISO path falls inside one of the cleanup targets.
 
 To select Core mode, check the "Build tiny11 Core" box at the bottom of Step 1. The wizard then skips Step 2 (no per-item customization in Core) and goes directly to Step 3 with a Core-mode summary.
 
