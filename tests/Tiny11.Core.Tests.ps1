@@ -79,9 +79,9 @@ Describe 'Get-Tiny11CoreFilesystemTargets' {
 }
 
 Describe 'Get-Tiny11CoreScheduledTaskTargets' {
-    It 'returns 5 scheduled-task deletion targets' {
+    It 'returns 8 scheduled-task deletion targets' {
         $targets = Get-Tiny11CoreScheduledTaskTargets
-        $targets.Count | Should -Be 5
+        $targets.Count | Should -Be 8
     }
 
     It 'includes Compatibility Appraiser, CEIP, ProgramDataUpdater, Chkdsk Proxy, QueueReporting' {
@@ -98,6 +98,22 @@ Describe 'Get-Tiny11CoreScheduledTaskTargets' {
         $targets = Get-Tiny11CoreScheduledTaskTargets
         $ceip = $targets | Where-Object RelPath -eq 'Microsoft\Windows\Customer Experience Improvement Program'
         $ceip.Recurse | Should -BeTrue
+    }
+
+    It 'includes WUB-recipe WU scheduled task folders (WindowsUpdate, UpdateOrchestrator, WaaSMedic)' {
+        $targets = Get-Tiny11CoreScheduledTaskTargets
+        $rels = $targets | ForEach-Object { $_.RelPath }
+        $rels | Should -Contain 'Microsoft\Windows\WindowsUpdate'
+        $rels | Should -Contain 'Microsoft\Windows\UpdateOrchestrator'
+        $rels | Should -Contain 'Microsoft\Windows\WaaSMedic'
+    }
+
+    It 'WU scheduled task folders are recurse-delete (entire folder contents)' {
+        $targets = Get-Tiny11CoreScheduledTaskTargets
+        foreach ($folder in @('Microsoft\Windows\WindowsUpdate', 'Microsoft\Windows\UpdateOrchestrator', 'Microsoft\Windows\WaaSMedic')) {
+            $entry = $targets | Where-Object RelPath -eq $folder
+            $entry.Recurse | Should -BeTrue -Because "$folder must recurse-delete to catch all child tasks"
+        }
     }
 }
 
@@ -148,7 +164,7 @@ Describe 'Get-Tiny11CoreRegistryTweaks' {
     }
 
     It 'every entry has a known category' {
-        $known = @('bypass-sysreqs', 'sponsored-apps', 'telemetry', 'defender-disable', 'update-disable', 'misc')
+        $known = @('bypass-sysreqs', 'sponsored-apps', 'telemetry', 'defender-disable', 'update-disable', 'ifeo-block', 'misc')
         foreach ($t in $script:tweaks) {
             $known | Should -Contain $t.Category
         }
@@ -183,6 +199,54 @@ Describe 'Get-Tiny11CoreRegistryTweaks' {
         foreach ($a in $adds) {
             $a.PSObject.Properties.Name | Should -Contain 'Type'
             $a.PSObject.Properties.Name | Should -Contain 'Value'
+        }
+    }
+
+    It 'update-disable category contains WUB-recipe dosvc + InstallService entries (Start=4)' {
+        $upd = $script:tweaks | Where-Object Category -eq 'update-disable'
+        foreach ($svc in @('dosvc', 'InstallService')) {
+            $entry = $upd | Where-Object { $_.Path -like "*Services\$svc" -and $_.Name -eq 'Start' }
+            $entry | Should -Not -BeNullOrEmpty -Because "$svc service Start=4 entry expected"
+            $entry.Value | Should -Be 4
+        }
+    }
+
+    It 'update-disable category retains wuauserv Start=4 + deletes UsoSvc + deletes WaaSMedicSVC' {
+        $upd = $script:tweaks | Where-Object Category -eq 'update-disable'
+        $wu = $upd | Where-Object { $_.Path -like '*Services\wuauserv' -and $_.Name -eq 'Start' }
+        $wu.Value | Should -Be 4
+        ($upd | Where-Object { $_.Op -eq 'delete' -and $_.Path -like '*Services\UsoSvc' })       | Should -Not -BeNullOrEmpty
+        ($upd | Where-Object { $_.Op -eq 'delete' -and $_.Path -like '*Services\WaaSMedicSVC' }) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'ifeo-block category contains 13 IFEO Debugger entries' {
+        $ifeo = $script:tweaks | Where-Object Category -eq 'ifeo-block'
+        $ifeo.Count | Should -Be 13
+    }
+
+    It 'every ifeo-block entry sets Debugger=systray.exe under HKLM\SOFTWARE Image File Execution Options\<exe>' {
+        $ifeo = $script:tweaks | Where-Object Category -eq 'ifeo-block'
+        foreach ($e in $ifeo) {
+            $e.Op    | Should -Be 'add'
+            $e.Hive  | Should -Be 'zSOFTWARE'
+            $e.Name  | Should -Be 'Debugger'
+            $e.Type  | Should -Be 'REG_SZ'
+            $e.Value | Should -Be 'systray.exe'
+            $e.Path  | Should -Match '^Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\.+\.exe$'
+        }
+    }
+
+    It 'ifeo-block category covers the 13 WUB-recipe blocked executables' {
+        $ifeo = $script:tweaks | Where-Object Category -eq 'ifeo-block'
+        $exes = $ifeo | ForEach-Object { ($_.Path -split '\\')[-1] }
+        $expected = @(
+            'WaaSMedic.exe', 'WaasMedicAgent.exe',
+            'Windows10Upgrade.exe', 'Windows10UpgraderApp.exe', 'UpdateAssistant.exe',
+            'UsoClient.exe', 'remsh.exe', 'EOSnotify.exe', 'SihClient.exe', 'InstallAgent.exe',
+            'MusNotification.exe', 'MusNotificationUx.exe', 'MoNotificationUx.exe'
+        )
+        foreach ($exe in $expected) {
+            $exes | Should -Contain $exe
         }
     }
 }

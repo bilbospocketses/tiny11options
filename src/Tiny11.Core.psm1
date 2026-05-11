@@ -130,6 +130,14 @@ function Get-Tiny11CoreScheduledTaskTargets {
         [pscustomobject]@{ RelPath = 'Microsoft\Windows\Application Experience\ProgramDataUpdater';                  Recurse = $false }
         [pscustomobject]@{ RelPath = 'Microsoft\Windows\Chkdsk\Proxy';                                                Recurse = $false }
         [pscustomobject]@{ RelPath = 'Microsoft\Windows\Windows Error Reporting\QueueReporting';                     Recurse = $false }
+        # WUB-recipe additions (2026-05-10): kill the scheduled tasks that re-enable WU services
+        # on cadence. Without these, UpdateOrchestrator's Schedule Maintenance Work / Wake To Work /
+        # Schedule Work re-enable wuauserv periodically, defeating Start=4 in the offline image.
+        # WaaSMedic\PerformRemediation actively repairs disabled WU. Reference: Wub.ini
+        # [TaskScheduler_List] section.
+        [pscustomobject]@{ RelPath = 'Microsoft\Windows\WindowsUpdate';      Recurse = $true  }
+        [pscustomobject]@{ RelPath = 'Microsoft\Windows\UpdateOrchestrator'; Recurse = $true  }
+        [pscustomobject]@{ RelPath = 'Microsoft\Windows\WaaSMedic';          Recurse = $true  }
     )
 }
 
@@ -363,6 +371,11 @@ function Get-Tiny11CoreRegistryTweaks {
         [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSYSTEM';  Path='ControlSet001\Services\wuauserv'; Name='Start'; Type='REG_DWORD'; Value=4 }
         [pscustomobject]@{ Category='update-disable'; Op='delete'; Hive='zSYSTEM';  Path='ControlSet001\Services\WaaSMedicSVC' }
         [pscustomobject]@{ Category='update-disable'; Op='delete'; Hive='zSYSTEM';  Path='ControlSet001\Services\UsoSvc' }
+        # WUB-recipe additions (2026-05-10): dosvc (Delivery Optimization) and InstallService.
+        # Both can re-enable wuauserv on trigger events. WUB sets dosvc=4 and InstallService=4
+        # by default. Reference: Wub.ini [Service_List] section.
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSYSTEM';  Path='ControlSet001\Services\dosvc';          Name='Start'; Type='REG_DWORD'; Value=4 }
+        [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSYSTEM';  Path='ControlSet001\Services\InstallService'; Name='Start'; Type='REG_DWORD'; Value=4 }
         [pscustomobject]@{ Category='update-disable'; Op='add'; Hive='zSOFTWARE'; Path='Policies\Microsoft\Windows\WindowsUpdate\AU'; Name='NoAutoUpdate'; Type='REG_DWORD'; Value=1 }
 
         # defender-disable (6 entries) — 5 services Start=4 (via Set-ItemProperty in upstream
@@ -373,6 +386,28 @@ function Get-Tiny11CoreRegistryTweaks {
         [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\WdFilter'; Name='Start'; Type='REG_DWORD'; Value=4 }
         [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\Sense'; Name='Start'; Type='REG_DWORD'; Value=4 }
         [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\Policies\Explorer'; Name='SettingsPageVisibility'; Type='REG_SZ'; Value='hide:virus;windowsupdate' }
+
+        # ifeo-block (13 entries) — WUB-recipe IFEO Debugger redirects (2026-05-10).
+        # For each blocked exe, set HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\<exe>\Debugger
+        # to "systray.exe". When Windows tries to launch the blocked exe it invokes systray.exe as the
+        # "debugger" first; systray is a benign no-op stub, so the original exe never runs. This stops
+        # the WaaSMedic / UsoClient / Update-Assistant runtime repair mechanisms that re-enable WU services.
+        # Reference: Wub.ini [Block_Process_List] section (entries with action 2 = Block).
+        # Note: upfc.exe and dismHost.exe from WUB's list are NOT blocked (WUB sets them to action 0)
+        # because they have legitimate uses outside the WU repair chain.
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\WaaSMedic.exe';           Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\WaasMedicAgent.exe';      Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\Windows10Upgrade.exe';    Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\Windows10UpgraderApp.exe';Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\UpdateAssistant.exe';     Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\UsoClient.exe';           Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\remsh.exe';               Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\EOSnotify.exe';           Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\SihClient.exe';           Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\InstallAgent.exe';        Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\MusNotification.exe';     Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\MusNotificationUx.exe';   Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
+        [pscustomobject]@{ Category='ifeo-block'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows NT\CurrentVersion\Image File Execution Options\MoNotificationUx.exe';    Name='Debugger'; Type='REG_SZ'; Value='systray.exe' }
     )
 }
 
@@ -914,9 +949,10 @@ function Invoke-Tiny11CoreBuildPipeline {
                 'telemetry'        = @{ phase='registry-telemetry';         step='Disabling telemetry'; percent=73 }
                 'defender-disable' = @{ phase='registry-defender-disable';  step='Disabling Windows Defender services'; percent=75 }
                 'update-disable'   = @{ phase='registry-update-disable';    step='Disabling Windows Update'; percent=77 }
+                'ifeo-block'       = @{ phase='registry-ifeo-block';        step='Blocking WU repair binaries via IFEO Debugger redirect'; percent=78 }
                 'misc'             = @{ phase='registry-misc';              step='BitLocker / Chat / Copilot / Teams / Outlook / etc.'; percent=79 }
             }
-            foreach ($cat in @('bypass-sysreqs', 'sponsored-apps', 'telemetry', 'defender-disable', 'update-disable', 'misc')) {
+            foreach ($cat in @('bypass-sysreqs', 'sponsored-apps', 'telemetry', 'defender-disable', 'update-disable', 'ifeo-block', 'misc')) {
                 & $ProgressCallback $phaseMap[$cat]
                 $catTweaks = $allTweaks | Where-Object Category -eq $cat
                 foreach ($t in $catTweaks) {

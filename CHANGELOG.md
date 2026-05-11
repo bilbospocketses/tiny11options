@@ -251,6 +251,28 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
+### WUB-recipe permanent WU disable: scheduled-task deletions + dosvc/InstallService + IFEO blocks (2026-05-10)
+
+Phase 7 C3 of commit `cb02452` (SetupComplete.cmd WU-disable) confirmed the post-boot log captured `START_TYPE: 4 DISABLED` at SetupComplete.cmd completion — but `Get-ItemProperty wuauserv Start` hours later showed Start=3 (Manual) AND Status=Running. Windows was actively re-enabling wuauserv after SetupComplete.cmd finished.
+
+Reverse-engineered Windows Update Blocker v1.8 (sordum.org) to extract the four mechanisms it uses for "permanently disable" reputation:
+
+1. **Service start types** — we already did this for wuauserv but missed dosvc, InstallService.
+2. **Scheduled task disabling** — under `\Microsoft\Windows\WindowsUpdate\*`, `\UpdateOrchestrator\*`, and `\WaaSMedic\PerformRemediation`. **This is the missing piece** — `UpdateOrchestrator`'s `Schedule Maintenance Work` / `Schedule Wake To Work` / `Schedule Work` tasks fire on cadence and re-enable wuauserv. `WaaSMedic\PerformRemediation` actively repairs disabled WU.
+3. **IFEO Debugger redirect** — block 13 WU-related .exe binaries (WaaSMedic, WaasMedicAgent, Windows10Upgrade, Windows10UpgraderApp, UpdateAssistant, UsoClient, remsh, EOSnotify, SihClient, InstallAgent, MusNotification, MusNotificationUx, MoNotificationUx). Stops the runtime repair mechanisms cold even if their host services somehow start.
+4. **Runtime process kill** — taskkill on five processes if running. Live-system only; irrelevant for offline pipeline.
+
+#### Added
+- 3 new entries in `Get-Tiny11CoreScheduledTaskTargets` (Recurse=true on each): `Microsoft\Windows\WindowsUpdate`, `Microsoft\Windows\UpdateOrchestrator`, `Microsoft\Windows\WaaSMedic`. Phase 17 composer iterates this list unchanged; nothing else needed.
+- 2 new entries in `Get-Tiny11CoreRegistryTweaks` `update-disable` category: `dosvc` Start=4, `InstallService` Start=4.
+- New `ifeo-block` category in `Get-Tiny11CoreRegistryTweaks` with 13 entries, each setting `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\<exe>\Debugger = "systray.exe"`. systray.exe is a benign no-op Windows stub; when invoked as "debugger" of the blocked exe it does nothing, and the original exe never launches. Wired into the Phase 9-16 registry composer as a 7th category alongside bypass-sysreqs / sponsored-apps / telemetry / defender-disable / update-disable / misc.
+- 6 new Pester tests covering the WU-folder scheduled task targets (count + path + Recurse), update-disable dosvc/InstallService additions, ifeo-block category count + schema + expected exe coverage.
+
+#### Deliberately NOT included
+- **No runtime scheduled task** (the Keep-WU-Disabled task discussed earlier). WUB's reputation is built on the four offline mechanisms above with no recurring task enforcement; if their offline-only approach is sufficient in practice, ours should be too. Reserve runtime scheduled task as v1.0.1 fallback if Phase 7 C3 of the next build still shows Start=3.
+- **No ImagePath redirect** (WUB's `SetImagePath=1`). Belt-and-suspenders but redundant with Start=4 if the scheduled-task removal prevents Windows from "repairing" the service. Reserve for v1.0.1 if needed.
+- **No process-kill list** (WUB's `[Close_Process_List]`). Runtime-only mechanism — irrelevant for offline image pipeline. The IFEO blocks at boot serve the same purpose for our case.
+
 ### SetupComplete.cmd: re-disable WU services post-OOBE (2026-05-10)
 
 Phase 7 C3 verification of the first successful Core build (commit `38d22fa` SetupComplete.cmd path) showed all bypass-sysreqs registry tweaks persisted correctly, Defender services at Start=4, and appx removals stuck — BUT `wuauserv` was at Start=3 (Manual) instead of the intended Start=4 (Disabled). Investigation:
