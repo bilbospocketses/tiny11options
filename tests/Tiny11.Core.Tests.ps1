@@ -678,6 +678,28 @@ Describe 'New-Tiny11CoreWuEnforceScript' {
         $s | Should -Match 'Start CORRECTED:'
         $s | Should -Match 'Debugger CORRECTED:'
     }
+
+    It 'defines a .log.1 backup path for rotation' {
+        $s = New-Tiny11CoreWuEnforceScript
+        $s | Should -Match 'tiny11-wu-enforce\.log\.1'
+    }
+
+    It 'rotates the active log to .log.1 when line count reaches 5000' {
+        $s = New-Tiny11CoreWuEnforceScript
+        $s | Should -Match '\$lineCount -ge 5000'
+        $s | Should -Match 'Move-Item.+logPath.+logPathBackup'
+    }
+
+    It 'drops the prior backup before rotating (caps at 2 files)' {
+        $s = New-Tiny11CoreWuEnforceScript
+        $s | Should -Match 'Remove-Item.+\$logPathBackup.+SilentlyContinue'
+    }
+
+    It 'swallows rotation failures so enforcement still proceeds' {
+        $s = New-Tiny11CoreWuEnforceScript
+        # The rotation block is wrapped in try/catch; the catch body is empty (best-effort).
+        $s | Should -Match "try \{[\s\S]+lineCount[\s\S]+\} catch \{"
+    }
 }
 
 Describe 'New-Tiny11CoreWuEnforceTaskXml' {
@@ -738,11 +760,18 @@ Describe 'New-Tiny11CoreWuEnforceTaskXml' {
         $xml | Should -Match 'Path="System"'
     }
 
-    It 'has 4 trigger nodes total (BootTrigger + CalendarTrigger + 2 EventTriggers)' {
+    It 'has 5 trigger nodes total (BootTrigger + TimeTrigger + CalendarTrigger + 2 EventTriggers)' {
         $xml = New-Tiny11CoreWuEnforceTaskXml
         $parsed = [xml]$xml
         $triggerCount = $parsed.Task.Triggers.ChildNodes.Count
-        $triggerCount | Should -Be 4
+        $triggerCount | Should -Be 5
+    }
+
+    It 'has TimeTrigger with PT1M Repetition Interval (proven enforcement mechanism)' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Match '<TimeTrigger>'
+        $xml | Should -Match '<Interval>PT1M</Interval>'
+        $xml | Should -Match '<StopAtDurationEnd>false</StopAtDurationEnd>'
     }
 
     It 'runs as SYSTEM (S-1-5-18) with HighestAvailable privilege' {

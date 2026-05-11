@@ -251,6 +251,21 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
+### TimeTrigger PT1M + log rotation for Keep-WU-Disabled (2026-05-11)
+
+Phase 7 C4 7-hour soak test (~5,000 samples at 5-second intervals from 00:45 to 07:42, every sample `Stopped Disabled`) confirmed the enforcement task keeps wuauserv pinned. The Event 7040 trigger added in `8a3f8e7` empirically didn't reliably fire for wuauserv state changes despite the events being logged to System (visible via `Get-WinEvent`) — Task Scheduler appears to be more selective about which 7040 events it'll trigger on than the event-log API is. The user manually added a 60-second polling trigger as a safety net; this commit lands that pattern in the generated XML.
+
+With the PT1M cadence, log volume becomes a real concern: ~1440 entries/day = ~5000 entries every ~3 days. Adding rotation caps the disk footprint.
+
+#### Changed
+- **fix(core)**: `New-Tiny11CoreWuEnforceTaskXml` adds a 5th trigger — `<TimeTrigger>` with `<Repetition><Interval>PT1M</Interval></Repetition>` and the "forever" Duration (`P10675199DT2H48M5.4775807S`, Task Scheduler convention for max-TimeSpan). The TimeTrigger is the guaranteed-correctness enforcement mechanism; the existing 4 triggers (Boot, Calendar, two Event) stay because they catch specific scenarios faster, but the PT1M poll is what proved itself in the soak test.
+- **fix(core)**: `New-Tiny11CoreWuEnforceScript` rotates the active log when it reaches 5000 lines (~3 days at the PT1M cadence). The active log moves to `tiny11-wu-enforce.log.1`, replacing any prior backup. Max disk footprint: 2 files * ~5000 lines (~6 days history). Rotation failures are swallowed silently — enforcement is the priority, logging is best-effort.
+
+#### Pester additions
+- 1 new test asserting TimeTrigger node exists with PT1M Interval and `StopAtDurationEnd=false`.
+- 1 new test asserting total trigger count is now 5 (updated from 4).
+- 4 new tests asserting the log rotation logic in the script: backup path defined, threshold check at 5000 lines, prior backup deleted before rotation, try/catch wrapping the rotation block.
+
 ### Event 7040 trigger for the Keep-WU-Disabled task (2026-05-10)
 
 Phase 7 C4 diagnostic surfaced that Windows is **actively re-enabling wuauserv** between enforcement-task fires. The user's Get-WinEvent query against `Service Control Manager` (event ID 7040) captured the actual flip cycle:
