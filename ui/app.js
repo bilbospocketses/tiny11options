@@ -85,21 +85,47 @@ const state = {
 // completion so concurrent state changes (rare) can't poison the saved profile.
 let pendingSaveProfileSelections = null;
 
-// Validation spinner machinery. The validate-iso round-trip can take up to ~10s
-// (mount-disk-image + Get-Tiny11Editions + dismount). Without visible feedback,
-// users alt-tab away or click Next thinking nothing happened. The spinner sits
-// inline next to the editions <select> and shows two-stage text:
-//   0-2s : "Mounting iso..."
-//   2-5s : "Mounting iso... finished. Determining editions..."
-//   5s+  : "Mounting iso... finished. Determining editions... (Ns)" — counter
-//          ticks every 5s so users see the elapsed time isn't stuck.
+// Validation status line machinery. A permanent "ISO/DVD state: <message>" row
+// sits below the editions dropdown — the trailing message portion changes by
+// state. The line never appears/disappears so the surrounding layout never
+// shifts (an earlier inline-spinner attempt changed the dropdown row width as
+// the status text grew; this design fixes that).
+//
+// State -> message mapping:
+//   no source                : "No ISO or DVD loaded"
+//   validating (0-2s)        : "Mounting iso..."
+//   validating (2-5s)        : "Mounting iso... finished. Determining editions..."
+//   validating (5s+)         : "Mounting iso... finished. Determining editions... (Ns)"
+//                              N ticks every 5s (5, 10, 15...) so users see the
+//                              elapsed time is progressing, not stuck.
+//   editions loaded          : "Loaded — N edition(s) detected"
+//
+// The validate-iso round-trip (mount + Get-Tiny11Editions + dismount) can take
+// up to ~10s on retail multi-edition ISOs.
 let validationTimerId = null;
+
+function computeIsoStatusText() {
+    if (state.validating) {
+        const elapsed = Math.floor((Date.now() - state.validatingStart) / 1000);
+        if (elapsed < 2) return 'Mounting iso...';
+        const tick = Math.floor(elapsed / 5) * 5;
+        return (tick >= 5)
+            ? `Mounting iso... finished. Determining editions... (${tick}s)`
+            : 'Mounting iso... finished. Determining editions...';
+    }
+    if (state.editions && state.editions.length > 0) {
+        const count = state.editions.length;
+        return `Loaded — ${count} edition${count === 1 ? '' : 's'} detected`;
+    }
+    return 'No ISO or DVD loaded';
+}
 
 function startValidationSpinner() {
     state.validating = true;
     state.validatingStart = Date.now();
     if (validationTimerId) clearInterval(validationTimerId);
-    // Re-render once now to insert the spinner DOM, then tick the text every second.
+    // Re-render once now so the spinner ring appears next to the status text,
+    // then tick the text every second without re-rendering the whole step.
     renderStep();
     validationTimerId = setInterval(updateValidationSpinnerText, 1000);
 }
@@ -110,17 +136,9 @@ function stopValidationSpinner() {
 }
 
 function updateValidationSpinnerText() {
-    const node = document.getElementById('wizard-spinner-text');
+    const node = document.getElementById('iso-status-text');
     if (!node) return;
-    const elapsed = Math.floor((Date.now() - state.validatingStart) / 1000);
-    if (elapsed < 2) {
-        node.textContent = 'Mounting iso...';
-    } else {
-        const tick = Math.floor(elapsed / 5) * 5;
-        node.textContent = (tick >= 5)
-            ? `Mounting iso... finished. Determining editions... (${tick}s)`
-            : 'Mounting iso... finished. Determining editions...';
-    }
+    node.textContent = computeIsoStatusText();
 }
 
 // When the user picks or types a scratch directory, prefill the output ISO path with
@@ -647,15 +665,17 @@ function renderSourceStep() {
                 disabled: !state.editions,
                 onchange: e => { state.edition = parseInt(e.target.value, 10); updateNav(); }
             }, editionsOptions),
-            // Inline validation spinner — shown only while a validate-iso round-trip is in flight.
-            // Sits to the right of the dropdown so the user's focus stays in this region.
-            state.validating
-                ? el('span', { class: 'wizard-spinner-wrap', role: 'status', 'aria-live': 'polite' },
-                      el('span', { class: 'wizard-spinner', 'aria-hidden': 'true' }),
-                      el('span', { id: 'wizard-spinner-text' }, 'Mounting iso...')
-                  )
-                : null,
             el('button', { class: 'browse-spacer', 'aria-hidden': 'true', tabindex: '-1' }, 'Browse...')
+        ),
+        // Permanent status line below the dropdown — never appears/disappears (so the
+        // dropdown row's width never shifts as messages grow). The trailing value
+        // portion swaps content based on state via computeIsoStatusText().
+        el('div', { class: 'iso-status-line', role: 'status', 'aria-live': 'polite' },
+            el('span', { class: 'iso-status-label' }, 'ISO/DVD state: '),
+            state.validating
+                ? el('span', { class: 'wizard-spinner', 'aria-hidden': 'true' })
+                : null,
+            el('span', { id: 'iso-status-text', class: 'iso-status-value' }, computeIsoStatusText())
         ),
         el('label', null, 'Scratch directory'),
         el('div', { class: 'row' },

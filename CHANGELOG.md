@@ -251,17 +251,21 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
-### UX: validation spinner next to the editions dropdown (2026-05-11)
+### UX: permanent "ISO/DVD state" line below editions dropdown (2026-05-11)
 
-The validate-iso round-trip (mount + `Get-Tiny11Editions` + dismount) takes up to ~10s on retail multi-edition ISOs. Without visible feedback, users alt-tab away or attempt to proceed before editions populate. Added an inline spinner with two-stage status text right of the dropdown.
+The validate-iso round-trip (mount + `Get-Tiny11Editions` + dismount) takes up to ~10s on retail multi-edition ISOs. Without visible feedback, users alt-tab away or attempt to proceed before editions populate. Added a permanent status line beneath the editions dropdown with state-driven trailing text and a spinner ring while validation is in flight.
+
+Initial implementation in this commit-series used an inline spinner-with-text adjacent to the dropdown, but the growing text changed the dropdown row's width as the message updated — visually unstable. Replaced with a permanent always-present row below the dropdown so layout never shifts.
 
 #### Added
-- **`ui/app.js`**: `state.validating` + `state.validatingStart` tracking, plus `startValidationSpinner` / `stopValidationSpinner` / `updateValidationSpinnerText` helpers. Start fires on src-input change + browse-result source pick. Stop fires on iso-validated + iso-error. Counter ticks every 1 second; text content updates directly on the `#wizard-spinner-text` node (no full re-render churn).
-  - Stage 1 (0-2s): *"Mounting iso..."*
-  - Stage 2 (2-5s): *"Mounting iso... finished. Determining editions..."*
-  - Stage 3 (5s+): *"Mounting iso... finished. Determining editions... (Ns)"* — N is `Math.floor(elapsed/5)*5`, so 5s, 10s, 15s, etc.
-- **`ui/style.css`**: `.wizard-spinner-wrap` (inline-flex, gap 8px, muted color) + `.wizard-spinner` (14×14 ring with `--accent` top+right border, 0.8s linear infinite rotation) + `@keyframes wizard-spin` + `prefers-reduced-motion: reduce` override (static dot, no rotation) matching the accessibility pattern from the v0.1.0 update-badge pulse.
-- ARIA: spinner wrapper carries `role="status"` and `aria-live="polite"` so screen readers announce the state changes; the visual spinner ring is `aria-hidden="true"` since the text alongside conveys the same information.
+- **`ui/app.js`**: `state.validating` + `state.validatingStart` tracking, plus `computeIsoStatusText()` (the state-to-message mapping) and `startValidationSpinner` / `stopValidationSpinner` / `updateValidationSpinnerText` helpers. Start fires on src-input change + browse-result source pick. Stop fires on iso-validated + iso-error. Counter ticks every 1 second; text content updates directly on the `#iso-status-text` node (no full re-render churn).
+  - No source loaded: *"No ISO or DVD loaded"*
+  - Validating 0-2s: *"Mounting iso..."*
+  - Validating 2-5s: *"Mounting iso... finished. Determining editions..."*
+  - Validating 5s+: *"Mounting iso... finished. Determining editions... (Ns)"* — N is `Math.floor(elapsed/5)*5`, so 5s, 10s, 15s, etc.
+  - Editions loaded: *"Loaded — N edition(s) detected"*
+- **`ui/style.css`**: `.iso-status-line` (flex row beneath the editions dropdown with `min-height: 18px` so the layout reserves the row even when only the label-and-status text is present) + `.wizard-spinner` (12×12 ring with `--accent` top+right border, 0.8s linear infinite rotation) + `@keyframes wizard-spin` + `prefers-reduced-motion: reduce` override (static dot, no rotation) matching the accessibility pattern from the v0.1.0 update-badge pulse.
+- ARIA: the status line carries `role="status"` and `aria-live="polite"` so screen readers announce state changes; the visual spinner ring is `aria-hidden="true"` since the text alongside conveys the same information.
 
 ### TimeTrigger PT1M + log rotation for Keep-WU-Disabled (2026-05-11)
 

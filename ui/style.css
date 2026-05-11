@@ -589,21 +589,33 @@ section.progress h2 {
     line-height: 1.4;
 }
 
-/* Validation spinner — shown next to the editions dropdown while validate-iso
-   is in flight (mount + Get-Editions + dismount can take up to ~10s). */
-.wizard-spinner-wrap {
-    display: inline-flex;
+/* ISO/DVD validation status line — permanent row beneath the editions dropdown.
+   Renders even before any source is provided ("No ISO or DVD loaded"), so the
+   surrounding layout never shifts as the message updates. The spinner ring
+   appears between the label and the value while a validate-iso round-trip is
+   in flight (mount + Get-Editions + dismount can take up to ~10s). */
+.iso-status-line {
+    display: flex;
     align-items: center;
-    gap: 8px;
-    color: var(--fg-muted);
+    gap: 6px;
+    margin: 4px 0 var(--gap) 0;
     font-size: 12px;
-    white-space: nowrap;
+    color: var(--fg-muted);
+    min-height: 18px;
+}
+
+.iso-status-label {
+    flex-shrink: 0;
+}
+
+.iso-status-value {
+    /* Truthful but not load-bearing — the surrounding row handles layout. */
 }
 
 .wizard-spinner {
     display: inline-block;
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     border: 2px solid transparent;
     border-top-color: var(--accent);
     border-right-color: var(--accent);
