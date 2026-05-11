@@ -79,7 +79,7 @@ public class BuildHandlers : IBridgeHandler
         string psArgs;
         if (coreMode)
         {
-            psArgs = BuildCoreArgs(_resourcesDir, src, outputIso, scratchDir, imageIndex, editionName, unmountSource, enableNet35);
+            psArgs = BuildCoreArgs(_resourcesDir, src, outputIso, scratchDir, imageIndex, editionName, unmountSource, enableNet35, fastBuild);
         }
         else
         {
@@ -197,8 +197,10 @@ public class BuildHandlers : IBridgeHandler
     }
 
     // Extracted for testability: builds the powershell.exe -Arguments string for
-    // the Core build path. No -ConfigPath, no -FastBuild, no selections — Core
-    // uses fixed compression and has no catalog.
+    // the Core build path. No -ConfigPath, no selections — Core has no catalog.
+    // -FastBuild is honored (since 2026-05-11): when set, Phase 20 /Compress:max
+    // and Phase 22 /Compress:recovery skip, saving ~20-40 min per build at the
+    // cost of a larger ISO.
     internal static string BuildCoreArgs(
         string resourcesDir,
         string src,
@@ -207,7 +209,8 @@ public class BuildHandlers : IBridgeHandler
         int imageIndex,
         string editionName,
         bool unmountSource,
-        bool enableNet35)
+        bool enableNet35,
+        bool fastBuild)
     {
         var script = Path.Combine(resourcesDir, "tiny11Coremaker-from-config.ps1");
         var args = new System.Text.StringBuilder("-ExecutionPolicy Bypass -NoProfile -File ");
@@ -219,6 +222,7 @@ public class BuildHandlers : IBridgeHandler
         if (!string.IsNullOrEmpty(scratchDir)) args.Append(" -ScratchDir \"").Append(scratchDir).Append('"');
         if (enableNet35) args.Append(" -EnableNet35");
         if (unmountSource) args.Append(" -UnmountSource");
+        if (fastBuild) args.Append(" -FastBuild");
         return args.ToString();
     }
 

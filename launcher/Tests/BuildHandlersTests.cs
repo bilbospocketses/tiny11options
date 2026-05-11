@@ -47,7 +47,8 @@ public class BuildHandlersTests
 
     private static string InvokeBuildCoreArgs(
         string resourcesDir, string src, string outputIso, string scratchDir,
-        int imageIndex, string editionName, bool unmountSource, bool enableNet35)
+        int imageIndex, string editionName, bool unmountSource, bool enableNet35,
+        bool fastBuild = false)
     {
         var method = typeof(BuildHandlers).GetMethod(
             "BuildCoreArgs",
@@ -55,7 +56,7 @@ public class BuildHandlersTests
         return (string)method.Invoke(null, new object[]
         {
             resourcesDir, src, outputIso, scratchDir,
-            imageIndex, editionName, unmountSource, enableNet35
+            imageIndex, editionName, unmountSource, enableNet35, fastBuild
         })!;
     }
 
@@ -104,14 +105,32 @@ public class BuildHandlersTests
     }
 
     [Fact]
-    public void BuildCoreArgs_OmitsConfigPathAndFastBuild_Always()
+    public void BuildCoreArgs_OmitsConfigPath_Always()
     {
-        // Even if caller somehow passed fastBuild=true (which coreMode path never does),
-        // BuildCoreArgs never accepts or emits those flags.
+        // Core mode has no catalog and so no -ConfigPath, regardless of any other flag.
         var resDir = @"C:\resources";
         var result = InvokeBuildCoreArgs(resDir, @"D:\win.iso", @"C:\out.iso", "", 0, "", false, false);
 
         Assert.DoesNotContain("-ConfigPath", result);
+    }
+
+    [Fact]
+    public void BuildCoreArgs_PassesFastBuildFlag_WhenEnabled()
+    {
+        // As of 2026-05-11, Fast Build is supported in Core mode (Phase 20 /Compress:max
+        // and Phase 22 /Compress:recovery skip when -FastBuild is set).
+        var resDir = @"C:\resources";
+        var result = InvokeBuildCoreArgs(resDir, @"D:\win.iso", @"C:\out.iso", "", 0, "", false, false, fastBuild: true);
+
+        Assert.Contains("-FastBuild", result);
+    }
+
+    [Fact]
+    public void BuildCoreArgs_OmitsFastBuild_WhenDisabled()
+    {
+        var resDir = @"C:\resources";
+        var result = InvokeBuildCoreArgs(resDir, @"D:\win.iso", @"C:\out.iso", "", 0, "", false, false, fastBuild: false);
+
         Assert.DoesNotContain("-FastBuild", result);
     }
 }

@@ -313,7 +313,9 @@ function renderProgress() {
         ? `${editionEntry.name} (index ${editionEntry.index})`
         : (state.edition !== null ? `index ${state.edition}` : '—');
     const buildMode = state.coreMode
-        ? 'Core (WinSxS wipe + fixed compression sequence)'
+        ? (state.fastBuild
+            ? 'Core + Fast build (WinSxS wipe, skips /Compress:max + /Compress:recovery — ~20–40 min faster, ISO is larger)'
+            : 'Core (WinSxS wipe + /Compress:max + /Compress:recovery — smallest ISO, slowest build)')
         : state.fastBuild
             ? 'Fast build (no recovery compression — output ISO typically 7–8 GB)'
             : 'Standard (with recovery compression — output ISO roughly 2 GB smaller)';
@@ -592,36 +594,31 @@ function renderSourceStep() {
 
     const errorBanner = el('div', { id: 'src-error', class: 'error hidden' });
 
-    // Fast-build row + hint always render. When Core mode is on the input is
-    // disabled AND visually unchecked (a disabled-but-checked box reads as
-    // "forced active in this state" which is wrong — Core ignores the flag
-    // entirely). state.fastBuild is preserved untouched so the user's prior
-    // preference returns when Core is unchecked. The label + adjacent hint
-    // grey out via CSS (.checkbox-label:has(input:disabled) + sibling .hint).
-    // A title tooltip on label + input explains the inactive state on hover.
-    const fastBuildDisabled = state.coreMode;
-    const fastBuildTooltip = 'Unavailable when Core mode is enabled';
+    // Fast-build row + hint. Applies to both standard and Core builds (as of 2026-05-11):
+    // - Standard mode: skips /Cleanup-Image + /Compress:recovery (Tiny11.Worker.psm1).
+    // - Core mode:    skips Phase 20 /Compress:max + Phase 22 /Compress:recovery
+    //   (Tiny11.Core.psm1). Hint copy is mode-aware so the user knows what's getting
+    //   skipped in their current mode.
+    const fastBuildHint = state.coreMode
+        ? 'In Core mode, skips DISM /Export-Image /Compress:max (Phase 20) and ' +
+          '/Compress:recovery (Phase 22). Saves roughly 20–40 minutes per Core build; ' +
+          'output ISO is larger but boots and installs identically. Recommended for VM ' +
+          'testing and iterative Core builds.'
+        : 'Skips DISM /Cleanup-Image and /Export-Image /Compress:recovery. ' +
+          'Saves 25–40 minutes per build. With fast build the output ISO is typically ' +
+          '7–8 GB; leaving fast build off enables recovery compression and shrinks the ' +
+          'ISO by roughly 2 GB. Both produce functionally identical installs. Recommended ' +
+          'for VM testing or iterative builds where ISO size doesn\'t matter.';
     const fastBuildRow = [
-        el('label', {
-            class: 'checkbox-label',
-            title: fastBuildDisabled ? fastBuildTooltip : null
-        },
+        el('label', { class: 'checkbox-label' },
             el('input', {
                 id: 'fast-build', type: 'checkbox',
-                checked: fastBuildDisabled ? false : state.fastBuild,
-                disabled: fastBuildDisabled,
-                title: fastBuildDisabled ? fastBuildTooltip : null,
+                checked: state.fastBuild,
                 onchange: e => state.fastBuild = e.target.checked
             }),
             'Fast build (skip recovery compression)'
         ),
-        el('p', { class: 'hint' },
-            'Skips DISM /Cleanup-Image and /Export-Image /Compress:recovery. ' +
-            'Saves 25–40 minutes per build. With fast build the output ISO is typically ' +
-            '7–8 GB; leaving fast build off enables recovery compression and shrinks the ' +
-            'ISO by roughly 2 GB. Both produce functionally identical installs. Recommended ' +
-            'for VM testing or iterative builds where ISO size doesn\'t matter.'
-        ),
+        el('p', { class: 'hint' }, fastBuildHint),
     ];
 
     // Core warning panel — shown only when coreMode is on.

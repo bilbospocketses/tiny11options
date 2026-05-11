@@ -1033,6 +1033,7 @@ function Invoke-Tiny11CoreBuildPipeline {
         [Parameter(Mandatory)][string]$OutputIso,
         [Parameter(Mandatory)][bool]$EnableNet35,
         [Parameter(Mandatory)][bool]$UnmountSource,
+        [bool]$FastBuild = $false,
         [Parameter(Mandatory)][scriptblock]$ProgressCallback
     )
 
@@ -1040,7 +1041,7 @@ function Invoke-Tiny11CoreBuildPipeline {
     Import-Module (Join-Path $PSScriptRoot 'Tiny11.Hives.psm1') -Force
 
     Write-CoreLog '==== Invoke-Tiny11CoreBuildPipeline start ===='
-    Write-CoreLog "Pipeline params: Source=$Source ImageIndex=$ImageIndex ScratchDir=$ScratchDir OutputIso=$OutputIso EnableNet35=$EnableNet35 UnmountSource=$UnmountSource"
+    Write-CoreLog "Pipeline params: Source=$Source ImageIndex=$ImageIndex ScratchDir=$ScratchDir OutputIso=$OutputIso EnableNet35=$EnableNet35 UnmountSource=$UnmountSource FastBuild=$FastBuild"
 
     # Wrap ProgressCallback so every phase transition lands in the log without touching every call site.
     $userProgressCallback = $ProgressCallback
@@ -1293,11 +1294,18 @@ function Invoke-Tiny11CoreBuildPipeline {
     }
 
     # Phase 20: export-install with /Compress:max -> install2.wim, then rename (upstream lines 484-487)
-    & $ProgressCallback @{ phase='export-install'; step='Exporting install.wim with /Compress:max'; percent=89 }
-    $installWim2 = Join-Path $sourceDir 'sources\install2.wim'
-    Invoke-Tiny11CoreImageExport -SourceImageFile $installWim -DestinationImageFile $installWim2 -SourceIndex $ImageIndex -Compress 'max'
-    Remove-Item -Path $installWim -Force
-    Rename-Item -Path $installWim2 -NewName 'install.wim'
+    # FastBuild skips this entirely — install.wim stays in its post-Unmount-Save form (multi-index,
+    # uncompressed). Windows Setup accepts that just fine; the ISO is larger but boots identically.
+    # Mirrors the Tiny11.Worker.psm1 fast-build pattern (lines 109-116).
+    if ($FastBuild) {
+        & $ProgressCallback @{ phase='export-install-skip'; step='Skipping /Compress:max export (FastBuild)'; percent=89 }
+    } else {
+        & $ProgressCallback @{ phase='export-install'; step='Exporting install.wim with /Compress:max'; percent=89 }
+        $installWim2 = Join-Path $sourceDir 'sources\install2.wim'
+        Invoke-Tiny11CoreImageExport -SourceImageFile $installWim -DestinationImageFile $installWim2 -SourceIndex $ImageIndex -Compress 'max'
+        Remove-Item -Path $installWim -Force
+        Rename-Item -Path $installWim2 -NewName 'install.wim'
+    }
 
     # Phase 21: boot-wim (upstream lines 491-523)
     # Mount boot.wim index 2, apply bypass-sysreqs subset + CmdLine extra, unmount /commit
@@ -1344,12 +1352,18 @@ function Invoke-Tiny11CoreBuildPipeline {
     }
 
     # Phase 22: export-install-esd with /Compress:recovery, then delete install.wim (upstream lines 525-527)
-    & $ProgressCallback @{ phase='export-install-esd'; step='Exporting install.esd with /Compress:recovery'; percent=96 }
-    # After phase 20 rename, install.wim is the exported/compressed one
-    $installWimFinal = Join-Path $sourceDir 'sources\install.wim'
-    $installEsd = Join-Path $sourceDir 'sources\install.esd'
-    Invoke-Tiny11CoreImageExport -SourceImageFile $installWimFinal -DestinationImageFile $installEsd -SourceIndex 1 -Compress 'recovery'
-    Remove-Item -Path $installWimFinal -Force
+    # FastBuild skips this; install.wim ships as-is and Windows Setup picks it up directly
+    # (no .esd is needed — setup.exe accepts either install.wim or install.esd in \sources\).
+    if ($FastBuild) {
+        & $ProgressCallback @{ phase='export-install-esd-skip'; step='Skipping /Compress:recovery esd export (FastBuild)'; percent=96 }
+    } else {
+        & $ProgressCallback @{ phase='export-install-esd'; step='Exporting install.esd with /Compress:recovery'; percent=96 }
+        # After phase 20 rename, install.wim is the exported/compressed one
+        $installWimFinal = Join-Path $sourceDir 'sources\install.wim'
+        $installEsd = Join-Path $sourceDir 'sources\install.esd'
+        Invoke-Tiny11CoreImageExport -SourceImageFile $installWimFinal -DestinationImageFile $installEsd -SourceIndex 1 -Compress 'recovery'
+        Remove-Item -Path $installWimFinal -Force
+    }
 
     # Phase 23: iso-create (upstream lines 529-559)
     # Resolve oscdimg via Tiny11.Worker's Resolve-Tiny11Oscdimg helper, then invoke directly.

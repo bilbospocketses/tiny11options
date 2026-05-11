@@ -23,7 +23,8 @@ param(
     [string]$Edition,
     [string]$ScratchDir,
     [switch]$EnableNet35,
-    [switch]$UnmountSource
+    [switch]$UnmountSource,
+    [switch]$FastBuild
 )
 
 Set-StrictMode -Version Latest
@@ -63,7 +64,7 @@ try {
     Set-Tiny11CoreLogPath -Path $logPath
     Write-CoreLog '==== Tiny11 Core build wrapper start ===='
     Write-CoreLog "PSVersion=$($PSVersionTable.PSVersion) Architecture=$env:PROCESSOR_ARCHITECTURE OS=$([Environment]::OSVersion.VersionString)"
-    Write-CoreLog "Wrapper params: Source='$Source' OutputIso='$OutputIso' ImageIndex=$ImageIndex Edition='$Edition' ScratchDir='$ScratchDir' EnableNet35=$($EnableNet35.IsPresent) UnmountSource=$($UnmountSource.IsPresent)"
+    Write-CoreLog "Wrapper params: Source='$Source' OutputIso='$OutputIso' ImageIndex=$ImageIndex Edition='$Edition' ScratchDir='$ScratchDir' EnableNet35=$($EnableNet35.IsPresent) UnmountSource=$($UnmountSource.IsPresent) FastBuild=$($FastBuild.IsPresent)"
 
     # Preflight: mount the source, enumerate editions, resolve -Edition to
     # -ImageIndex if needed. Same pattern as tiny11maker-from-config.ps1
@@ -100,6 +101,7 @@ try {
         -OutputIso $OutputIso `
         -EnableNet35 $EnableNet35.IsPresent `
         -UnmountSource $UnmountSource.IsPresent `
+        -FastBuild $FastBuild.IsPresent `
         -ProgressCallback {
             param($p)
             Write-Marker 'build-progress' @{ phase = $p.phase; step = $p.step; percent = $p.percent }
