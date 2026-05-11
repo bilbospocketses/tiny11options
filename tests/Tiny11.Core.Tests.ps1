@@ -600,6 +600,155 @@ Describe 'New-Tiny11CorePostBootCleanupScript' {
         $script = New-Tiny11CorePostBootCleanupScript
         $script | Should -Match 'sc qc wuauserv'
     }
+
+    It 'registers the Keep-WU-Disabled scheduled task via schtasks /create /xml' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'schtasks /create /xml ".*tiny11-wu-enforce\.xml" /tn "tiny11options\\Keep WU Disabled" /f'
+    }
+
+    It 'runs tiny11-wu-enforce.ps1 once immediately after registering the task' {
+        $script = New-Tiny11CorePostBootCleanupScript
+        $script | Should -Match 'powershell\.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ".*tiny11-wu-enforce\.ps1"'
+    }
+}
+
+Describe 'New-Tiny11CoreWuEnforceScript' {
+    BeforeAll {
+        $script:modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $script:modulePath -Force
+    }
+
+    It 'returns a non-empty PowerShell script' {
+        $s = New-Tiny11CoreWuEnforceScript
+        $s | Should -Not -BeNullOrEmpty
+        $s.Length | Should -BeGreaterThan 500
+    }
+
+    It 'sets up the log path at %SystemDrive%\Windows\Logs\tiny11-wu-enforce.log' {
+        $s = New-Tiny11CoreWuEnforceScript
+        $s | Should -Match '\$env:SystemDrive\\Windows\\Logs\\tiny11-wu-enforce\.log'
+    }
+
+    It 'iterates the 5 WU-related services with their target Start values' {
+        $s = New-Tiny11CoreWuEnforceScript
+        foreach ($svc in @('wuauserv','dosvc','WaaSMedicSvc','UsoSvc','InstallService')) {
+            $s | Should -Match "'$svc'"
+        }
+    }
+
+    It 'sets UsoSvc to Manual (3) per WUB recipe, others to Disabled (4)' {
+        $s = New-Tiny11CoreWuEnforceScript
+        # Hashtable shape — UsoSvc should map to 3
+        $s | Should -Match "'UsoSvc'\s*=\s*3"
+        $s | Should -Match "'wuauserv'\s*=\s*4"
+    }
+
+    It 'iterates the 3 WU scheduled-task folders for removal' {
+        $s = New-Tiny11CoreWuEnforceScript
+        foreach ($folder in @('Microsoft\\Windows\\WindowsUpdate', 'Microsoft\\Windows\\UpdateOrchestrator', 'Microsoft\\Windows\\WaaSMedic')) {
+            $s | Should -Match $folder
+        }
+    }
+
+    It 'enforces IFEO Debugger=systray.exe for the 13 WU repair binaries' {
+        $s = New-Tiny11CoreWuEnforceScript
+        foreach ($exe in @('WaaSMedic.exe','WaasMedicAgent.exe','Windows10Upgrade.exe','UsoClient.exe','MusNotification.exe')) {
+            $s | Should -Match $exe
+        }
+        $s | Should -Match "'systray\.exe'"
+        $s | Should -Match 'Image File Execution Options'
+    }
+
+    It 'includes process-kill safety net for WU repair processes' {
+        $s = New-Tiny11CoreWuEnforceScript
+        foreach ($proc in @('WaaSMedic','WaasMedicAgent','MusNotification','MoUsoCoreWorker','UsoClient')) {
+            $s | Should -Match $proc
+        }
+        $s | Should -Match 'Stop-Process'
+    }
+
+    It 'is idempotent — every correction path has a "Start=N already" or "Debugger=systray.exe already" fast-path' {
+        $s = New-Tiny11CoreWuEnforceScript
+        $s | Should -Match 'Start=\$expected already'
+        $s | Should -Match 'Debugger=systray\.exe already'
+    }
+
+    It 'logs every correction with before/after via Write-EnforceLog CORRECTED' {
+        $s = New-Tiny11CoreWuEnforceScript
+        $s | Should -Match 'Start CORRECTED:'
+        $s | Should -Match 'Debugger CORRECTED:'
+    }
+}
+
+Describe 'New-Tiny11CoreWuEnforceTaskXml' {
+    BeforeAll {
+        $script:modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $script:modulePath -Force
+    }
+
+    It 'returns well-formed XML parseable by .NET' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Not -BeNullOrEmpty
+        # Parse via [xml] — throws on malformed
+        $parsed = [xml]$xml
+        $parsed | Should -Not -BeNullOrEmpty
+    }
+
+    It 'declares UTF-16 encoding (Task Scheduler convention)' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Match '<\?xml version="1\.0" encoding="UTF-16"\?>'
+    }
+
+    It 'uses Task Scheduler 2.0 namespace + version 1.4' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Match 'xmlns="http://schemas\.microsoft\.com/windows/2004/02/mit/task"'
+        $xml | Should -Match 'version="1\.4"'
+    }
+
+    It 'declares Author=tiny11options and the URI matches the registered task path' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Match '<Author>tiny11options</Author>'
+        $xml | Should -Match '<URI>\\tiny11options\\Keep WU Disabled</URI>'
+    }
+
+    It 'has BootTrigger with PT2M delay' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Match '<BootTrigger>'
+        $xml | Should -Match '<Delay>PT2M</Delay>'
+    }
+
+    It 'has daily CalendarTrigger at 03:00' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Match '<CalendarTrigger>'
+        $xml | Should -Match 'T03:00:00'
+        $xml | Should -Match '<DaysInterval>1</DaysInterval>'
+    }
+
+    It 'has EventTrigger subscribing to WindowsUpdateClient/Operational event ID 19' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Match '<EventTrigger>'
+        $xml | Should -Match 'Microsoft-Windows-WindowsUpdateClient/Operational'
+        $xml | Should -Match 'EventID=19'
+    }
+
+    It 'runs as SYSTEM (S-1-5-18) with HighestAvailable privilege' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Match '<UserId>S-1-5-18</UserId>'
+        $xml | Should -Match '<RunLevel>HighestAvailable</RunLevel>'
+    }
+
+    It 'Action invokes powershell.exe -File against tiny11-wu-enforce.ps1' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Match '<Command>powershell\.exe</Command>'
+        $xml | Should -Match '-NoProfile'
+        $xml | Should -Match 'tiny11-wu-enforce\.ps1'
+    }
+
+    It 'allows running on batteries + when network is unavailable (kiosk + offline OK)' {
+        $xml = New-Tiny11CoreWuEnforceTaskXml
+        $xml | Should -Match '<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>'
+        $xml | Should -Match '<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>'
+    }
 }
 
 Describe 'Install-Tiny11CorePostBootCleanup' {
@@ -619,13 +768,17 @@ Describe 'Install-Tiny11CorePostBootCleanup' {
             }
         }
 
-        It 'creates Windows\Setup\Scripts and writes SetupComplete.cmd' {
+        It 'creates Windows\Setup\Scripts and writes all 3 post-boot artifacts' {
             Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
-            $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\SetupComplete.cmd'
-            Test-Path -LiteralPath $expected | Should -Be $true
+            $cmd = Join-Path $script:mountDir 'Windows\Setup\Scripts\SetupComplete.cmd'
+            $ps1 = Join-Path $script:mountDir 'Windows\Setup\Scripts\tiny11-wu-enforce.ps1'
+            $xml = Join-Path $script:mountDir 'Windows\Setup\Scripts\tiny11-wu-enforce.xml'
+            Test-Path -LiteralPath $cmd | Should -Be $true
+            Test-Path -LiteralPath $ps1 | Should -Be $true
+            Test-Path -LiteralPath $xml | Should -Be $true
         }
 
-        It 'writes the script content from New-Tiny11CorePostBootCleanupScript' {
+        It 'writes the SetupComplete.cmd content from New-Tiny11CorePostBootCleanupScript' {
             Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
             $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\SetupComplete.cmd'
             $content = Get-Content -LiteralPath $expected -Raw
@@ -633,24 +786,55 @@ Describe 'Install-Tiny11CorePostBootCleanup' {
             $content | Should -Match '@echo off'
         }
 
-        It 'writes ASCII (no UTF-8 BOM) for cmd.exe compatibility' {
+        It 'writes the tiny11-wu-enforce.ps1 content from New-Tiny11CoreWuEnforceScript' {
+            Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
+            $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\tiny11-wu-enforce.ps1'
+            $content = Get-Content -LiteralPath $expected -Raw
+            $content | Should -Match 'tiny11-wu-enforce triggered'
+            $content | Should -Match 'Image File Execution Options'
+        }
+
+        It 'writes the tiny11-wu-enforce.xml content from New-Tiny11CoreWuEnforceTaskXml' {
+            Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
+            $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\tiny11-wu-enforce.xml'
+            $content = Get-Content -LiteralPath $expected -Raw
+            $content | Should -Match 'tiny11options'
+            $content | Should -Match 'BootTrigger'
+        }
+
+        It 'SetupComplete.cmd is ASCII (no UTF-8 BOM) for cmd.exe compatibility' {
             Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
             $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\SetupComplete.cmd'
             $bytes = [System.IO.File]::ReadAllBytes($expected)
-            # UTF-8 BOM is EF BB BF; ASCII files don't start with that.
             $bytes[0] | Should -Not -Be 0xEF
         }
 
-        It 'writes CRLF line endings' {
+        It 'SetupComplete.cmd uses CRLF line endings' {
             Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
             $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\SetupComplete.cmd'
             $bytes = [System.IO.File]::ReadAllBytes($expected)
-            # Find a CR (0x0D) byte; if present and followed by LF (0x0A), CRLF is being used.
             $hasCRLF = $false
             for ($i = 0; $i -lt $bytes.Length - 1; $i++) {
                 if ($bytes[$i] -eq 0x0D -and $bytes[$i+1] -eq 0x0A) { $hasCRLF = $true; break }
             }
             $hasCRLF | Should -Be $true
+        }
+
+        It 'tiny11-wu-enforce.ps1 is UTF-8 with BOM (PS 5.1 reads BOM-less as Windows-1252)' {
+            Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
+            $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\tiny11-wu-enforce.ps1'
+            $bytes = [System.IO.File]::ReadAllBytes($expected)
+            $bytes[0] | Should -Be 0xEF
+            $bytes[1] | Should -Be 0xBB
+            $bytes[2] | Should -Be 0xBF
+        }
+
+        It 'tiny11-wu-enforce.xml is UTF-16 LE with BOM (Task Scheduler convention)' {
+            Install-Tiny11CorePostBootCleanup -MountDir $script:mountDir
+            $expected = Join-Path $script:mountDir 'Windows\Setup\Scripts\tiny11-wu-enforce.xml'
+            $bytes = [System.IO.File]::ReadAllBytes($expected)
+            $bytes[0] | Should -Be 0xFF
+            $bytes[1] | Should -Be 0xFE
         }
     }
 

@@ -251,6 +251,20 @@ Setup for upcoming Phase 5b (capabilities-removal). The 8 `0x800f0805` Phase 5 f
 #### Added
 - **diagnostic(core)**: Phase 5 now dumps `dism /Get-Capabilities /Format:Table` and `dism /Get-Features /Format:Table` to the build log before the existing /Remove-Package pass. Read-only; full output captured via `Start-CoreProcess`'s auto-logging. Used to drive Phase 5b's classified strip-list. Once Phase 5b lands the `/Get-Capabilities` call here collapses into 5b's first step (the enumeration that drives per-pattern /Remove-Capability).
 
+### Persistent Keep-WU-Disabled scheduled task (2026-05-10)
+
+Pulling forward the v1.0.1 "post-boot cleanup scheduled task" as a v1.0.0 belt-and-suspenders mechanism: even with the offline WUB recipe (commit `79ad03e`) applied, if Windows manages to resurrect any of the WU machinery (recreate a scheduled task folder, flip wuauserv back to Manual, clear an IFEO entry), a recurring task re-applies the entire recipe on every boot, daily, and on every Windows Update event. Idempotent — when state is already correct, every check is a `Test-Path` / `Get-ItemProperty` read-and-skip; common-case runtime is sub-second.
+
+#### Added
+- `New-Tiny11CoreWuEnforceScript` (exported) — returns the `tiny11-wu-enforce.ps1` PowerShell script content. The script iterates the 5 WU services (wuauserv/dosvc/WaaSMedicSvc/UsoSvc/InstallService) and re-applies target start types via `Set-ItemProperty`, recursively removes the 3 WU scheduled-task folders if present, re-applies `Debugger=systray.exe` for the 13 IFEO-blocked executables, and kills any running WU repair processes. Logs each check + correction to `%SystemDrive%\Windows\Logs\tiny11-wu-enforce.log`.
+- `New-Tiny11CoreWuEnforceTaskXml` (exported) — returns the scheduled task XML registered as `tiny11options\Keep WU Disabled`. Three triggers: `BootTrigger` with `PT2M` delay, daily `CalendarTrigger` at 03:00, and `EventTrigger` subscribed to `Microsoft-Windows-WindowsUpdateClient/Operational` event ID 19 (CU installed). Runs as SYSTEM (`S-1-5-18`) with `HighestAvailable` privilege, `PT10M` ExecutionTimeLimit, `RunOnlyIfNetworkAvailable=false`.
+- `Install-Tiny11CorePostBootCleanup` extended to write all three artifacts side-by-side at `<mount>\Windows\Setup\Scripts\`: `SetupComplete.cmd` (ASCII + CRLF), `tiny11-wu-enforce.ps1` (UTF-8 + BOM — PS 5.1 reads BOM-less as Windows-1252), `tiny11-wu-enforce.xml` (UTF-16 LE + BOM — Task Scheduler convention).
+- SetupComplete.cmd extended with two new responsibilities: `schtasks /create /xml ... /tn "tiny11options\Keep WU Disabled" /f` to register the persistent task with Task Scheduler, then a one-shot invocation of `tiny11-wu-enforce.ps1` so the full WUB recipe applies at first-boot time without waiting for the 2-min boot delay on the next reboot.
+- 25 new Pester tests covering content assertions on both new functions, XML well-formedness via `[xml]` parse, encoding assertions on all 3 written files (BOM signature byte checks), and SetupComplete.cmd registration/fire commands.
+
+#### Architectural note
+The `Install-Tiny11CorePostBootCleanup` function now writes three artifacts instead of one. Naturally evolves into the abs-app TODO #8 "post-boot cleanup scheduled task" later: same injection mechanism, same XML shape, same logging convention. v1.0.1 just adds catalog-aware appx re-removal as a second action to the same task (or sibling task driven by `ResolvedSelections`).
+
 ### WUB-recipe permanent WU disable: scheduled-task deletions + dosvc/InstallService + IFEO blocks (2026-05-10)
 
 Phase 7 C3 of commit `cb02452` (SetupComplete.cmd WU-disable) confirmed the post-boot log captured `START_TYPE: 4 DISABLED` at SetupComplete.cmd completion — but `Get-ItemProperty wuauserv Start` hours later showed Start=3 (Manual) AND Status=Running. Windows was actively re-enabling wuauserv after SetupComplete.cmd finished.
