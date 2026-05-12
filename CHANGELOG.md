@@ -7,7 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Path C — bundled `.exe` launcher implementation in progress on `feat/path-c-launcher`. Phases 1-4 complete + Phase 4.5 audit pass + audit rounds 2/3/4 + thread-affinity fix + VL heuristic empirically disproved + diagnostic-stub revert + smoke check 6 verified end-to-end. C5 cleanup-UX redesign 2026-05-11: two-button Cancel row, spinner-flow on Step 3, theme-aware cleanup panels, cancel-cleanup script reordered to mount-first / source-last with hive-unload prophylactic + reboot-required diagnostic. Script-encoding ASCII sweep + Layer-2 Pester guard 2026-05-11. **C5 smoke acceptance bar fully green 2026-05-12 (C5a-C5h + matrix cross-checks + ISO-unmount catch-all all green on iteration 4)** -- v1.0.0 cleanup UX shippable. **70 xUnit tests green; 269 Pester tests green.** Not yet released; final code-review subagent + Phase 6 (release.yml + Trusted Signing) + release ceremony pending.
+### v1.0.0 release scope (Path C — bundled .exe launcher)
+
+This release introduces a native bundled `.exe` launcher that replaces the prior pure-PowerShell wizard flow.
+
+**Added in v1.0.0:**
+- **`tiny11options.exe`** -- single self-contained .NET 10 binary (~135 MB) providing both **GUI mode** (no args -> WPF + WebView2 wizard) and **headless mode** (CLI args -> spawns `powershell.exe` running `tiny11maker.ps1`).
+- **In-app updates via Velopack** with passive notification near the theme toggle and one-click apply-and-restart. Polls GitHub releases at `bilbospocketses/tiny11options`; pre-releases filtered out.
+- **Code signing via Microsoft Trusted Signing** (publisher: Jamie Chapman). Both `tiny11options.exe` and Velopack release artifacts are signed by CI.
+- **Core build mode** -- significantly smaller image at the cost of non-serviceability; gated behind a Step 1 warning panel with explicit user opt-in.
+- **Fast Build option** -- skips recovery compression (and in Core mode, skips `/Compress:max` + `/Compress:recovery`) for ~15-30 min faster builds at the cost of modestly larger output.
+- **Cleanup UX** -- spinner-flow on Step 3, two-button Cancel row (plain "Cancel build" + chained "Cancel build & clean up"), theme-aware cleanup panels, in-UI cleanup recipe with Windows-quirk explainers, source-ISO unmount catch-all on cancel + crash.
+- **Output-required validation guard** -- Build ISO disabled with theme-aware inline warning when output path is empty, plus server-side defense-in-depth guard before pwsh spawn.
+- **New PowerShell wrapper scripts** -- `tiny11maker-from-config.ps1` (Worker pipeline), `tiny11Coremaker-from-config.ps1` (Core pipeline), `tiny11-iso-validate.ps1` (Step 1 validator), `tiny11-cancel-cleanup.ps1` (cleanup orchestrator).
+- **xUnit test project** at `launcher/Tests/` for C# components (70 tests).
+- **Pester drift + structural-contract tests** across the cleanup, output-required, encoding, autounattend-template-drift, and embedded-resources-drift surfaces (271 tests total).
+- **GitHub Actions release pipeline** (`.github/workflows/release.yml`) -- triggers on `v*` tag push, runs full test suite, signs the exe, packs Velopack, signs Velopack artifacts, creates a GitHub release with notes extracted from this CHANGELOG.
+
+**Changed in v1.0.0:**
+- `tiny11maker.ps1` no longer hosts the interactive wizard. Run `tiny11options.exe` for GUI mode, or pass CLI args for direct headless mode.
+- Source ISO validation moved out-of-process to `tiny11-iso-validate.ps1` (called by the launcher's `IsoHandlers`).
+
+**Notes:**
+- v1.0.0 is the first Path C release; no prior bundled `.exe` exists, so Velopack delta updates begin from v1.0.1 onward.
+- 70 xUnit tests + 271 Pester tests green at release time.
+- All Phase 7 manual smoke acceptance bars (Tasks 35-38) green prior to tagging.
+
+---
+
+**Detailed per-commit history below.** The summary above is the at-a-glance scope; the entries below trace the actual development order with file/line references and full rationale.
+
+Path C — bundled `.exe` launcher implementation in progress on `feat/path-c-launcher`. Phases 1-4 complete + Phase 4.5 audit pass + audit rounds 2/3/4 + thread-affinity fix + VL heuristic empirically disproved + diagnostic-stub revert + smoke check 6 verified end-to-end. C5 cleanup-UX redesign 2026-05-11: two-button Cancel row, spinner-flow on Step 3, theme-aware cleanup panels, cancel-cleanup script reordered to mount-first / source-last with hive-unload prophylactic + reboot-required diagnostic. Script-encoding ASCII sweep + Layer-2 Pester guard 2026-05-11. **C5 smoke acceptance bar fully green 2026-05-12 (C5a-C5h + matrix cross-checks + ISO-unmount catch-all all green on iteration 4)** -- v1.0.0 cleanup UX shippable. **70 xUnit tests green; 271 Pester tests green.** Phase 6 (`release.yml` + Trusted Signing infrastructure) landed 2026-05-12. Pending: Phase 7 Tasks 36-38 (remaining manual smokes -- headless byte-match, Velopack update flow, first-run extraction + SmartScreen) + Task 39 release ceremony.
 
 ### Fixed (2026-05-12 -- code-review-driven pre-Phase-6 cleanup, batch 2)
 - **`ui/app.js` handler-error branch resets `state.building`** when no cleanup is in flight. Pre-fix, if C# server-side guards (empty `outputIso` / `source`) rejected `start-build` with `handler-error`, the JS branch only cleared state for the cleanup-in-flight case -- leaving `state.building=true` from the Build ISO `onclick` and the UI hung on the progress screen waiting for a `build-progress` that would never arrive. Now: reset `state.building = false`, `renderStep()`, and surface the message via `window.alert()` so the user sees WHY the build couldn't start. Defense-in-depth case (client gates make it rare in practice); alert UX acceptable for v1.0.0 rather than building a dedicated inline banner.

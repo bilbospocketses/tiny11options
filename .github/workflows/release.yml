@@ -1,0 +1,128 @@
+name: release
+
+# Triggered by a `v*` tag push (e.g. `git tag v1.0.0 && git push --tags`).
+# Builds + tests + signs + Velopack-packs + signs Velopack artifacts + creates
+# a GitHub Release with the per-version CHANGELOG.md entries as the body.
+#
+# Trusted Signing requires the 5 repo secrets documented in launcher/README.md
+# ("Trusted Signing -- one-time setup" section). Without those secrets the
+# sign steps will fail; treat that as a "secrets not configured" failure mode
+# rather than a workflow bug.
+#
+# vpk (Velopack CLI) is pinned to a specific stable version below so a vpk
+# breaking change between releases can't silently break delta-update plumbing.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  VPK_VERSION: 0.0.1298
+
+jobs:
+  build-sign-release:
+    runs-on: windows-latest
+    permissions:
+      id-token: write   # OIDC federation to Azure for Trusted Signing
+      contents: write   # gh release create
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.x
+
+      - name: Restore
+        run: dotnet restore launcher/Tiny11Options.Launcher.csproj
+
+      - name: Test (xUnit)
+        run: dotnet test launcher/Tests/tiny11options.Launcher.Tests.csproj -c Release --logger "trx"
+
+      - name: Test (Pester)
+        shell: pwsh
+        run: |
+          Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'tests/'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config
+
+      - name: Publish (single-file, self-contained)
+        run: |
+          dotnet publish launcher/Tiny11Options.Launcher.csproj `
+            -c Release -r win-x64 `
+            -p:PublishSingleFile=true -p:SelfContained=true -p:IncludeAllContentForSelfExtract=true `
+            -o dist/raw/
+
+      - name: Sign tiny11options.exe via Trusted Signing
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.TRUSTED_SIGNING_CERT_PROFILE }}
+          files-folder: dist/raw
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+
+      - name: Install vpk (Velopack CLI, pinned)
+        shell: pwsh
+        run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        shell: pwsh
+        run: |
+          # Pull lines under "## [<version>] - <date>" up to the next "## [" line.
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $changelog = Get-Content CHANGELOG.md -Raw
+          # Match: "## [version]" header, capture everything until the next "## [" or EOF.
+          $pattern = "(?ms)^## \[$([regex]::Escape($version))\][^\n]*\n(.+?)(?=^## \[|\z)"
+          $match = [regex]::Match($changelog, $pattern)
+          if (-not $match.Success) {
+            Write-Error "No CHANGELOG.md section found for version $version. Expected a '## [$version] - YYYY-MM-DD' header."
+            exit 1
+          }
+          $notes = $match.Groups[1].Value.Trim()
+          # Write to a temp file the next step can reference.
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -Path $notesPath -Value $notes -Encoding utf8
+          "notes-path=$notesPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Release notes extracted to $notesPath ($(($notes -split "`n").Count) lines)"
+
+      - name: Velopack pack
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          vpk pack `
+            --packId tiny11options `
+            --packVersion $version `
+            --packDir dist/raw `
+            --mainExe tiny11options.exe `
+            --releaseNotes "${{ steps.notes.outputs.notes-path }}" `
+            --output dist/releases
+
+      - name: Sign Velopack artifacts via Trusted Signing
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.TRUSTED_SIGNING_CERT_PROFILE }}
+          files-folder: dist/releases
+          files-folder-filter: exe,nupkg
+          file-digest: SHA256
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            (Get-ChildItem dist/releases/*.nupkg, dist/releases/*Setup.exe, dist/releases/RELEASES | ForEach-Object FullName) `
+            --notes-file "${{ steps.notes.outputs.notes-path }}" `
+            --target main
