@@ -9,6 +9,25 @@ namespace Tiny11Options.Launcher.Tests;
 public class CleanupHandlersTests
 {
     [Fact]
+    public void TerminalMarkerSeen_HasVolatileModifier()
+    {
+        // d637289 code-review consistency fix: the sibling `_terminalMarkerSeen`
+        // in BuildHandlers is `volatile` because ForwardJsonLine (line-reader
+        // Task) writes it while the stderr-fallback Task reads it after
+        // WaitForExitAsync -- different thread-pool workers, no implicit
+        // ordering guarantees. CleanupHandlers had the exact same access
+        // pattern but the field was a plain bool. Promoted to volatile for
+        // consistency + correctness. This test locks in the modifier so a
+        // future cleanup pass can't silently revert it.
+        var field = typeof(CleanupHandlers).GetField(
+            "_terminalMarkerSeen",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        var modifiers = field!.GetRequiredCustomModifiers();
+        Assert.Contains(typeof(System.Runtime.CompilerServices.IsVolatile), modifiers);
+    }
+
+    [Fact]
     public void ForwardJsonLine_RoutesProgressMarker_ViaBridge()
     {
         var bridge = new Bridge(Array.Empty<IBridgeHandler>());

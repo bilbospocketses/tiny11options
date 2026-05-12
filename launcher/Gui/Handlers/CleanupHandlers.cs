@@ -104,7 +104,17 @@ public class CleanupHandlers : IBridgeHandler
         return new Bridge.BridgeMessage { Type = "cleanup-started", Payload = new JsonObject() };
     }
 
-    private bool _terminalMarkerSeen;
+    // `volatile` matches the sibling field in BuildHandlers. ForwardJsonLine
+    // (line-reader background Task) writes; the stderr-fallback Task reads
+    // after WaitForExitAsync. Both are thread-pool workers, not the same
+    // thread, so we need release-acquire semantics on the flag-then-read
+    // sequence to guarantee the read sees ForwardJsonLine's write. Plain
+    // bool is atomic but unordered in the C# memory model -- without
+    // volatile, the fallback could observe ExitCode != 0 and a stale
+    // _terminalMarkerSeen=false even after a cleanup-error had already been
+    // forwarded, producing a duplicate "exit code N" cleanup-error in JS.
+    // d637289 review consistency fix.
+    private volatile bool _terminalMarkerSeen;
 
     private void ForwardJsonLine(string line)
     {
