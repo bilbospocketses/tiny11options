@@ -105,27 +105,28 @@ body {
    the right-anchor margin-left:auto. When hidden (display:none) the sibling
    rule below puts the auto back on theme-toggle so it stays right-aligned. */
 .update-badge {
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: var(--accent);
     border: none;
     margin-left: auto;
-    margin-right: 8px;
+    margin-right: 12px;
     padding: 0;
     cursor: pointer;
-    animation: badge-pulse 2s ease-in-out infinite;
+    /* Intentionally NOT gated on prefers-reduced-motion. This is a notification
+       indicator the user needs to discover; the entire feature is "movement that
+       grabs your eye". Subtle scale + ring pulse, not a strobe. */
+    animation: badge-pulse 1.6s ease-in-out infinite;
 }
 .update-badge.hidden { display: none; }
-.update-badge:hover { background: var(--accent-hover); }
+.update-badge:hover { background: var(--accent-hover); animation-play-state: paused; }
 .update-badge.hidden ~ .theme-toggle { margin-left: auto; }
 
 @keyframes badge-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 var(--accent); opacity: 1; }
-    50%      { box-shadow: 0 0 0 6px transparent; opacity: 0.6; }
-}
-@media (prefers-reduced-motion: reduce) {
-    .update-badge { animation: none; }
+    0%   { transform: scale(0.85); box-shadow: 0 0 0 0   var(--accent); opacity: 1; }
+    50%  { transform: scale(1.35); box-shadow: 0 0 0 10px transparent; opacity: 0.85; }
+    100% { transform: scale(0.85); box-shadow: 0 0 0 0   transparent; opacity: 1; }
 }
 
 /* Main content area */
