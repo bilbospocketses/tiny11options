@@ -46,30 +46,30 @@ All arguments pass through to `tiny11maker.ps1` -- run it directly for the full 
 
 ## Trusted Signing -- one-time setup
 
-The release workflow signs `tiny11options.exe` and Velopack artifacts via
-Microsoft Trusted Signing. To enable it:
+The release workflow signs `tiny11options.exe` and Velopack artifacts via Microsoft Trusted Signing (rebranded by Microsoft in 2025 as **Artifact Signing**; same service, different blade name in Azure Portal).
 
-1. Create an Azure subscription if you don't have one. The Trusted Signing
-   service costs ~$10/mo (~$120/yr).
-2. In Azure Portal: create a **Trusted Signing account**.
-3. Create a **certificate profile** with publisher name `Jamie Chapman`.
-4. Note the endpoint (e.g. `https://eus.codesigning.azure.net`), account
-   name, and certificate-profile name.
-5. Configure GitHub OIDC federation:
-   - Azure Portal -> App registrations -> New registration
-   - Federated credentials -> Add -> "GitHub Actions deploying Azure resources"
-   - Organization: `bilbospocketses`, Repository: `tiny11options`,
-     Entity type: "Tag", Pattern: `v*`
-6. Grant the App Registration the `Trusted Signing Certificate Profile Signer` role
-   on the certificate profile.
-7. Add repo secrets at github.com -> Settings -> Secrets and variables -> Actions:
-   - `AZURE_TENANT_ID`             -- Azure AD tenant GUID
-   - `AZURE_CLIENT_ID`             -- App Registration client ID
-   - `TRUSTED_SIGNING_ENDPOINT`    -- full endpoint URL
-   - `TRUSTED_SIGNING_ACCOUNT`     -- Trusted Signing account name
-   - `TRUSTED_SIGNING_CERT_PROFILE` -- certificate profile name
+**For the verbose, click-by-click walkthrough**, see [`docs/release-signing-setup.md`](../docs/release-signing-setup.md). That document covers: collecting your existing Artifact Signing values, creating the App Registration with OIDC federation, assigning the signing role, adding the 5 GitHub repo secrets, and running a smoke-test tag to validate the wiring before pushing v1.0.0.
 
-After setup, push a `v*` tag to trigger a release.
+**Quick reference for what gets configured:**
+
+| Where | What |
+|---|---|
+| Azure Portal -> Microsoft Entra ID -> App registrations | Create app `tiny11options-github-signer` |
+| App registration -> Certificates & secrets -> Federated credentials | Add credential for repo `bilbospocketses/tiny11options`, entity type **Tag**, pattern `v*` |
+| Artifact Signing -> Certificate profile -> Access control (IAM) | Assign role **Artifact Signing Certificate Profile Signer** to the App Registration |
+| github.com -> Settings -> Secrets and variables -> Actions | Add 5 secrets (table below) |
+
+**The 5 repo secrets:**
+
+| Secret | Source |
+|---|---|
+| `AZURE_TENANT_ID` | App Registration Overview -> Directory (tenant) ID |
+| `AZURE_CLIENT_ID` | App Registration Overview -> Application (client) ID |
+| `TRUSTED_SIGNING_ENDPOINT` | Artifact Signing Account Overview -> Endpoint URI (e.g. `https://eus.codesigning.azure.net`) |
+| `TRUSTED_SIGNING_ACCOUNT` | Artifact Signing Account name |
+| `TRUSTED_SIGNING_CERT_PROFILE` | Certificate Profile name within that account |
+
+After setup, push a `v*` tag to trigger a release. **Strongly recommended:** smoke-test with a throwaway tag like `v0.99.0-smoketest` first per `docs/release-signing-setup.md` Part 5 -- gives you a chance to catch any secret mistypes without affecting v1.0.0.
 
 ## Release pipeline
 
