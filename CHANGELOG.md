@@ -14,7 +14,6 @@ This release introduces a native bundled `.exe` launcher that replaces the prior
 **Added in v1.0.0:**
 - **`tiny11options.exe`** -- single self-contained .NET 10 binary (~135 MB) providing both **GUI mode** (no args -> WPF + WebView2 wizard) and **headless mode** (CLI args -> spawns `powershell.exe` running `tiny11maker.ps1`).
 - **In-app updates via Velopack** with passive notification near the theme toggle and one-click apply-and-restart. Polls GitHub releases at `bilbospocketses/tiny11options`; pre-releases filtered out.
-- **Code signing via Microsoft Trusted Signing** (publisher: Jamie Chapman). Both `tiny11options.exe` and Velopack release artifacts are signed by CI.
 - **Core build mode** -- significantly smaller image at the cost of non-serviceability; gated behind a Step 1 warning panel with explicit user opt-in.
 - **Fast Build option** -- skips recovery compression (and in Core mode, skips `/Compress:max` + `/Compress:recovery`) for ~15-30 min faster builds at the cost of modestly larger output.
 - **Cleanup UX** -- spinner-flow on Step 3, two-button Cancel row (plain "Cancel build" + chained "Cancel build & clean up"), theme-aware cleanup panels, in-UI cleanup recipe with Windows-quirk explainers, source-ISO unmount catch-all on cancel + crash.
@@ -22,11 +21,14 @@ This release introduces a native bundled `.exe` launcher that replaces the prior
 - **New PowerShell wrapper scripts** -- `tiny11maker-from-config.ps1` (Worker pipeline), `tiny11Coremaker-from-config.ps1` (Core pipeline), `tiny11-iso-validate.ps1` (Step 1 validator), `tiny11-cancel-cleanup.ps1` (cleanup orchestrator).
 - **xUnit test project** at `launcher/Tests/` for C# components (70 tests).
 - **Pester drift + structural-contract tests** across the cleanup, output-required, encoding, autounattend-template-drift, and embedded-resources-drift surfaces (271 tests total).
-- **GitHub Actions release pipeline** (`.github/workflows/release.yml`) -- triggers on `v*` tag push, runs full test suite, signs the exe, packs Velopack, signs Velopack artifacts, creates a GitHub release with notes extracted from this CHANGELOG.
+- **GitHub Actions release pipeline** (`.github/workflows/release.yml`) -- triggers on `v*` tag push, runs full test suite, publishes the single-file exe, packs Velopack, creates a GitHub release with notes extracted from this CHANGELOG. Signing steps are wired but gated on secret presence and remain dormant in v1.0.0 (see Known Issues below; signing tracked for v1.0.2).
 
 **Changed in v1.0.0:**
 - `tiny11maker.ps1` no longer hosts the interactive wizard. Run `tiny11options.exe` for GUI mode, or pass CLI args for direct headless mode.
 - Source ISO validation moved out-of-process to `tiny11-iso-validate.ps1` (called by the launcher's `IsoHandlers`).
+
+**Known Issues in v1.0.0:**
+- **Installer is unsigned; Windows SmartScreen will warn on first install.** Click **More info** -> **Run anyway** to proceed. Code signing via Microsoft Trusted Signing is tracked for v1.0.2 (deferred so signing infrastructure does not block the v1.0.0 wrap-up). Velopack auto-updates from v1.0.0 to v1.0.2 (and onward) work normally once v1.0.2 ships -- no manual reinstall required to pick up the signed build.
 
 **Notes:**
 - v1.0.0 is the first Path C release; no prior bundled `.exe` exists, so Velopack delta updates begin from v1.0.1 onward.
