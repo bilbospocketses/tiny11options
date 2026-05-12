@@ -194,6 +194,21 @@ Describe 'Get-Tiny11CoreRegistryTweaks' {
         }
     }
 
+    It 'defender-disable SettingsPageVisibility uses ms-settings:windowsdefender token (not legacy "virus")' {
+        # 2026-05-12: upstream's `hide:virus` token doesn't exist in the
+        # ms-settings: URI scheme on Win11 25H2. Canonical URI for the
+        # Windows Security page is `ms-settings:windowsdefender` per
+        # learn.microsoft.com/en-us/windows/uwp/launch-resume/launch-settings-app
+        # ("Update and security" section). This test locks in the corrected
+        # token so a future "let me match upstream verbatim" pass can't
+        # silently re-introduce the broken `virus`.
+        $defender = $script:tweaks | Where-Object Category -eq 'defender-disable'
+        $spv = $defender | Where-Object { $_.Name -eq 'SettingsPageVisibility' }
+        $spv | Should -Not -BeNullOrEmpty -Because 'SettingsPageVisibility entry expected in defender-disable'
+        $spv.Value | Should -Be 'hide:windowsdefender;windowsupdate'
+        $spv.Value | Should -Not -Match 'virus' -Because 'legacy hide:virus token is broken on Win11 25H2'
+    }
+
     It 'add ops have Type and Value fields; delete ops do not require Value' {
         $adds = $script:tweaks | Where-Object Op -eq 'add'
         foreach ($a in $adds) {
