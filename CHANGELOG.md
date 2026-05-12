@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (2026-05-12 -- two regression-prevention tests, v1.0.1 tech debt)
+- **`tests/Tiny11.Wrappers.Tests.ps1`** (6 Pester assertions) -- structural-grep guard against the C5-smoke wrapper-strip bug fixed in `2ecef90`. Both `tiny11maker-from-config.ps1` and `tiny11Coremaker-from-config.ps1` MUST forward build-progress payloads via splat (`Write-Marker 'build-progress' $p`) rather than reconstructing per-key whitelist hashtables (`@{ phase = $p.phase; step = $p.step; percent = $p.percent }`). Pre-fix the wrapper layer silently swallowed any new payload field; test now fails if either wrapper reverts to the field-stripping pattern. Negative-tested by injecting the bug pattern and confirming 2 assertions fire.
+- **`launcher/Tests/BridgePayloadContractTests.cs`** (2 xUnit Facts) -- static contract guard against the bridge-payload-shape bug class fixed in `743680f`. Two assertions: (1) `ui/app.js` may only read `msg.type` and `msg.payload` directly off the BridgeMessage envelope -- any other bare `msg.<field>` access is the 743680f pattern and fails the test; (2) every `Type = "kebab-case"` emit found in `launcher/**/*.cs` (ex Tests/) must have a matching `msg.type === 'kebab-case'` handler branch in `ui/app.js`, with `build-started` allowlisted as a deliberate ACK-only response (rationale documented inline). Repo-root resolution via `.git` walk-up from `AppContext.BaseDirectory` so the test runs from any working directory. Negative-tested by (1) injecting `const probe = msg.editions` into app.js and (2) renaming `Type = "iso-error"` to a non-existent type -- both correctly fail the relevant assertion.
+- Tests at end: xUnit 70 -> 72 (+2), Pester 275 -> 281 (+6).
+
 ## [1.0.0] - 2026-05-12
 
 ### v1.0.0 release scope (Path C — bundled .exe launcher)
