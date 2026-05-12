@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-05-12
+
 ### v1.0.0 release scope (Path C — bundled .exe launcher)
 
 This release introduces a native bundled `.exe` launcher that replaces the prior pure-PowerShell wizard flow.
