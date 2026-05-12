@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    tiny11options — interactive variant builder for Windows 11.
+    tiny11options -- interactive variant builder for Windows 11.
 
 .DESCRIPTION
     Builds a customized Windows 11 ISO. Each removable component and tweak is a
@@ -31,7 +31,7 @@
     Suppresses the GUI. Implied if both -Source and -Config are passed.
 
 .PARAMETER Internal
-    For testing — when set, the script defines functions and exits without running the orchestrator.
+    For testing -- when set, the script defines functions and exits without running the orchestrator.
 #>
 [CmdletBinding()]
 param(

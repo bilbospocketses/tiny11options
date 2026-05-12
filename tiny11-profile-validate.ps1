@@ -1,9 +1,9 @@
-# Path C launcher profile-validation subscript — invoked by
+# Path C launcher profile-validation subscript -- invoked by
 # launcher/Gui/Handlers/ProfileHandlers.cs as a powershell.exe subprocess
 # to validate a saved profile against the catalog and return the resolved
 # selections in the {id: state} shape JS expects.
 #
-# AUDIT REFERENCE: tiny11maker.ps1:236 (legacy load-profile-request handler) —
+# AUDIT REFERENCE: tiny11maker.ps1:236 (legacy load-profile-request handler) --
 # legacy uses Import-Tiny11Selections which validates against the catalog
 # and rejects unknown item IDs / invalid 'apply'/'skip' values, then flattens
 # the returned hashtable to {id: state}. Path C delegates the same logic to

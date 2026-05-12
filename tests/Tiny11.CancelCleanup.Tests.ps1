@@ -9,7 +9,7 @@
 # runtime behavior is validated via Phase 7 C5 manual smoke against a
 # real cancel-mid-build scenario.
 
-Describe 'tiny11-cancel-cleanup.ps1 — structural contract' {
+Describe 'tiny11-cancel-cleanup.ps1 -- structural contract' {
     BeforeAll {
         $script:scriptPath = (Resolve-Path (Join-Path $PSScriptRoot '..\tiny11-cancel-cleanup.ps1')).Path
         $script:content    = Get-Content $script:scriptPath -Raw
@@ -118,7 +118,7 @@ Describe 'tiny11-cancel-cleanup.ps1 — structural contract' {
             }
         }
 
-        It 'invokes reg.exe unload (not load — defensive against accidental hive mount in the cleanup script)' {
+        It 'invokes reg.exe unload (not load -- defensive against accidental hive mount in the cleanup script)' {
             $script:content | Should -Match "&\s+'reg\.exe'\s+'unload'"
             # No `reg.exe' 'load'` call (only `reg load`-references in comments,
             # which use backticks for code spans).
@@ -127,7 +127,7 @@ Describe 'tiny11-cancel-cleanup.ps1 — structural contract' {
 
         It 'reg unload call site precedes the DISM /Unmount-Image call site (order is load-bearing)' {
             # Find the actual `& 'reg.exe'` invocation and the actual `& 'dism.exe' '/Unmount-Image'`
-            # invocation — NOT the comment references (which appear earlier).
+            # invocation -- NOT the comment references (which appear earlier).
             $regIdx     = $script:content.IndexOf("& 'reg.exe' 'unload'")
             $unmountIdx = $script:content.IndexOf("& 'dism.exe' '/Unmount-Image'")
             $regIdx     | Should -BeGreaterThan -1
@@ -139,7 +139,7 @@ Describe 'tiny11-cancel-cleanup.ps1 — structural contract' {
             $script:content | Should -Match '\$mountInfo\s+-match\s+\[regex\]::Escape\(\$MountDir\)'
         }
 
-        It 'removes MountDir BEFORE SourceDir (source-last) — source.wim must remain available for DISM unmount' {
+        It 'removes MountDir BEFORE SourceDir (source-last) -- source.wim must remain available for DISM unmount' {
             $mountRemove  = $script:content.IndexOf('Remove-Item -LiteralPath $MountDir')
             $sourceRemove = $script:content.IndexOf('Remove-Item -LiteralPath $SourceDir')
             $mountRemove  | Should -BeGreaterThan -1

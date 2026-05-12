@@ -658,7 +658,7 @@ Describe 'New-Tiny11CoreWuEnforceScript' {
 
     It 'sets UsoSvc to Manual (3) per WUB recipe, others to Disabled (4)' {
         $s = New-Tiny11CoreWuEnforceScript
-        # Hashtable shape — UsoSvc should map to 3
+        # Hashtable shape -- UsoSvc should map to 3
         $s | Should -Match "'UsoSvc'\s*=\s*3"
         $s | Should -Match "'wuauserv'\s*=\s*4"
     }
@@ -687,7 +687,7 @@ Describe 'New-Tiny11CoreWuEnforceScript' {
         $s | Should -Match 'Stop-Process'
     }
 
-    It 'is idempotent — every correction path has a "Start=N already" or "Debugger=systray.exe already" fast-path' {
+    It 'is idempotent -- every correction path has a "Start=N already" or "Debugger=systray.exe already" fast-path' {
         $s = New-Tiny11CoreWuEnforceScript
         $s | Should -Match 'Start=\$expected already'
         $s | Should -Match 'Debugger=systray\.exe already'
@@ -731,7 +731,7 @@ Describe 'New-Tiny11CoreWuEnforceTaskXml' {
     It 'returns well-formed XML parseable by .NET' {
         $xml = New-Tiny11CoreWuEnforceTaskXml
         $xml | Should -Not -BeNullOrEmpty
-        # Parse via [xml] — throws on malformed
+        # Parse via [xml] -- throws on malformed
         $parsed = [xml]$xml
         $parsed | Should -Not -BeNullOrEmpty
     }

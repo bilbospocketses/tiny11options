@@ -1,6 +1,6 @@
 Set-StrictMode -Version 3.0
 
-# End-to-end test for tiny11-profile-validate.ps1 — runs the actual script
+# End-to-end test for tiny11-profile-validate.ps1 -- runs the actual script
 # against the real catalog/catalog.json + src/* layout, mirrors what the
 # C# launcher does via PwshRunner. Catches path-resolution bugs (cf. B4
 # from the Path C audit) that a pure-module test of Import-Tiny11Selections

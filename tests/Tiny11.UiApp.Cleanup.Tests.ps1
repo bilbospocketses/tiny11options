@@ -1,13 +1,13 @@
-# Structural / contract tests for ui/app.js cleanup wiring.
+﻿# Structural / contract tests for ui/app.js cleanup wiring.
 #
 # Three blocks live in app.js:
-#   - renderCleanupBlock          → cancel/error screen — button that drives
+#   - renderCleanupBlock          -> cancel/error screen -- button that drives
 #                                   startCleanupFlow (navigates to Step 3)
-#   - renderCleanupRecipe         → in-progress details panel — recipe only,
+#   - renderCleanupRecipe         -> in-progress details panel -- recipe only,
 #                                   no button (mid-build click would race a
 #                                   live DISM mount and silently fail to
 #                                   delete locked files)
-#   - renderCompletionCleanupBlock → build-complete screen — "Clean up scratch
+#   - renderCompletionCleanupBlock -> build-complete screen -- "Clean up scratch
 #                                   directory" button with outputIso guard
 #
 # Plus inline-status row + Build ISO disable wiring in renderBuildStep, and a
@@ -19,7 +19,7 @@
 # mid-build cleanup-vanishes-on-success incident (2026-05-11) both
 # demonstrated that silent gaps between layers cost real time.
 
-Describe 'ui/app.js — cleanup wiring' {
+Describe 'ui/app.js -- cleanup wiring' {
     BeforeAll {
         $script:appJsPath = (Resolve-Path (Join-Path $PSScriptRoot '..\ui\app.js')).Path
         $script:content   = Get-Content $script:appJsPath -Raw
@@ -70,12 +70,12 @@ Describe 'ui/app.js — cleanup wiring' {
             $script:content | Should -Match 'function cancelBuildAndCleanup[\s\S]{0,400}state\.pendingCleanupAfterCancel\s*=\s*true'
         }
 
-        It 'dispatches cancel-build (not start-cleanup directly — would race live DISM mount)' {
+        It 'dispatches cancel-build (not start-cleanup directly -- would race live DISM mount)' {
             $script:content | Should -Match "function cancelBuildAndCleanup[\s\S]{0,600}type:\s*'cancel-build'"
         }
     }
 
-    Context 'renderCleanupRecipe (in-progress details panel — recipe-only, no button)' {
+    Context 'renderCleanupRecipe (in-progress details panel -- recipe-only, no button)' {
         It 'defines renderCleanupRecipe' {
             $script:content | Should -Match 'function renderCleanupRecipe\s*\('
         }
@@ -88,12 +88,12 @@ Describe 'ui/app.js — cleanup wiring' {
             $script:content | Should -Match 'function renderProgress[\s\S]{0,3000}renderCleanupRecipe\(\)'
         }
 
-        It 'has NO start-cleanup button onclick (recipe-only — button moved to Cancel row)' {
+        It 'has NO start-cleanup button onclick (recipe-only -- button moved to Cancel row)' {
             $script:content | Should -Not -Match "function renderCleanupRecipe[\s\S]{0,800}onclick[\s\S]{0,200}start-cleanup"
         }
     }
 
-    Context 'renderProgress — two-button Cancel row + recipe (no auto-cleanup button mid-build)' {
+    Context 'renderProgress -- two-button Cancel row + recipe (no auto-cleanup button mid-build)' {
         It 'renders the original "Cancel build" button posting cancel-build' {
             $script:content | Should -Match "function renderProgress[\s\S]{0,5000}'Cancel build'"
         }
@@ -107,7 +107,7 @@ Describe 'ui/app.js — cleanup wiring' {
         }
     }
 
-    Context 'renderBuildStep — inline cleanup status row + Build ISO disable' {
+    Context 'renderBuildStep -- inline cleanup status row + Build ISO disable' {
         It 'invokes renderInlineCleanupStatus at the top of the Step 3 layout' {
             $script:content | Should -Match 'function renderBuildStep[\s\S]{0,3000}renderInlineCleanupStatus\(\)'
         }
@@ -121,7 +121,7 @@ Describe 'ui/app.js — cleanup wiring' {
         }
     }
 
-    Context 'renderInlineCleanupStatus — spinner / check / X' {
+    Context 'renderInlineCleanupStatus -- spinner / check / X' {
         It 'defines renderInlineCleanupStatus' {
             $script:content | Should -Match 'function renderInlineCleanupStatus\s*\('
         }
@@ -143,7 +143,7 @@ Describe 'ui/app.js — cleanup wiring' {
         }
     }
 
-    Context 'renderCleanupBlock — build-failed screen button' {
+    Context 'renderCleanupBlock -- build-failed screen button' {
         It 'is invoked from the build-error handler (so cancel/error screen still surfaces it)' {
             $script:content | Should -Match "msg\.type === 'build-error'[\s\S]{0,3000}renderCleanupBlock\(\)"
         }
@@ -153,7 +153,7 @@ Describe 'ui/app.js — cleanup wiring' {
         }
     }
 
-    Context 'renderCompletionCleanupBlock — build-complete path (Core + Worker)' {
+    Context 'renderCompletionCleanupBlock -- build-complete path (Core + Worker)' {
         It 'defines renderCompletionCleanupBlock function' {
             $script:content | Should -Match 'function renderCompletionCleanupBlock\s*\('
         }
@@ -171,7 +171,7 @@ Describe 'ui/app.js — cleanup wiring' {
         }
     }
 
-    Context 'build-error header polish — "Build cancelled" vs "Build failed"' {
+    Context 'build-error header polish -- "Build cancelled" vs "Build failed"' {
         It 'detects cancel by matching "cancelled by user" in the message' {
             $script:content | Should -Match "msg\.type === 'build-error'[\s\S]{0,1500}wasCancelled[\s\S]{0,200}'cancelled by user'"
         }
@@ -185,7 +185,7 @@ Describe 'ui/app.js — cleanup wiring' {
         }
     }
 
-    Context 'build-error handler — pendingCleanupAfterCancel chain' {
+    Context 'build-error handler -- pendingCleanupAfterCancel chain' {
         It 'checks state.pendingCleanupAfterCancel and dispatches start-cleanup before showing failure UI' {
             $script:content | Should -Match "msg\.type === 'build-error'[\s\S]{0,400}state\.pendingCleanupAfterCancel[\s\S]{0,800}type:\s*'start-cleanup'"
         }
@@ -195,7 +195,7 @@ Describe 'ui/app.js — cleanup wiring' {
         }
     }
 
-    Context 'cleanup marker handlers — clear state.cleaning, surface handler-error' {
+    Context 'cleanup marker handlers -- clear state.cleaning, surface handler-error' {
         It 'cleanup-complete clears state.cleaning and sets success status' {
             $script:content | Should -Match "msg\.type === 'cleanup-complete'[\s\S]{0,400}state\.cleaning\s*=\s*false[\s\S]{0,200}kind:\s*'success'"
         }
@@ -209,7 +209,7 @@ Describe 'ui/app.js — cleanup wiring' {
         }
     }
 
-    Context 'theme awareness (regression — no hardcoded panel chrome)' {
+    Context 'theme awareness (regression -- no hardcoded panel chrome)' {
         # 2026-05-11: both blocks shipped with inline `background: #fafafa` +
         # `border: 1px solid #ddd`, which ignored data-theme=dark.
         It 'core-cleanup container does not hardcode background hex' {

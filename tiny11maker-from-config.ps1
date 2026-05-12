@@ -1,4 +1,4 @@
-# Path C launcher build wrapper — invoked by launcher/Gui/Handlers/BuildHandlers.cs
+# Path C launcher build wrapper -- invoked by launcher/Gui/Handlers/BuildHandlers.cs
 # as a powershell.exe subprocess. The launcher writes the full JS-side build
 # payload to a JSON file and passes it via -ConfigPath; CLI args carry the
 # scalar fields that don't fit naturally in the config (and let the wrapper
@@ -28,7 +28,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # Helper: write a JSON marker to STDOUT for the launcher's line-by-line forwarder.
-# All bridge-traffic — progress, complete, error — goes through STDOUT so
+# All bridge-traffic -- progress, complete, error -- goes through STDOUT so
 # BuildHandlers' single forwarder routes it consistently. (Legacy used a
 # Dispatcher-marshal-back-to-WebView pattern; the launcher equivalent is line
 # parsing in C#, but the JSON shape is identical: {type, payload}.)
@@ -41,7 +41,7 @@ try {
     if (-not (Test-Path $ConfigPath)) { throw "Config not found: $ConfigPath" }
     $ConfigJson = Get-Content -Raw -Path $ConfigPath | ConvertFrom-Json
 
-    # Locate bundled modules — same dir as this wrapper (extracted by EmbeddedResources at runtime).
+    # Locate bundled modules -- same dir as this wrapper (extracted by EmbeddedResources at runtime).
     $RepoRoot = Split-Path -Parent $PSCommandPath
     $ModulesDir = Join-Path $RepoRoot 'src'
 
@@ -50,18 +50,18 @@ try {
     Import-Module (Join-Path $ModulesDir 'Tiny11.Iso.psm1')        -Force
     Import-Module (Join-Path $ModulesDir 'Tiny11.Worker.psm1')     -Force
 
-    # PORTED: tiny11maker.ps1:126 — Get-Tiny11Catalog expects the catalog.json
+    # PORTED: tiny11maker.ps1:126 -- Get-Tiny11Catalog expects the catalog.json
     # FILE PATH, not the directory. Round 1 audit (A4) rewrote this to point at
     # the directory, and Get-Content -Raw on a directory throws "Access to the
     # path '...' is denied." with no further hint that it's a path-shape bug.
     $catalogPath = Join-Path $RepoRoot 'catalog\catalog.json'
     $catalog = Get-Tiny11Catalog -Path $catalogPath
 
-    # PORTED: tiny11maker.ps1:242-248 (legacy `build` handler) — selections shape.
+    # PORTED: tiny11maker.ps1:242-248 (legacy `build` handler) -- selections shape.
     # JS sends `selections` as a dict {itemId: 'apply'|'skip'} (state.selections in
     # ui/app.js). New-Tiny11Selections expects an Overrides hashtable of the same
     # shape, but ConvertFrom-Json deserializes JSON objects to PSCustomObject in
-    # PS 5.1 — so we have to walk the property bag, not iterate keys.
+    # PS 5.1 -- so we have to walk the property bag, not iterate keys.
     $overrides = @{}
     if ($ConfigJson.PSObject.Properties.Name -contains 'selections' -and $ConfigJson.selections) {
         foreach ($prop in $ConfigJson.selections.PSObject.Properties) {
@@ -83,7 +83,7 @@ try {
         }
     } finally {
         if ($preflightMount.MountedByUs) {
-            # PORTED: tiny11maker.ps1:155 — legacy uses -ForceUnmount:$true here.
+            # PORTED: tiny11maker.ps1:155 -- legacy uses -ForceUnmount:$true here.
             # Critical for clean retry after preflight; without it the source can
             # remain mount-locked when the user re-runs the build immediately.
             Dismount-Tiny11Source -IsoPath $preflightMount.IsoPath -MountedByUs:$preflightMount.MountedByUs -ForceUnmount:$true
@@ -95,7 +95,7 @@ try {
     }
 
     # Scratch dir resolution. Honour caller's -ScratchDir if provided (matches
-    # legacy parity — the GUI lets the user pick scratch); fall back to a
+    # legacy parity -- the GUI lets the user pick scratch); fall back to a
     # process-scoped temp dir so concurrent invocations don't collide.
     if (-not $ScratchDir) {
         $ScratchDir = Join-Path $env:TEMP "tiny11options-build-$PID"
@@ -117,21 +117,21 @@ try {
         -FastBuild $FastBuild.IsPresent `
         -ProgressCallback {
             param($p)
-            # Forward the entire payload — Worker pipeline emits mount-state
+            # Forward the entire payload -- Worker pipeline emits mount-state
             # markers carrying mountActive/mountDir/sourceDir that the launcher
             # cleanup button reads. Per-key whitelisting drops them silently.
             # See tiny11Coremaker-from-config.ps1 for the matching change.
             Write-Marker 'build-progress' $p
         }
 
-    # PORTED: tiny11maker.ps1:279 — legacy emits build-complete with {outputPath}.
+    # PORTED: tiny11maker.ps1:279 -- legacy emits build-complete with {outputPath}.
     # JS reads `state.completed = msg.payload` then `c.outputPath` in renderComplete
     # (app.js:238). Match that exact field name.
     Write-Marker 'build-complete' @{ outputPath = $OutputIso }
     exit 0
 }
 catch {
-    # PORTED: tiny11maker.ps1:282 — legacy emits build-error on STDOUT via the
+    # PORTED: tiny11maker.ps1:282 -- legacy emits build-error on STDOUT via the
     # bridge marshal. We use STDOUT (not STDERR) so BuildHandlers' single
     # line-by-line forwarder routes it like every other marker.
     Write-Marker 'build-error' @{ message = $_.Exception.Message; stackTrace = $_.ScriptStackTrace }

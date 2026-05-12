@@ -9,7 +9,7 @@
 #
 # ui/** and catalog/** are covered by glob includes (..\ui\**\* and
 # ..\catalog\**\*), so files added under those trees auto-pick-up. This
-# test doesn't try to validate the globs — only the explicitly-listed
+# test doesn't try to validate the globs -- only the explicitly-listed
 # entries that require manual maintenance.
 #
 # Intentional exclusions are captured in $intentionallyNotEmbedded with
@@ -24,7 +24,7 @@ Describe 'launcher/tiny11options.Launcher.csproj <EmbeddedResource> drift' {
 
         # Flatten across all ItemGroup blocks. SelectNodes with descendant XPath
         # catches every EmbeddedResource regardless of which ItemGroup it lives in.
-        # Normalize forward slashes to backslashes — MSBuild accepts both on
+        # Normalize forward slashes to backslashes -- MSBuild accepts both on
         # Windows; tests should treat them as equivalent.
         $script:embeddedIncludes = @(
             $csproj.SelectNodes('//EmbeddedResource[@Include]') |
@@ -33,7 +33,7 @@ Describe 'launcher/tiny11options.Launcher.csproj <EmbeddedResource> drift' {
 
         # Files that exist in tracked locations but are intentionally NOT embedded
         # in the launcher .exe. Each entry must have a rationale comment. The test
-        # also asserts each entry still exists on disk — catches stale exclusions.
+        # also asserts each entry still exists on disk -- catches stale exclusions.
         $script:intentionallyNotEmbedded = @(
             # Legacy v0.1.0 PS modules retained as canonical reference per the
             # 2026-05-08 binding decision (Phase 5 Tasks 27/28 CANCELLED). The

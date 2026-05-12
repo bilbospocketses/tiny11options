@@ -16,7 +16,7 @@ try {
         # PORTED: tiny11maker.ps1:191-193 (legacy validate-iso handler).
         # Emit ONLY index + name. Architecture is unreliable across Windows ISOs
         # and trips Set-StrictMode -Version Latest (v0.1.0 polish-bundle fix in
-        # commit cf80091). ImageSize is also omitted to match legacy exactly —
+        # commit cf80091). ImageSize is also omitted to match legacy exactly --
         # JS-side only consumes `index` per ui/app.js.
         $editions = @($rawEditions | ForEach-Object {
             @{
@@ -31,7 +31,7 @@ try {
     }
     finally {
         if ($mountResult.MountedByUs) {
-            # PORTED: tiny11maker.ps1:194 — legacy uses -ForceUnmount:$true on
+            # PORTED: tiny11maker.ps1:194 -- legacy uses -ForceUnmount:$true on
             # the post-validate dismount. Critical for clean retry: without it,
             # the source ISO can remain mount-locked when the user re-validates
             # the same path immediately.

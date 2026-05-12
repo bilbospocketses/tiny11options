@@ -1,4 +1,4 @@
-# tiny11 Core build wrapper — invoked by launcher/Gui/Handlers/BuildHandlers.cs
+# tiny11 Core build wrapper -- invoked by launcher/Gui/Handlers/BuildHandlers.cs
 # as a powershell.exe subprocess when the user picks Core mode in the Step 1
 # wizard. Differs from tiny11maker-from-config.ps1: no -ConfigPath / no
 # selections payload (Core has no catalog), and adds -EnableNet35 (the
@@ -43,7 +43,7 @@ function Write-Marker($Type, [hashtable]$Payload) {
 $logPath = $null
 
 try {
-    # Locate bundled modules — same dir as this wrapper (extracted by EmbeddedResources at runtime).
+    # Locate bundled modules -- same dir as this wrapper (extracted by EmbeddedResources at runtime).
     $RepoRoot = Split-Path -Parent $PSCommandPath
     $ModulesDir = Join-Path $RepoRoot 'src'
 
@@ -68,7 +68,7 @@ try {
 
     # Preflight: mount the source, enumerate editions, resolve -Edition to
     # -ImageIndex if needed. Same pattern as tiny11maker-from-config.ps1
-    # (lines 77-91) — keeps the source-mount-then-dismount window short
+    # (lines 77-91) -- keeps the source-mount-then-dismount window short
     # before the heavy build phases.
     Write-Marker 'build-progress' @{ phase = 'preflight'; step = 'Mounting source for edition enumeration'; percent = 0 }
     Write-CoreLog 'PREFLIGHT: Mount-Tiny11Source for edition enumeration'
@@ -109,7 +109,7 @@ try {
             # mountDir, sourceDir) that the launcher's auto-cleanup button
             # depends on. Per-key whitelisting drops those fields silently, so
             # JS never sees state.mountActive=true and the cleanup section
-            # self-gates off. Pass $p through directly — Write-Marker already
+            # self-gates off. Pass $p through directly -- Write-Marker already
             # declares [hashtable]$Payload so any keys present flow through to
             # ConvertTo-Json verbatim.
             Write-Marker 'build-progress' $p
@@ -120,7 +120,7 @@ try {
     exit 0
 }
 catch {
-    # Mirror the exception into the persistent log first (best-effort — Write-CoreLog
+    # Mirror the exception into the persistent log first (best-effort -- Write-CoreLog
     # is a no-op if Set-Tiny11CoreLogPath was never called or the module didn't load).
     if (Get-Command -Name Write-CoreLog -ErrorAction SilentlyContinue) {
         Write-CoreLog '==== Tiny11 Core build FAILED ===='

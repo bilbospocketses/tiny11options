@@ -1,24 +1,24 @@
-# tiny11-cancel-cleanup.ps1 — Invoked by launcher/Gui/Handlers/CleanupHandlers.cs
+# tiny11-cancel-cleanup.ps1 -- Invoked by launcher/Gui/Handlers/CleanupHandlers.cs
 # when the user clicks "Cancel build & clean up" or the cleanup button on the
 # Build cancelled / Build failed screen. Runs the recovery commands documented
 # in renderCleanupBlock (ui/app.js) against the mount/source directories where
 # install.wim was being modified at cancel/failure time.
 #
 # Operation order is load-bearing (2026-05-11 incident):
-#   1. Unload any registry hives the pipeline `reg load`-ed into HKLM\z* —
+#   1. Unload any registry hives the pipeline `reg load`-ed into HKLM\z* --
 #      otherwise the host System process keeps NTUSER.DAT et al. open, which
 #      blocks the subsequent Remove-Item even though no other tool obviously
 #      holds the files.
 #   2. dism /Unmount-Image /Discard against MountDir. Requires
-#      source\sources\install.wim to still exist on disk — that's why we DO
+#      source\sources\install.wim to still exist on disk -- that's why we DO
 #      NOT delete SourceDir until step 6.
 #   3. dism /Cleanup-Mountpoints to sweep stale mount registrations.
-#   4. dism /Get-MountedWimInfo verification — if MountDir is still listed
+#   4. dism /Get-MountedWimInfo verification -- if MountDir is still listed
 #      (typically as Status: Invalid), retry /Cleanup-Mountpoints once after
 #      a 2 second sleep.
 #   5. takeown + icacls + Remove-Item against MountDir, then verify the
 #      directory is actually gone. If it isn't, emit cleanup-error with a
-#      "reboot required" diagnostic and DO NOT proceed to step 6 — leaving
+#      "reboot required" diagnostic and DO NOT proceed to step 6 -- leaving
 #      SourceDir intact lets a post-reboot retry use install.wim as the
 #      reference for a clean DISM unmount.
 #   6. Only after MountDir is confirmed removed: Remove-Item SourceDir.
@@ -75,7 +75,7 @@ if ($OutputIso) {
 }
 
 try {
-    # Step 1 — Unload any pipeline-loaded registry hives. The build pipeline
+    # Step 1 -- Unload any pipeline-loaded registry hives. The build pipeline
     # `reg load`-s these into HKLM\z* via Mount-Tiny11AllHives (src/Tiny11.Hives.psm1).
     # If the build was cancelled before Dismount-Tiny11AllHives ran, the host
     # System process holds NTUSER.DAT / SOFTWARE / SYSTEM / DEFAULT / COMPONENTS
@@ -86,16 +86,16 @@ try {
         # Non-fatal: hive may not be loaded. reg.exe returns non-zero for "not loaded".
     }
 
-    # Step 2 — Unmount the image. Needs install.wim still present in SourceDir.
+    # Step 2 -- Unmount the image. Needs install.wim still present in SourceDir.
     Write-Marker 'cleanup-progress' @{ step = "DISM /Unmount-Image /Discard on $MountDir"; percent = 15 }
     & 'dism.exe' '/Unmount-Image' "/MountDir:$MountDir" '/Discard' 2>&1 | Out-Null
     # Exit code intentionally not checked -- mount may not be present, or may be Invalid.
 
-    # Step 3 — Sweep stale mount registrations.
+    # Step 3 -- Sweep stale mount registrations.
     Write-Marker 'cleanup-progress' @{ step = 'DISM /Cleanup-Mountpoints'; percent = 30 }
     & 'dism.exe' '/Cleanup-Mountpoints' 2>&1 | Out-Null
 
-    # Step 4 — Verify the mount is no longer registered. If it still shows up
+    # Step 4 -- Verify the mount is no longer registered. If it still shows up
     # (Status: Invalid is the typical leftover state when source.wim is gone),
     # retry /Cleanup-Mountpoints once after a short pause to give the wimmount
     # driver a chance to flush.
@@ -106,7 +106,7 @@ try {
         & 'dism.exe' '/Cleanup-Mountpoints' 2>&1 | Out-Null
     }
 
-    # Step 5 — Take ownership + grant Administrators + remove MountDir.
+    # Step 5 -- Take ownership + grant Administrators + remove MountDir.
     if (Test-Path -LiteralPath $MountDir) {
         Write-Marker 'cleanup-progress' @{ step = "takeown /F `"$MountDir`" /R /D Y"; percent = 50 }
         & 'takeown.exe' '/F' $MountDir '/R' '/D' 'Y' 2>&1 | Out-Null
@@ -120,20 +120,20 @@ try {
         Write-Marker 'cleanup-progress' @{ step = "Mount dir $MountDir absent (already clean); skipping takeown/icacls/Remove"; percent = 70 }
     }
 
-    # Step 5b — Verify MountDir is actually gone. If it isn't, the wimmount
+    # Step 5b -- Verify MountDir is actually gone. If it isn't, the wimmount
     # driver is still holding kernel handles on the contents (typical when
     # the mount went Invalid because a prior cleanup deleted source\install.wim
-    # before unmount completed). DO NOT proceed to delete SourceDir — leaving
+    # before unmount completed). DO NOT proceed to delete SourceDir -- leaving
     # it intact lets a post-reboot retry use install.wim as the reference for
     # a clean unmount. Emit a reboot-required cleanup-error and exit 1.
     if (Test-Path -LiteralPath $MountDir) {
         Write-Marker 'cleanup-error' @{
-            message = "Cleanup partial — could not remove '$MountDir' because the wimmount driver still holds kernel file handles (likely a DISM mount in 'Invalid' state). REBOOT REQUIRED: after reboot the kernel releases the handles and Remove-Item succeeds. SourceDir '$SourceDir' has been preserved so a post-reboot retry can use install.wim to complete a clean DISM /Unmount-Image."
+            message = "Cleanup partial -- could not remove '$MountDir' because the wimmount driver still holds kernel file handles (likely a DISM mount in 'Invalid' state). REBOOT REQUIRED: after reboot the kernel releases the handles and Remove-Item succeeds. SourceDir '$SourceDir' has been preserved so a post-reboot retry can use install.wim to complete a clean DISM /Unmount-Image."
         }
         exit 1
     }
 
-    # Step 6 — Mount confirmed gone; safe to remove SourceDir.
+    # Step 6 -- Mount confirmed gone; safe to remove SourceDir.
     if (Test-Path -LiteralPath $SourceDir) {
         Write-Marker 'cleanup-progress' @{ step = "Remove-Item $SourceDir"; percent = 90 }
         Remove-Item -LiteralPath $SourceDir -Recurse -Force -ErrorAction SilentlyContinue
