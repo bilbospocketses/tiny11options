@@ -126,7 +126,7 @@ jobs:
             --packDir dist/raw `
             --mainExe tiny11options.exe `
             --releaseNotes "${{ steps.notes.outputs.notes-path }}" `
-            --output dist/releases
+            --outputDir dist/releases
 
       - name: Sign Velopack artifacts via Trusted Signing
         # Skipped when signing secrets aren't configured (see note on the
