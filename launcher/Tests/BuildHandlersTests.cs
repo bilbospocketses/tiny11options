@@ -39,6 +39,123 @@ public class BuildHandlersTests
         Assert.False(fired);
     }
 
+    [Fact]
+    public void ForwardJsonLine_BuildError_SuppressedWhen_CancelRequested()
+    {
+        // Race guard for the d637289 review finding: if the wrapper script writes a
+        // build-error to stdout milliseconds before our Kill arrives, the cancel
+        // handler has already sent its own "Build cancelled by user." build-error
+        // (returned synchronously from HandleAsync). The stdout-sourced build-error
+        // should be suppressed so JS never receives two back-to-back.
+        var bridge = new Bridge(Array.Empty<IBridgeHandler>());
+        var fired = false;
+        bridge.MessageToJs += _ => fired = true;
+
+        var bh = new BuildHandlers(bridge, Path.GetTempPath());
+        bh.GetType()
+            .GetField("_cancelRequested", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(bh, true);
+
+        var fwd = bh.GetType().GetMethod("ForwardJsonLine", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        fwd.Invoke(bh, new object?[] {
+            "{\"type\":\"build-error\",\"payload\":{\"message\":\"some wrapper-side error\"}}"
+        });
+
+        Assert.False(fired, "build-error from stdout must be suppressed once _cancelRequested is set so JS doesn't get two back-to-back build-errors.");
+    }
+
+    [Fact]
+    public void ForwardJsonLine_BuildError_Forwarded_When_CancelNotRequested()
+    {
+        // Positive control: with the default `_cancelRequested = false` state, a
+        // build-error from stdout must still forward as normal. Without this test
+        // the suppression gate could over-fire and swallow legitimate build errors.
+        var bridge = new Bridge(Array.Empty<IBridgeHandler>());
+        string? captured = null;
+        bridge.MessageToJs += s => captured = s;
+
+        var bh = new BuildHandlers(bridge, Path.GetTempPath());
+        var fwd = bh.GetType().GetMethod("ForwardJsonLine", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        fwd.Invoke(bh, new object?[] {
+            "{\"type\":\"build-error\",\"payload\":{\"message\":\"legitimate wrapper crash\"}}"
+        });
+
+        Assert.NotNull(captured);
+        var node = JsonNode.Parse(captured!);
+        Assert.Equal("build-error", node?["type"]?.ToString());
+        Assert.Equal("legitimate wrapper crash", node?["payload"]?["message"]?.ToString());
+    }
+
+    [Fact]
+    public void DismountSourceIsoIfApplicable_ReturnsTask_NotVoid()
+    {
+        // d637289 code-review item: the cancel-handler path previously called
+        // DismountSourceIsoIfApplicable synchronously, blocking the WebView2
+        // message-pump thread for up to 10s if Dismount-DiskImage hung. The
+        // refactor moved the shell-out into Task.Run so callers can either
+        // await (background-thread callers) or fire-and-forget (UI-thread).
+        // Asserting the signature returns Task locks in the API shape.
+        var method = typeof(BuildHandlers).GetMethod(
+            "DismountSourceIsoIfApplicable",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        Assert.Equal(typeof(System.Threading.Tasks.Task), method!.ReturnType);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task DismountSourceIsoIfApplicable_EarlyReturnsCompletedTask_WhenActiveSourceEmpty()
+    {
+        // The early-return paths (no _activeSource, non-.iso, file doesn't exist)
+        // must complete near-instantly without spinning up a Task.Run shell-out.
+        // Default state has _activeSource = "" so this exercises the first
+        // early-return branch.
+        var bridge = new Bridge(Array.Empty<IBridgeHandler>());
+        var bh = new BuildHandlers(bridge, Path.GetTempPath());
+
+        var method = typeof(BuildHandlers).GetMethod(
+            "DismountSourceIsoIfApplicable",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var task = (System.Threading.Tasks.Task)method.Invoke(bh, null)!;
+        await task;
+        sw.Stop();
+
+        Assert.True(task.IsCompletedSuccessfully);
+        // 250ms ceiling is generous; the early-return path should complete in
+        // microseconds. The point is "demonstrably not blocking on shell-out".
+        Assert.True(sw.ElapsedMilliseconds < 250,
+            $"Early-return path took {sw.ElapsedMilliseconds}ms; expected near-instant.");
+    }
+
+    [Fact]
+    public void ForwardJsonLine_BuildProgress_StillForwarded_When_CancelRequested()
+    {
+        // Per the comment in ForwardJsonLine: the cancel-race gate is ONLY for
+        // build-error. build-progress / build-complete remain forwarded even with
+        // _cancelRequested=true because surplus progress is harmless and
+        // build-complete after cancel means the script genuinely raced past Kill.
+        // Guard the comment's intent so a future "while we're at it, broaden the
+        // gate to all three types" refactor breaks this test.
+        var bridge = new Bridge(Array.Empty<IBridgeHandler>());
+        string? captured = null;
+        bridge.MessageToJs += s => captured = s;
+
+        var bh = new BuildHandlers(bridge, Path.GetTempPath());
+        bh.GetType()
+            .GetField("_cancelRequested", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(bh, true);
+
+        var fwd = bh.GetType().GetMethod("ForwardJsonLine", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        fwd.Invoke(bh, new object?[] {
+            "{\"type\":\"build-progress\",\"payload\":{\"phase\":\"x\",\"step\":\"y\",\"percent\":50}}"
+        });
+
+        Assert.NotNull(captured);
+        var node = JsonNode.Parse(captured!);
+        Assert.Equal("build-progress", node?["type"]?.ToString());
+    }
+
     // --- coreMode routing tests ---
     // These call the extracted static helpers (BuildCoreArgs / BuildStandardArgs) via
     // the internal access modifier (InternalsVisibleTo is not needed because Tests.csproj

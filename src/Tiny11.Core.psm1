@@ -380,12 +380,21 @@ function Get-Tiny11CoreRegistryTweaks {
 
         # defender-disable (6 entries) — 5 services Start=4 (via Set-ItemProperty in upstream
         # lines 459-469) + SettingsPageVisibility (upstream line 470).
+        # 2026-05-12: upstream's `hide:virus` token doesn't exist in the ms-settings:
+        # URI scheme on Win11 25H2 (and likely never did since virus-protection lives
+        # in the Windows Security app, not Settings). Replaced with `windowsdefender`,
+        # which IS documented (learn.microsoft.com/en-us/windows/uwp/launch-resume/
+        # launch-settings-app, "Update and security" section: Windows Security |
+        # ms-settings:windowsdefender). Since tiny11Core removes Defender entirely,
+        # hiding the whole Windows Security entry in Settings is functionally cleaner
+        # than the upstream's surgical-but-broken intent of hiding only the virus
+        # sub-page. Pester guard in `tests/Tiny11.Core.Tests.ps1` locks the token.
         [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\WinDefend'; Name='Start'; Type='REG_DWORD'; Value=4 }
         [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\WdNisSvc'; Name='Start'; Type='REG_DWORD'; Value=4 }
         [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\WdNisDrv'; Name='Start'; Type='REG_DWORD'; Value=4 }
         [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\WdFilter'; Name='Start'; Type='REG_DWORD'; Value=4 }
         [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSYSTEM'; Path='ControlSet001\Services\Sense'; Name='Start'; Type='REG_DWORD'; Value=4 }
-        [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\Policies\Explorer'; Name='SettingsPageVisibility'; Type='REG_SZ'; Value='hide:virus;windowsupdate' }
+        [pscustomobject]@{ Category='defender-disable'; Op='add'; Hive='zSOFTWARE'; Path='Microsoft\Windows\CurrentVersion\Policies\Explorer'; Name='SettingsPageVisibility'; Type='REG_SZ'; Value='hide:windowsdefender;windowsupdate' }
 
         # ifeo-block (13 entries) — WUB-recipe IFEO Debugger redirects (2026-05-10).
         # For each blocked exe, set HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\<exe>\Debugger

@@ -69,7 +69,9 @@ public class BuildHandlers : IBridgeHandler
             // a try/finally -- but Process.Kill bypasses finally entirely, so a
             // cancel during the copy leaves the ISO mounted to a phantom drive).
             // Idempotent: silently no-ops if the ISO isn't currently attached.
-            DismountSourceIsoIfApplicable();
+            // Fire-and-forget so the UI thread isn't blocked by the 10s timeout.
+            // See DismountSourceIsoIfApplicable XML comment for the accepted-race note.
+            _ = DismountSourceIsoIfApplicable();
             return new Bridge.BridgeMessage
             {
                 Type = "build-error",
@@ -193,7 +195,10 @@ public class BuildHandlers : IBridgeHandler
                 // ImportModule failure, etc.) -- the source ISO may still be attached
                 // if the crash landed between Mount-Tiny11Source and Dismount-Tiny11Source.
                 // Same catch-all as the cancel handler; idempotent if not mounted.
-                DismountSourceIsoIfApplicable();
+                // We're already on a Task.Run background thread here, so awaiting
+                // is fine -- and we want the dismount to complete before the
+                // build-error reaches JS so users see consistent state.
+                await DismountSourceIsoIfApplicable();
                 if (capturedBuild.ExitCode != 0)
                 {
                     var err = await capturedBuild.StandardError.ReadToEndAsync();
@@ -245,6 +250,22 @@ public class BuildHandlers : IBridgeHandler
             if (t is "build-progress" or "build-complete" or "build-error")
             {
                 if (t is "build-complete" or "build-error") _terminalMarkerSeen = true;
+                // Race guard against the d637289-flagged double-emit case: when the
+                // wrapper script writes a build-error to stdout milliseconds before
+                // our Kill arrives (e.g. the pipeline's own catch fired on a
+                // different abort path), the cancel handler has already sent its
+                // own "Build cancelled by user." build-error. Suppress this
+                // stdout-sourced one so JS doesn't receive two back-to-back
+                // build-errors. Reviewer marked 🟡 not 🔴 because the later cancel
+                // message wins in JS rendering, so the behavior was correct but
+                // the cause-of-failure ordering was reversed on screen. Note we
+                // still set _terminalMarkerSeen above before this gate -- that
+                // protects the stderr-fallback Task from firing a spurious
+                // post-exit message. build-progress / build-complete are NOT
+                // gated: surplus progress is harmless, and build-complete with
+                // _cancelRequested=true means the script raced past our Kill and
+                // actually finished -- surfacing the success is fine.
+                if (t is "build-error" && _cancelRequested) return;
                 // DeepClone the payload so the new BridgeMessage owns it cleanly.
                 // Without the clone, node["payload"] is still parented under `node`
                 // and System.Text.Json throws "node already has a parent" when
@@ -324,48 +345,82 @@ public class BuildHandlers : IBridgeHandler
     // .iso file paths -- a bare drive letter source means the user mounted the
     // ISO externally and we have no business unmounting it. Idempotent: if the
     // ISO isn't currently attached, Dismount-DiskImage with SilentlyContinue
-    // returns without error. Fires synchronously with a 10s timeout cap so a
-    // hung Dismount can't wedge the cancel path.
+    // returns without error. 10s timeout cap so a hung Dismount can't wedge
+    // any caller indefinitely.
+    //
+    // d637289 code-review item: this previously ran synchronously on the
+    // WebView2 message-pump thread when invoked from the cancel handler, so
+    // a 10s timeout would freeze the UI for up to 10s. Now: the active-source
+    // check is synchronous (captures _activeSource into a local), but the
+    // shell-out runs on the thread pool via Task.Run. Caller chooses whether
+    // to await (background-thread callers like the stderr-fallback) or
+    // fire-and-forget (UI-thread cancel handler).
+    //
+    // Known race accepted per reviewer guidance ("users can accept best-effort
+    // dismount and don't need synchronous confirmation"): if the user cancels
+    // a build and then IMMEDIATELY starts a new build with the same source
+    // path, the cancel's still-pending dismount Task could fire after the new
+    // build's mount and break it. Practically this requires sub-second user
+    // re-action against a typical 1-3s dismount. If it ever surfaces, gate
+    // start-build on awaiting any prior dismount Task before re-mounting.
     //
     // NOTE on Local-Dependencies-Only policy: this shells out to powershell.exe
     // via system PATH, which is explicitly covered by the dependency policy
     // waiver in project_tiny11options_dependency_policy.md (vendoring PS5.1 is
     // impractical for this app; the launcher already shells out to it for
     // build / cleanup scripts).
-    private void DismountSourceIsoIfApplicable()
+    private Task DismountSourceIsoIfApplicable()
     {
+        // Capture into a local synchronously so a fresh start-build replacing
+        // _activeSource can't swap the path out from under the background
+        // shell-out. Pre-checks also run sync to avoid spinning up a Task
+        // for the common no-op case (no active source / non-.iso).
+        //
+        // COUPLED CONSTRAINT (d637289 review item): the EndsWith(".iso") filter
+        // is correct ONLY because the upstream `Resolve-Tiny11Source` in
+        // `src/Tiny11.Iso.psm1` rejects file paths that don't match `*.iso`.
+        // If validate-iso is ever loosened to accept `.img` or extension-less
+        // files (Windows Setup media on USB is sometimes `.img`), this filter
+        // must be updated to match -- otherwise the user's mounted source will
+        // stay attached after a build cancel. The paired Pester test in
+        // `tests/Tiny11.Iso.Tests.ps1` ("rejects non-.iso file paths like .img")
+        // locks in the upstream side; both sides must change together.
         var src = _activeSource;
-        if (string.IsNullOrWhiteSpace(src)) return;
-        if (!src.EndsWith(".iso", StringComparison.OrdinalIgnoreCase)) return;
-        if (!File.Exists(src)) return;
-        try
+        if (string.IsNullOrWhiteSpace(src)) return Task.CompletedTask;
+        if (!src.EndsWith(".iso", StringComparison.OrdinalIgnoreCase)) return Task.CompletedTask;
+        if (!File.Exists(src)) return Task.CompletedTask;
+
+        return Task.Run(() =>
         {
-            // `'` doubling escapes any single-quote in the path; .iso paths almost
-            // never contain quotes but be safe. -ErrorAction SilentlyContinue makes
-            // the not-currently-attached case a no-op.
-            var escaped = src.Replace("'", "''");
-            var cmd = $"Dismount-DiskImage -ImagePath '{escaped}' -ErrorAction SilentlyContinue | Out-Null";
-            var psi = new ProcessStartInfo
+            try
             {
-                FileName = "powershell.exe",
-                Arguments = $"-NoProfile -NonInteractive -Command \"{cmd}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            using var p = Process.Start(psi);
-            if (p is null) return;
-            if (!p.WaitForExit(10_000))
-            {
-                try { p.Kill(entireProcessTree: true); } catch { }
+                // `'` doubling escapes any single-quote in the path; .iso paths almost
+                // never contain quotes but be safe. -ErrorAction SilentlyContinue makes
+                // the not-currently-attached case a no-op.
+                var escaped = src.Replace("'", "''");
+                var cmd = $"Dismount-DiskImage -ImagePath '{escaped}' -ErrorAction SilentlyContinue | Out-Null";
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -Command \"{cmd}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                };
+                using var p = Process.Start(psi);
+                if (p is null) return;
+                if (!p.WaitForExit(10_000))
+                {
+                    try { p.Kill(entireProcessTree: true); } catch { }
+                }
             }
-        }
-        catch
-        {
-            // Never crash the cancel path on dismount failure -- leaving the ISO
-            // mounted is a worse-user-experience but recoverable; throwing here
-            // would block the friendly "Build cancelled" message from reaching JS.
-        }
+            catch
+            {
+                // Never crash on dismount failure -- leaving the ISO mounted is
+                // worse UX but recoverable; throwing here would surface as an
+                // unobserved Task exception (or block the caller if awaited).
+            }
+        });
     }
 }
