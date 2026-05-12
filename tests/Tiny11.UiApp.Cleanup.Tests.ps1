@@ -209,6 +209,44 @@ Describe 'ui/app.js -- cleanup wiring' {
         }
     }
 
+    Context 'buildCleanupCommands -- manual recipe parity with tiny11-cancel-cleanup.ps1' {
+        # C5h-iteration regression 2026-05-12: the manual recipe shown to users
+        # in the in-progress details panel and the cancel/error screen was
+        # missing the `reg unload HKLM\z*` steps that tiny11-cancel-cleanup.ps1
+        # runs as its Step 1. Without those, the host System process keeps the
+        # offline image's hive files (NTUSER.DAT / SOFTWARE / SYSTEM /
+        # DEFAULT / COMPONENTS) open INSIDE the mount dir, and dism
+        # /Unmount-Image marches to 100% then errors with 0xc1420117. The
+        # in-app cleanup button worked because the script does the unload; the
+        # MANUAL recipe didn't, leaving users stuck. Lock the parity in.
+        It 'recipe lists reg unload BEFORE the first dism command' {
+            $script:content | Should -Match "reg unload HKLM\\\\zCOMPONENTS[\s\S]{0,400}reg unload HKLM\\\\zSYSTEM[\s\S]{0,400}dism /unmount-image"
+        }
+
+        It 'recipe unloads all five hive mount keys' {
+            foreach ($k in 'zCOMPONENTS','zDEFAULT','zNTUSER','zSOFTWARE','zSYSTEM') {
+                $script:content | Should -Match "reg unload HKLM\\\\$k"
+            }
+        }
+
+        It 'recipe carries the "ERROR: The parameter is incorrect." Windows-quirk explainer so users do not panic on the misleading not-loaded message' {
+            # Without this, users see the red "parameter is incorrect" error from
+            # reg.exe and assume they wrote the command wrong, when really it means
+            # the hive wasn't loaded (no-op success case). C5h-iteration-2 confusion
+            # report 2026-05-12.
+            $script:content | Should -Match 'ERROR: The parameter is incorrect'
+            $script:content | Should -Match 'hive was NOT loaded|hive may not be loaded|not loaded'
+        }
+
+        It 'recipe still includes dism /cleanup-mountpoints, takeown, icacls, and Remove-Item against mount + source' {
+            $script:content | Should -Match 'dism /cleanup-mountpoints'
+            $script:content | Should -Match 'takeown /F[\s\S]{0,200}/R /D Y'
+            $script:content | Should -Match 'icacls[\s\S]{0,200}/grant Administrators:F'
+            # Both mount and source dirs targeted by Remove-Item.
+            $script:content | Should -Match 'Remove-Item -Path[\s\S]{0,300}\$\{mount\}[\s\S]{0,400}Remove-Item -Path[\s\S]{0,300}\$\{source\}'
+        }
+    }
+
     Context 'theme awareness (regression -- no hardcoded panel chrome)' {
         # 2026-05-11: both blocks shipped with inline `background: #fafafa` +
         # `border: 1px solid #ddd`, which ignored data-theme=dark.

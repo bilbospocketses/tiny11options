@@ -552,6 +552,36 @@ section.progress h2 {
     display: none;
 }
 
+/* Output-required warning -- rendered on Step 3 (Ready to build) when
+   state.outputPath is empty. Theme-aware via --warn-bg / --warn-fg. */
+.output-required-warning {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    margin: var(--gap) 0 var(--gap-lg) 0;
+    border-radius: var(--radius);
+    background: var(--warn-bg);
+    color: var(--warn-fg);
+    font-size: 13px;
+    line-height: 1.4;
+}
+.output-required-glyph {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--warn-fg);
+    color: var(--warn-bg);
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1;
+}
+.output-required-message { flex: 1; }
+
 /* Core mode — warning panel (Step 1, visible when coreMode is on) */
 .core-warning {
     background: var(--warn-bg);

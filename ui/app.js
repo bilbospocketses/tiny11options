@@ -263,7 +263,24 @@ function renderBuildStep() {
           ];
 
     const inlineStatus = renderInlineCleanupStatus();
-    const buildDisabled = state.cleaning || (state.cleanupStatus && state.cleanupStatus.kind === 'error');
+    const outputMissing = !state.outputPath || !state.outputPath.trim();
+    const buildDisabled = state.cleaning || (state.cleanupStatus && state.cleanupStatus.kind === 'error') || outputMissing;
+
+    // When the user leaves the scratch directory blank on Step 1, scratchDir is null
+    // and prefillOutputIfEmpty() never fires, leaving outputPath null. The Build ISO
+    // script param -OutputIso has [ValidateNotNullOrEmpty()] and the pwsh subprocess
+    // bombs at parameter binding with a confusing
+    // ParameterArgumentValidationErrorEmptyStringNotAllowed before any UI feedback
+    // surfaces. Guard the button + show an actionable warning so users know to fill
+    // the output field in (we deliberately avoid silently auto-defaulting into the
+    // user's Documents folder because dropping a multi-GB ISO there without intent
+    // would be a worse surprise).
+    const outputWarning = outputMissing
+        ? el('div', { class: 'output-required-warning' },
+            el('span', { class: 'output-required-glyph' }, '!'),
+            el('span', { class: 'output-required-message' }, 'Choose an output location for the ISO file before building. (Scratch directory left blank is fine -- it lands in %TEMP% automatically -- but the output ISO needs an explicit path so you do not lose it.)')
+          )
+        : null;
 
     return el('section', { class: 'build' },
         el('h2', null, 'Ready to build'),
@@ -276,15 +293,17 @@ function renderBuildStep() {
             el('dd', { class: 'row' },
                 el('input', {
                     id: 'out-input', type: 'text', value: state.outputPath || '',
-                    onchange: e => state.outputPath = e.target.value
+                    onchange: e => { state.outputPath = e.target.value; renderStep(); }
                 }),
                 el('button', { onclick: () => ps({ type: 'browse-save-file', payload: { context: 'output', title: 'Save tiny11 ISO as...', filter: 'ISO files|*.iso|All files|*.*', defaultName: state.coreMode ? 'tiny11core.iso' : 'tiny11.iso' } }) }, 'Browse...')
             ),
             ...modeSummaryRows
         ),
+        outputWarning,
         el('button', {
             class: 'primary',
             disabled: buildDisabled,
+            title: outputMissing ? 'Set the Output ISO path first.' : null,
             onclick: () => {
                 if (buildDisabled) return;
                 state.building = true;
@@ -317,8 +336,42 @@ function renderBuildStep() {
 
 // Common cleanup command list, surfaced both in the recipe block (in-progress
 // details panel) and the cancel/error screen's cleanup section.
+//
+// Order is load-bearing and mirrors tiny11-cancel-cleanup.ps1 (step 1 + step 2):
+// the build pipeline `reg load`s the offline image's hives into HKLM\z* via
+// Mount-Tiny11AllHives, and those stay loaded in the HOST OS even after the
+// build process is Process.Kill-ed -- the System process holds NTUSER.DAT /
+// SOFTWARE / SYSTEM / DEFAULT / COMPONENTS open INSIDE the mount dir until
+// `reg unload` is called. If users skip these and jump straight to
+// dism /Unmount-Image, DISM marches to 100% then errors with 0xc1420117
+// ("directory could not be completely unmounted") because the hive files are
+// still in use. C5h-iteration regression: 2026-05-12.
 function buildCleanupCommands(mount, source) {
     return [
+        '# Recovery sequence -- run ALL commands in order, top to bottom. Individual',
+        '# lines may report errors; that is expected (the build was interrupted at',
+        '# some unknown point, so some teardown steps will find "nothing to do").',
+        '# The cumulative effect is recovery. Two specific quirks to expect:',
+        '#',
+        '#   reg unload  -- "ERROR: The parameter is incorrect."',
+        '#       Windows quirk: reg.exe misreports "hive not loaded" as a parameter',
+        '#       error. Means the build was cancelled before the hive-load phase --',
+        '#       fine, nothing to unload. Keep going.',
+        '#',
+        '#   dism /Unmount-Image  -- "The request is not supported." or 0xc1420117',
+        '#       Mount is in NeedsRemount/Invalid state, or files are still open',
+        '#       inside it. The next command (/Cleanup-Mountpoints) clears stale',
+        '#       registrations regardless. Keep going.',
+        '#',
+        '# Only the final two Remove-Item lines must succeed for recovery to be',
+        '# complete; if they leave dirs on disk, reboot and retry.',
+        '',
+        'reg unload HKLM\\zCOMPONENTS',
+        'reg unload HKLM\\zDEFAULT',
+        'reg unload HKLM\\zNTUSER',
+        'reg unload HKLM\\zSOFTWARE',
+        'reg unload HKLM\\zSYSTEM',
+        '',
         `dism /unmount-image /mountdir:"${mount}" /discard`,
         `dism /cleanup-mountpoints`,
         `takeown /F "${mount}" /R /D Y`,

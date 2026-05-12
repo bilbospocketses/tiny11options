@@ -22,6 +22,12 @@ public class BuildHandlers : IBridgeHandler
     public IEnumerable<string> HandledTypes => new[] { "start-build", "cancel-build" };
 
     private Process? _activeBuild;
+    // Persisted from start-build so cancel-build / stderr-fallback can dismount
+    // the source ISO if the build process was killed mid-preflight (before its
+    // own try/finally Dismount-Tiny11Source ran). Process.Kill bypasses finally
+    // blocks entirely, so without this catch-all the user is left with a phantom
+    // virtual drive until they reboot or manually dismount.
+    private string _activeSource = "";
 
     public async Task<Bridge.BridgeMessage?> HandleAsync(string type, JsonObject? payload)
     {
@@ -32,17 +38,30 @@ public class BuildHandlers : IBridgeHandler
             // cancellation and posted build-error {message="...cancelled..."}, which
             // JS handles via its existing build-error path (renders error screen).
             // We emulate that by sending build-error directly here so JS doesn't
-            // need a separate build-cancelled handler — and the wizard exits the
+            // need a separate build-cancelled handler -- and the wizard exits the
             // progress state cleanly. The Process.Kill stops the actual work; this
             // bridge message stops the UI hang.
-            _activeBuild?.Kill(entireProcessTree: true);
-            // Flip the terminal-marker flag BEFORE returning so the stderr-fallback
-            // Task doesn't fire a duplicate build-error like "Build process exited
-            // with code -1 and no output" after Process.Kill resolves. Without this,
-            // JS sees two build-error messages and the second one (the spurious
-            // "exit -1" one) overwrites the friendly "Build cancelled by user."
-            // message because each build-error handler clears and re-renders.
+            //
+            // CRITICAL ORDER: set _terminalMarkerSeen + _cancelRequested BEFORE Kill().
+            // Kill(entireProcessTree: true) walks the process tree signalling each
+            // child and can block briefly; during that window, the stderr-fallback
+            // Task awaiting WaitForExitAsync can wake up the instant the root process
+            // dies, run its !_terminalMarkerSeen check, see false, and fire a
+            // spurious "Build process exited with code -1 and no output" build-error
+            // that overwrites the friendly "Build cancelled by user." message in JS.
+            // Setting both flags first closes that race window; _cancelRequested is
+            // the belt-and-suspenders guard the fallback uses to convert any
+            // post-cancel build-error into the cancel message even if the timing
+            // somehow still slips. C5g iteration-4 regression: 2026-05-12.
             _terminalMarkerSeen = true;
+            _cancelRequested = true;
+            _activeBuild?.Kill(entireProcessTree: true);
+            // Catch-all: dismount the source ISO if the build was cancelled mid-
+            // preflight (Phase 1 mounts the ISO, copies to scratch, dismounts in
+            // a try/finally -- but Process.Kill bypasses finally entirely, so a
+            // cancel during the copy leaves the ISO mounted to a phantom drive).
+            // Idempotent: silently no-ops if the ISO isn't currently attached.
+            DismountSourceIsoIfApplicable();
             return new Bridge.BridgeMessage
             {
                 Type = "build-error",
@@ -62,6 +81,24 @@ public class BuildHandlers : IBridgeHandler
         var src = payload?["source"]?.ToString() ?? "";
         var outputIso = payload?["outputIso"]?.ToString() ?? "";
         var scratchDir = payload?["scratchDir"]?.ToString() ?? "";
+
+        // Defense in depth: the UI gates Build ISO on a non-empty output path, but a
+        // headless/CLI path or future code change could bypass that. The build scripts
+        // ValidateNotNullOrEmpty -OutputIso so pwsh bombs at parameter binding with
+        // ParameterArgumentValidationErrorEmptyStringNotAllowed -- surface a friendly
+        // error here instead of spawning a doomed subprocess.
+        if (string.IsNullOrWhiteSpace(outputIso))
+            return Error("Output ISO path is required. Set the Output ISO field on the Build step before clicking Build ISO.");
+        if (string.IsNullOrWhiteSpace(src))
+            return Error("Source path is required. Choose an ISO or DVD on Step 1 before building.");
+
+        // Reset per-run flags BEFORE spawning the build process so a prior cancelled
+        // run's flag state doesn't bleed into this one. Without the reset,
+        // _terminalMarkerSeen=true (set by a prior cancel) would persist and the
+        // stderr-fallback would silently skip on a legitimate post-reset crash.
+        _terminalMarkerSeen = false;
+        _cancelRequested = false;
+        _activeSource = src;
         var unmountSource = payload?["unmountSource"]?.GetValue<bool>() ?? false;
         var fastBuild = payload?["fastBuild"]?.GetValue<bool>() ?? false;
         var coreMode = payload?["coreMode"]?.GetValue<bool>() ?? false;
@@ -132,7 +169,18 @@ public class BuildHandlers : IBridgeHandler
         _ = Task.Run(async () =>
         {
             await _activeBuild.WaitForExitAsync();
-            if (_activeBuild.ExitCode != 0 && !_terminalMarkerSeen)
+            // Belt-and-suspenders: if _cancelRequested is set, the cancel handler
+            // already returned the "Build cancelled by user." build-error and JS
+            // rendered it. Skip the fallback entirely so we never overwrite that
+            // with the misleading "exit -1" message. The _terminalMarkerSeen check
+            // covers the normal completion/error paths.
+            if (_cancelRequested || _terminalMarkerSeen) return;
+            // Abnormal exit BEFORE the script's own try/finally ran (parse error,
+            // ImportModule failure, etc.) -- the source ISO may still be attached
+            // if the crash landed between Mount-Tiny11Source and Dismount-Tiny11Source.
+            // Same catch-all as the cancel handler; idempotent if not mounted.
+            DismountSourceIsoIfApplicable();
+            if (_activeBuild.ExitCode != 0)
             {
                 var err = await _activeBuild.StandardError.ReadToEndAsync();
                 _bridge.SendToJs(new Bridge.BridgeMessage
@@ -151,7 +199,14 @@ public class BuildHandlers : IBridgeHandler
         return new Bridge.BridgeMessage { Type = "build-started", Payload = new JsonObject() };
     }
 
-    private bool _terminalMarkerSeen;
+    // Both flags use `volatile` so writes from the cancel handler (HandleAsync runs
+    // on the WebView2 message-pump thread) are immediately visible to the stderr-
+    // fallback Task (running on a thread pool worker, resuming after
+    // WaitForExitAsync). Plain bool fields are atomic but unordered in the C#
+    // memory model; volatile gives us release-acquire semantics so the flag-then-
+    // Kill sequence in the cancel handler is observed in order on the fallback side.
+    private volatile bool _terminalMarkerSeen;
+    private volatile bool _cancelRequested;
 
     private void ForwardJsonLine(string line)
     {
@@ -235,4 +290,54 @@ public class BuildHandlers : IBridgeHandler
 
     private static Bridge.BridgeMessage Error(string msg)
         => new() { Type = "handler-error", Payload = new JsonObject { ["message"] = msg } };
+
+    // Catch-all dismount for the source ISO when a build was killed or crashed
+    // before its own try/finally Dismount-Tiny11Source could run. Only acts on
+    // .iso file paths -- a bare drive letter source means the user mounted the
+    // ISO externally and we have no business unmounting it. Idempotent: if the
+    // ISO isn't currently attached, Dismount-DiskImage with SilentlyContinue
+    // returns without error. Fires synchronously with a 10s timeout cap so a
+    // hung Dismount can't wedge the cancel path.
+    //
+    // NOTE on Local-Dependencies-Only policy: this shells out to powershell.exe
+    // via system PATH, which is explicitly covered by the dependency policy
+    // waiver in project_tiny11options_dependency_policy.md (vendoring PS5.1 is
+    // impractical for this app; the launcher already shells out to it for
+    // build / cleanup scripts).
+    private void DismountSourceIsoIfApplicable()
+    {
+        var src = _activeSource;
+        if (string.IsNullOrWhiteSpace(src)) return;
+        if (!src.EndsWith(".iso", StringComparison.OrdinalIgnoreCase)) return;
+        if (!File.Exists(src)) return;
+        try
+        {
+            // `'` doubling escapes any single-quote in the path; .iso paths almost
+            // never contain quotes but be safe. -ErrorAction SilentlyContinue makes
+            // the not-currently-attached case a no-op.
+            var escaped = src.Replace("'", "''");
+            var cmd = $"Dismount-DiskImage -ImagePath '{escaped}' -ErrorAction SilentlyContinue | Out-Null";
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -NonInteractive -Command \"{cmd}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            using var p = Process.Start(psi);
+            if (p is null) return;
+            if (!p.WaitForExit(10_000))
+            {
+                try { p.Kill(entireProcessTree: true); } catch { }
+            }
+        }
+        catch
+        {
+            // Never crash the cancel path on dismount failure -- leaving the ISO
+            // mounted is a worse-user-experience but recoverable; throwing here
+            // would block the friendly "Build cancelled" message from reaching JS.
+        }
+    }
 }
