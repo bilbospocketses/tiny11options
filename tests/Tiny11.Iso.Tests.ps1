@@ -40,43 +40,6 @@ Describe "Mount-Tiny11Source / Get-Tiny11Editions" {
     }
 }
 
-Describe "Test-Tiny11SourceIsConsumer" {
-    It "returns true for a 2-edition Home + Pro consumer ISO" {
-        $editions = @(
-            [pscustomobject]@{ ImageIndex=1; ImageName='Windows 11 Home' }
-            [pscustomobject]@{ ImageIndex=6; ImageName='Windows 11 Pro' }
-        )
-        Test-Tiny11SourceIsConsumer -Editions $editions | Should -BeTrue
-    }
-    It "returns true for a 4-edition Home + Home N + Pro + Pro N consumer ISO" {
-        $editions = @(
-            [pscustomobject]@{ ImageIndex=1; ImageName='Windows 11 Home' }
-            [pscustomobject]@{ ImageIndex=2; ImageName='Windows 11 Home N' }
-            [pscustomobject]@{ ImageIndex=5; ImageName='Windows 11 Pro' }
-            [pscustomobject]@{ ImageIndex=6; ImageName='Windows 11 Pro N' }
-        )
-        Test-Tiny11SourceIsConsumer -Editions $editions | Should -BeTrue
-    }
-    It "returns false for a multi-edition VL/MSDN ISO with Enterprise" {
-        $editions = @(
-            [pscustomobject]@{ ImageIndex=1; ImageName='Windows 11 Pro' }
-            [pscustomobject]@{ ImageIndex=2; ImageName='Windows 11 Enterprise' }
-        )
-        Test-Tiny11SourceIsConsumer -Editions $editions | Should -BeFalse
-    }
-    It "returns false for an ISO with more than 4 editions" {
-        $editions = 1..5 | ForEach-Object { [pscustomobject]@{ ImageIndex=$_; ImageName="Windows 11 Edition$_" } }
-        Test-Tiny11SourceIsConsumer -Editions $editions | Should -BeFalse
-    }
-    It "returns false when Education variant is present" {
-        $editions = @(
-            [pscustomobject]@{ ImageIndex=1; ImageName='Windows 11 Pro' }
-            [pscustomobject]@{ ImageIndex=2; ImageName='Windows 11 Education' }
-        )
-        Test-Tiny11SourceIsConsumer -Editions $editions | Should -BeFalse
-    }
-}
-
 Describe "Resolve-Tiny11ImageIndex" {
     BeforeAll {
         $script:editions = @(

@@ -16,14 +16,23 @@ function applyTheme(theme) {
         btn.title = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
     }
 }
+// Notify the WPF host of the current theme so it can apply DWMWA_USE_IMMERSIVE_DARK_MODE
+// to the Windows-managed title bar. JS owns the theme model; this message is purely a
+// chrome-rendering hint. No response expected.
+function notifyHostThemeChanged(theme) {
+    try { ps({ type: 'theme-changed', payload: { theme: theme } }); } catch (_) { /* WebView2 not ready yet — initial apply happens C#-side from system theme until JS boots */ }
+}
+
 function initTheme() {
     const stored = localStorage.getItem('tiny11-theme');
     const theme = (stored === 'light' || stored === 'dark') ? stored : detectSystemTheme();
     applyTheme(theme);
+    notifyHostThemeChanged(theme);
     document.getElementById('theme-toggle').addEventListener('click', () => {
         const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
         localStorage.setItem('tiny11-theme', next);
         applyTheme(next);
+        notifyHostThemeChanged(next);
     });
 }
 
@@ -67,24 +76,121 @@ const state = {
     scratchDir: null,
     outputPath: null,
     unmountSource: true,
-    fastBuild: false,
+    fastBuild: true,
+    coreMode: false,
+    enableNet35: false,
     drilledCategory: null,
     search: '',
     building: false,
+    validating: false,         // true while we're awaiting iso-validated / iso-error
+    validatingStart: 0,        // Date.now() when validation kicked off — drives the elapsed counter
     completed: null,
     progress: null,
     buildDetailsOpen: false,
+    // mount-state tracking for the cancel-cleanup button. PS pipeline emits
+    // build-progress {phase: 'mount-state', mountActive, mountDir, sourceDir}
+    // when install.wim is mounted, and clears it on unmount. The cleanup
+    // section renders only when mountActive === true; mountDir/sourceDir
+    // are carried in the marker so JS doesn't have to derive them (Core
+    // and Worker use different scratch-layout conventions).
+    mountActive: false,
+    mountDir: null,
+    sourceDir: null,
+    // Cleanup spinner flow (2026-05-11 redesign): when the user invokes
+    // cleanup, the wizard navigates back to Step 3 (renderBuild) and shows an
+    // inline spinner + status row above the Build ISO button. Build ISO stays
+    // disabled while `cleaning` is true and re-enables once status reaches
+    // 'success'. `pendingCleanupAfterCancel` chains start-cleanup off the
+    // build-error marker we receive after a cancel-build, so the cleanup
+    // script doesn't race a still-mounted DISM in the build subprocess.
+    cleaning: false,
+    cleanupStatus: null,
+    pendingCleanupAfterCancel: false,
 };
 
+// Snapshot of selections taken when "Save profile..." is clicked, used after the
+// browse-save-file dialog returns a path. Decouples user click time from dialog
+// completion so concurrent state changes (rare) can't poison the saved profile.
+let pendingSaveProfileSelections = null;
+
+// Validation status line machinery. A permanent "ISO/DVD state: <message>" row
+// sits below the editions dropdown — the trailing message portion changes by
+// state. The line never appears/disappears so the surrounding layout never
+// shifts (an earlier inline-spinner attempt changed the dropdown row width as
+// the status text grew; this design fixes that).
+//
+// State -> message mapping:
+//   no source                : "No ISO or DVD loaded"
+//   validating (0-2s)        : "Mounting iso..."
+//   validating (2-5s)        : "Mounting iso... finished. Determining editions..."
+//   validating (5s+)         : "Mounting iso... finished. Determining editions... (Ns)"
+//                              N ticks every 5s (5, 10, 15...) so users see the
+//                              elapsed time is progressing, not stuck.
+//   editions loaded          : "Loaded — N edition(s) detected"
+//
+// The validate-iso round-trip (mount + Get-Tiny11Editions + dismount) can take
+// up to ~10s on retail multi-edition ISOs.
+let validationTimerId = null;
+
+function computeIsoStatusText() {
+    if (state.validating) {
+        const elapsed = Math.floor((Date.now() - state.validatingStart) / 1000);
+        if (elapsed < 2) return 'Mounting iso...';
+        const tick = Math.floor(elapsed / 5) * 5;
+        return (tick >= 5)
+            ? `Mounting iso... finished. Determining editions... (${tick}s)`
+            : 'Mounting iso... finished. Determining editions...';
+    }
+    if (state.editions && state.editions.length > 0) {
+        const count = state.editions.length;
+        return `Loaded — ${count} edition${count === 1 ? '' : 's'} detected`;
+    }
+    return 'No ISO or DVD loaded';
+}
+
+function startValidationSpinner() {
+    state.validating = true;
+    state.validatingStart = Date.now();
+    if (validationTimerId) clearInterval(validationTimerId);
+    // Re-render once now so the spinner ring appears next to the status text,
+    // then tick the text every second without re-rendering the whole step.
+    renderStep();
+    validationTimerId = setInterval(updateValidationSpinnerText, 1000);
+}
+
+function stopValidationSpinner() {
+    state.validating = false;
+    if (validationTimerId) { clearInterval(validationTimerId); validationTimerId = null; }
+}
+
+function updateValidationSpinnerText() {
+    const node = document.getElementById('iso-status-text');
+    if (!node) return;
+    node.textContent = computeIsoStatusText();
+}
+
 // When the user picks or types a scratch directory, prefill the output ISO path with
-// "<scratchDir>\tiny11.iso" — but only if outputPath is empty so we never clobber a
-// custom value. Output goes alongside scratchDir's tiny11/ source folder, not inside it,
-// so oscdimg never sees its own output as input.
+// "<scratchDir>\tiny11.iso" (or tiny11core.iso in Core mode) — but only if outputPath is
+// empty so we never clobber a custom value. Output goes alongside scratchDir's tiny11/
+// source folder, not inside it, so oscdimg never sees its own output as input.
 function prefillOutputIfEmpty() {
     if (state.outputPath || !state.scratchDir) return;
     const trimmed = state.scratchDir.replace(/[\\/]+$/, '');
     const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
-    state.outputPath = trimmed + sep + 'tiny11.iso';
+    const filename = state.coreMode ? 'tiny11core.iso' : 'tiny11.iso';
+    state.outputPath = trimmed + sep + filename;
+}
+
+// When coreMode toggles, swap the default ISO filename if the user hasn't customized it.
+function syncOutputFilenameToMode() {
+    if (!state.scratchDir || !state.outputPath) return;
+    const trimmed = state.scratchDir.replace(/[\\/]+$/, '');
+    const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
+    const prev = trimmed + sep + (state.coreMode ? 'tiny11.iso' : 'tiny11core.iso');
+    if (state.outputPath === prev) {
+        state.outputPath = null;
+        prefillOutputIfEmpty();
+    }
 }
 
 function renderStep() {
@@ -96,6 +202,10 @@ function renderStep() {
     clear(root);
     document.querySelectorAll('.breadcrumb span').forEach(s => {
         s.classList.toggle('active', s.dataset.step === state.step);
+        if (s.dataset.step === 'customize') {
+            if (state.coreMode) s.setAttribute('data-disabled', 'true');
+            else s.removeAttribute('data-disabled');
+        }
     });
     if (state.step === 'source')    root.appendChild(renderSourceStep());
     if (state.step === 'customize') root.appendChild(renderCustomizeStep());
@@ -124,12 +234,12 @@ function canAdvance() {
 
 document.getElementById('back-btn').addEventListener('click', () => {
     if (state.step === 'customize') state.step = 'source';
-    else if (state.step === 'build') state.step = 'customize';
+    else if (state.step === 'build') state.step = state.coreMode ? 'source' : 'customize';
     state.drilledCategory = null;
     renderStep();
 });
 document.getElementById('next-btn').addEventListener('click', () => {
-    if (state.step === 'source')    state.step = 'customize';
+    if (state.step === 'source') state.step = state.coreMode ? 'build' : 'customize';
     else if (state.step === 'customize') state.step = 'build';
     renderStep();
 });
@@ -142,8 +252,39 @@ function renderBuildStep() {
     const totalApplied = state.catalog.items.filter(i => resolved[i.id].effective === 'apply').length;
     const editionLabel = (state.editions || []).find(e => e.index === state.edition);
 
+    // Summary rows differ between Core and standard mode.
+    const modeSummaryRows = state.coreMode
+        ? [
+            el('dt', null, 'Mode'),    el('dd', null, 'Core'),
+            el('dt', null, '.NET 3.5'), el('dd', null, state.enableNet35 ? 'Enabled' : 'Disabled'),
+          ]
+        : [
+            el('dt', null, 'Changes'), el('dd', null, `${totalApplied} items applied`),
+          ];
+
+    const inlineStatus = renderInlineCleanupStatus();
+    const outputMissing = !state.outputPath || !state.outputPath.trim();
+    const buildDisabled = state.cleaning || (state.cleanupStatus && state.cleanupStatus.kind === 'error') || outputMissing;
+
+    // When the user leaves the scratch directory blank on Step 1, scratchDir is null
+    // and prefillOutputIfEmpty() never fires, leaving outputPath null. The Build ISO
+    // script param -OutputIso has [ValidateNotNullOrEmpty()] and the pwsh subprocess
+    // bombs at parameter binding with a confusing
+    // ParameterArgumentValidationErrorEmptyStringNotAllowed before any UI feedback
+    // surfaces. Guard the button + show an actionable warning so users know to fill
+    // the output field in (we deliberately avoid silently auto-defaulting into the
+    // user's Documents folder because dropping a multi-GB ISO there without intent
+    // would be a worse surprise).
+    const outputWarning = outputMissing
+        ? el('div', { class: 'output-required-warning' },
+            el('span', { class: 'output-required-glyph' }, '!'),
+            el('span', { class: 'output-required-message' }, 'Choose an output location for the ISO file before building. (Scratch directory left blank is fine -- it lands in %TEMP% automatically -- but the output ISO needs an explicit path so you do not lose it.)')
+          )
+        : null;
+
     return el('section', { class: 'build' },
         el('h2', null, 'Ready to build'),
+        inlineStatus,
         el('dl', null,
             el('dt', null, 'Source'),     el('dd', null, state.source || ''),
             el('dt', null, 'Edition'),    el('dd', null, editionLabel ? editionLabel.name : String(state.edition || '')),
@@ -152,29 +293,204 @@ function renderBuildStep() {
             el('dd', { class: 'row' },
                 el('input', {
                     id: 'out-input', type: 'text', value: state.outputPath || '',
-                    onchange: e => state.outputPath = e.target.value
+                    onchange: e => { state.outputPath = e.target.value; renderStep(); }
                 }),
-                el('button', { onclick: () => ps({ type: 'browse-output' }) }, 'Browse...')
+                el('button', { onclick: () => ps({ type: 'browse-save-file', payload: { context: 'output', title: 'Save tiny11 ISO as...', filter: 'ISO files|*.iso|All files|*.*', defaultName: state.coreMode ? 'tiny11core.iso' : 'tiny11.iso' } }) }, 'Browse...')
             ),
-            el('dt', null, 'Changes'), el('dd', null, `${totalApplied} items applied`)
+            ...modeSummaryRows
         ),
+        outputWarning,
         el('button', {
             class: 'primary',
+            disabled: buildDisabled,
+            title: outputMissing ? 'Set the Output ISO path first.' : null,
             onclick: () => {
+                if (buildDisabled) return;
                 state.building = true;
+                // Reset cleanup state so a new run starts fresh. Mount/source
+                // dirs get refreshed by the mount-state marker when install.wim
+                // mounts in the new build.
+                state.cleaning = false;
+                state.cleanupStatus = null;
+                state.pendingCleanupAfterCancel = false;
+                state.mountActive = false;
                 renderStep();
                 ps({
-                    type: 'build',
-                    source: state.source,
-                    imageIndex: state.edition,
-                    scratchDir: state.scratchDir,
-                    outputPath: state.outputPath,
-                    unmountSource: state.unmountSource,
-                    fastBuild: state.fastBuild,
-                    selections: state.selections,
+                    type: 'start-build',
+                    payload: {
+                        source: state.source,
+                        edition: state.edition,
+                        scratchDir: state.scratchDir,
+                        outputIso: state.outputPath,
+                        unmountSource: state.unmountSource,
+                        fastBuild: state.fastBuild,
+                        selections: state.selections,
+                        coreMode: state.coreMode,
+                        enableNet35: state.enableNet35,
+                    },
                 });
             }
         }, 'Build ISO')
+    );
+}
+
+// Common cleanup command list, surfaced both in the recipe block (in-progress
+// details panel) and the cancel/error screen's cleanup section.
+//
+// Order is load-bearing and mirrors tiny11-cancel-cleanup.ps1 (step 1 + step 2):
+// the build pipeline `reg load`s the offline image's hives into HKLM\z* via
+// Mount-Tiny11AllHives, and those stay loaded in the HOST OS even after the
+// build process is Process.Kill-ed -- the System process holds NTUSER.DAT /
+// SOFTWARE / SYSTEM / DEFAULT / COMPONENTS open INSIDE the mount dir until
+// `reg unload` is called. If users skip these and jump straight to
+// dism /Unmount-Image, DISM marches to 100% then errors with 0xc1420117
+// ("directory could not be completely unmounted") because the hive files are
+// still in use. C5h-iteration regression: 2026-05-12.
+function buildCleanupCommands(mount, source) {
+    return [
+        '# Recovery sequence -- run ALL commands in order, top to bottom. Individual',
+        '# lines may report errors; that is expected (the build was interrupted at',
+        '# some unknown point, so some teardown steps will find "nothing to do").',
+        '# The cumulative effect is recovery. Two specific quirks to expect:',
+        '#',
+        '#   reg unload  -- "ERROR: The parameter is incorrect."',
+        '#       Windows quirk: reg.exe misreports "hive not loaded" as a parameter',
+        '#       error. Means the build was cancelled before the hive-load phase --',
+        '#       fine, nothing to unload. Keep going.',
+        '#',
+        '#   dism /Unmount-Image  -- "The request is not supported." or 0xc1420117',
+        '#       Mount is in NeedsRemount/Invalid state, or files are still open',
+        '#       inside it. The next command (/Cleanup-Mountpoints) clears stale',
+        '#       registrations regardless. Keep going.',
+        '#',
+        '# Only the final two Remove-Item lines must succeed for recovery to be',
+        '# complete; if they leave dirs on disk, reboot and retry.',
+        '',
+        'reg unload HKLM\\zCOMPONENTS',
+        'reg unload HKLM\\zDEFAULT',
+        'reg unload HKLM\\zNTUSER',
+        'reg unload HKLM\\zSOFTWARE',
+        'reg unload HKLM\\zSYSTEM',
+        '',
+        `dism /unmount-image /mountdir:"${mount}" /discard`,
+        `dism /cleanup-mountpoints`,
+        `takeown /F "${mount}" /R /D Y`,
+        `icacls "${mount}" /grant Administrators:F /T /C`,
+        `Remove-Item -Path "${mount}" -Recurse -Force -ErrorAction SilentlyContinue`,
+        `Remove-Item -Path "${source}" -Recurse -Force -ErrorAction SilentlyContinue`,
+    ];
+}
+
+// Cleanup spinner flow (2026-05-11): centralised dispatch. Sets the in-flight
+// flag, primes the cleanupStatus row, navigates to Step 3 (renderBuild), then
+// asks the launcher to spawn the cleanup script. The status row + Build ISO
+// disable wiring lives in renderBuildStep / renderInlineCleanupStatus.
+function startCleanupFlow() {
+    if (!state.mountDir || !state.sourceDir) return;
+    state.cleaning = true;
+    state.cleanupStatus = { kind: 'progress', message: 'Starting cleanup…' };
+    state.building = false;
+    state.completed = null;
+    state.step = 'build';
+    renderStep();
+    ps({ type: 'start-cleanup', payload: { mountDir: state.mountDir, sourceDir: state.sourceDir } });
+}
+
+// Two-step flow for mid-build "Cancel build & clean up": send cancel-build now,
+// arm pendingCleanupAfterCancel so the build-error handler chains start-cleanup
+// once the build subprocess has actually torn down (releasing DISM locks on
+// the mount). Without this two-step, the cleanup script races a live DISM
+// session and silently fails to delete the locked mount dir.
+function cancelBuildAndCleanup() {
+    if (state.cleaning || state.pendingCleanupAfterCancel) return;
+    state.cleaning = true;
+    state.pendingCleanupAfterCancel = true;
+    state.cleanupStatus = { kind: 'progress', message: 'Cancelling build…' };
+    renderStep();
+    ps({ type: 'cancel-build', payload: {} });
+}
+
+// Recipe-only block (no button, no status) used in the in-progress details
+// panel. The auto-cleanup button was removed from this context because:
+//   1. renderProgress re-runs on every build-progress marker, so a status
+//      line that toggles state.mountActive=false on cleanup-complete would
+//      cause the whole block (including the success line) to vanish.
+//   2. Clicking cleanup mid-build races the live DISM mount — the script's
+//      Remove-Item silently fails because files are locked by the build PS
+//      subprocess. The new "Cancel build & clean up" button in renderProgress
+//      drives the cancel-then-cleanup chain instead.
+function renderCleanupRecipe() {
+    if (!state.mountActive) return null;
+    const mount  = state.mountDir  || '';
+    const source = state.sourceDir || '';
+    if (!mount || !source) return null;
+    const cmds = buildCleanupCommands(mount, source);
+    return el('div', { class: 'core-cleanup' },
+        el('p', { class: 'core-cleanup-intro' },
+            '⚠ install.wim is currently mounted at the path below. If something goes wrong, click "Cancel build & clean up" above (preferred), or run these commands manually in an elevated PowerShell window:'
+        ),
+        el('pre', { class: 'cleanup-cmd' }, cmds.join('\n'))
+    );
+}
+
+// Cleanup section for the build-error / build-cancelled screen. Has a button
+// that triggers startCleanupFlow (which navigates to Step 3 + dispatches the
+// PS script). Status is rendered in Step 3, not here — the user follows the
+// spinner there.
+function renderCleanupBlock() {
+    if (!state.mountActive) return null;
+    const mount  = state.mountDir  || '';
+    const source = state.sourceDir || '';
+    if (!mount || !source) return null;
+
+    const cmds = buildCleanupCommands(mount, source);
+    const tooltip = 'Runs the six cleanup commands automatically. WARNING: dism /cleanup-mountpoints clears the system-wide DISM mount-point cache — only click this if no other DISM operations are running on this machine.';
+
+    const cleanupButton = el('button', {
+        class: 'cleanup-button',
+        title: tooltip,
+        disabled: state.cleaning,
+        style: 'border: 2px solid #f4c430; background-color: #fff8e1; color: #5d4e00; padding: 8px 16px; font-weight: 600; border-radius: 4px; cursor: ' + (state.cleaning ? 'not-allowed' : 'pointer') + '; font-size: 1em;' + (state.cleaning ? ' opacity: 0.55;' : ''),
+        onclick: () => { if (!state.cleaning) startCleanupFlow(); },
+    }, '⚠ Run cleanup automatically');
+
+    return el('div', { class: 'core-cleanup' },
+        el('p', { class: 'core-cleanup-intro' },
+            '⚠ install.wim is currently mounted at the path below. Click the button to run cleanup automatically (you will be returned to the Build step where a spinner tracks progress), or run the commands in an elevated PowerShell window manually:'
+        ),
+        cleanupButton,
+        el('p', { style: 'margin-top: 12px; font-size: 0.9em;' }, 'Manual fallback (run in elevated PowerShell):'),
+        el('pre', { class: 'cleanup-cmd' }, cmds.join('\n'))
+    );
+}
+
+// Inline cleanup-status row rendered at the top of renderBuildStep when a
+// cleanup is in flight, just succeeded, or just failed. Three visual states:
+//   - progress: spinner + message
+//   - success:  green ✓ + message
+//   - error:    red ✗ + message + "Retry cleanup" button
+function renderInlineCleanupStatus() {
+    const s = state.cleanupStatus;
+    if (!s) return null;
+    if (s.kind === 'progress') {
+        return el('div', { class: 'cleanup-inline-status cleanup-inline-progress' },
+            el('span', { class: 'wizard-spinner' }),
+            el('span', { class: 'cleanup-inline-message' }, s.message)
+        );
+    }
+    if (s.kind === 'success') {
+        return el('div', { class: 'cleanup-inline-status cleanup-inline-success' },
+            el('span', { class: 'cleanup-inline-glyph' }, '✓'),
+            el('span', { class: 'cleanup-inline-message' }, s.message)
+        );
+    }
+    return el('div', { class: 'cleanup-inline-status cleanup-inline-error' },
+        el('span', { class: 'cleanup-inline-glyph' }, '✗'),
+        el('span', { class: 'cleanup-inline-message' }, 'Cleanup failed: ' + s.message),
+        el('button', {
+            class: 'cleanup-retry-link',
+            onclick: () => { if (!state.cleaning) startCleanupFlow(); }
+        }, 'Retry cleanup')
     );
 }
 
@@ -186,34 +502,114 @@ function renderProgress() {
     const editionLabel = editionEntry
         ? `${editionEntry.name} (index ${editionEntry.index})`
         : (state.edition !== null ? `index ${state.edition}` : '—');
-    const buildMode = state.fastBuild
-        ? 'Fast build (no recovery compression — output ISO typically 7–8 GB)'
-        : 'Standard (with recovery compression — output ISO roughly 2 GB smaller)';
+    const buildMode = state.coreMode
+        ? (state.fastBuild
+            ? 'Core + Fast build (WinSxS wipe, /Compress:fast on selected edition, no recovery .esd — ~15–30 min faster, modestly larger ISO)'
+            : 'Core (WinSxS wipe + /Compress:max + /Compress:recovery — smallest ISO, slowest build)')
+        : state.fastBuild
+            ? 'Fast build (no recovery compression — output ISO typically 7–8 GB)'
+            : 'Standard (with recovery compression — output ISO roughly 2 GB smaller)';
     const resolved = reconcile();
     const appliedItems = state.catalog.items.filter(i => resolved[i.id].effective === 'apply');
+
+    // Build-details inner content differs by mode.
+    const detailsInner = state.coreMode
+        ? [
+            el('dl', { class: 'build-details-summary' },
+                el('dt', null, 'Edition'),    el('dd', null, editionLabel),
+                el('dt', null, 'Build mode'), el('dd', null, buildMode),
+                el('dt', null, 'Output ISO'), el('dd', null, state.outputPath || '—')
+            ),
+            renderCleanupRecipe(),
+          ]
+        : [
+            el('dl', { class: 'build-details-summary' },
+                el('dt', null, 'Edition'),    el('dd', null, editionLabel),
+                el('dt', null, 'Build mode'), el('dd', null, buildMode),
+                el('dt', null, 'Output ISO'), el('dd', null, state.outputPath || '—')
+            ),
+            el('h3', null, `Items being removed (${appliedItems.length}):`),
+            el('ul', { class: 'build-details-items' },
+                appliedItems.map(it => el('li', null, it.displayName))
+            ),
+            renderCleanupRecipe(),
+          ];
 
     return el('section', { class: 'progress' },
         el('h2', null, 'Building tiny11 image...'),
         progressBar,
         el('p', null, `Phase: ${p.phase || '—'}`),
         el('p', null, `Step: ${p.step || '—'}`),
-        el('button', { onclick: () => ps({ type: 'cancel' }) }, 'Cancel build'),
+        el('div', { class: 'row cancel-row' },
+            el('button', { onclick: () => ps({ type: 'cancel-build', payload: {} }) }, 'Cancel build'),
+            el('button', {
+                disabled: state.cleaning || !state.mountActive,
+                title: state.mountActive
+                    ? 'Cancel the in-progress build and then automatically clean the scratch mount + source directories.'
+                    : 'Cleanup is only available once install.wim is mounted.',
+                onclick: cancelBuildAndCleanup
+            }, 'Cancel build & clean up'),
+        ),
         el('details', {
             class: 'build-details',
             open: state.buildDetailsOpen,
             ontoggle: ev => { state.buildDetailsOpen = ev.target.open; }
         },
             el('summary', null, 'Show build details'),
-            el('dl', { class: 'build-details-summary' },
-                el('dt', null, 'Edition'),     el('dd', null, editionLabel),
-                el('dt', null, 'Build mode'),  el('dd', null, buildMode),
-                el('dt', null, 'Output ISO'),  el('dd', null, state.outputPath || '—')
-            ),
-            el('h3', null, `Items being removed (${appliedItems.length}):`),
-            el('ul', { class: 'build-details-items' },
-                appliedItems.map(it => el('li', null, it.displayName))
-            )
+            ...detailsInner
         )
+    );
+}
+
+// Build-complete cleanup block. Simpler styling than renderCleanupBlock (no
+// warning border) since the operation is safe by this point: install.wim is
+// unmounted, the scratch subdirs are inert leftovers from the build, and the
+// output ISO is the user's deliverable. Note explicitly tells the user the
+// ISO is preserved; the PS script also enforces this as a script-side guard.
+function renderCompletionCleanupBlock() {
+    const mount  = state.mountDir  || '';
+    const source = state.sourceDir || '';
+    if (!mount || !source) return null;
+
+    const tooltip = 'Deletes the temporary directories created during the build. The output ISO at the path above is preserved -- the script refuses to run if the ISO falls inside one of the cleanup targets.';
+
+    const cleanupButton = el('button', {
+        class: 'cleanup-button',
+        title: tooltip,
+        disabled: state.cleanupRequested,
+        style: 'padding: 8px 16px; border-radius: 4px; cursor: ' + (state.cleanupRequested ? 'not-allowed' : 'pointer') + ';' + (state.cleanupRequested ? ' opacity: 0.55;' : ''),
+        onclick: () => {
+            if (state.cleanupRequested) return;
+            state.cleanupRequested = true;
+            state.cleanupStatus = { kind: 'progress', message: 'Starting cleanup...' };
+            ps({ type: 'start-cleanup', payload: {
+                mountDir: mount,
+                sourceDir: source,
+                outputIso: state.outputPath || '',
+            } });
+            renderStep();
+        },
+    }, 'Clean up scratch directory');
+
+    let statusEl = null;
+    if (state.cleanupStatus) {
+        if (state.cleanupStatus.kind === 'progress') {
+            statusEl = el('div', { class: 'cleanup-status', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em;' }, state.cleanupStatus.message);
+        } else if (state.cleanupStatus.kind === 'success') {
+            statusEl = el('div', { class: 'cleanup-status cleanup-status-success', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em; color: #2e7d32; font-weight: 600;' }, '✓ ' + state.cleanupStatus.message);
+        } else {
+            statusEl = el('div', { class: 'cleanup-status cleanup-status-error', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em; color: #c62828; font-weight: 600;' }, '✗ Cleanup failed: ' + state.cleanupStatus.message);
+        }
+    }
+
+    return el('div', { class: 'completion-cleanup' },
+        el('p', { style: 'margin: 0 0 8px 0;' },
+            'Optional: remove temporary scratch directories used during the build. The output ISO at ',
+            el('code', null, state.outputPath || '—'),
+            ' will NOT be touched -- only the work subdirectories under the scratch root.'
+        ),
+        cleanupButton,
+        statusEl
     );
 }
 
@@ -222,8 +618,9 @@ function renderComplete() {
     return el('section', { class: 'complete' },
         el('h2', null, 'Build complete'),
         el('p', null, `Output: ${c.outputPath}`),
-        el('button', { onclick: () => ps({ type: 'open-folder', path: c.outputPath }) }, 'Open output folder'),
-        el('button', { onclick: () => ps({ type: 'close' }) }, 'Close')
+        el('button', { onclick: () => ps({ type: 'open-folder', payload: { path: c.outputPath } }) }, 'Open output folder'),
+        el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close'),
+        renderCompletionCleanupBlock()
     );
 }
 
@@ -332,8 +729,11 @@ function renderCustomizeStep() {
             el('span', { class: 'counter' }, `Items applied: ${totalApplied}/${state.catalog.items.length}`)
         ),
         el('div', { class: 'row' },
-            el('button', { onclick: () => ps({ type: 'save-profile-request', selections: state.selections }) }, 'Save profile...'),
-            el('button', { onclick: () => ps({ type: 'load-profile-request' }) }, 'Load profile...'),
+            el('button', { onclick: () => {
+                pendingSaveProfileSelections = JSON.parse(JSON.stringify(state.selections));
+                ps({ type: 'browse-save-file', payload: { context: 'profile-save', title: 'Save profile as...', filter: 'JSON|*.json', defaultName: 'profile.json' } });
+            } }, 'Save profile...'),
+            el('button', { onclick: () => ps({ type: 'browse-file', payload: { context: 'profile-load', title: 'Load profile...', filter: 'JSON|*.json|All files|*.*' } }) }, 'Load profile...'),
             el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
         ),
         el('div', { class: 'card-grid' }, cards)
@@ -372,21 +772,26 @@ function renderSearchResults(term, resolved) {
     });
 
     return el('section', { class: 'customize' },
-        el('div', { class: 'row' },
-            el('input', {
-                id: 'search', type: 'text', value: state.search || '',
-                placeholder: 'Search across all items...',
-                oninput: ev => { state.search = ev.target.value; renderStep(); },
-                onkeydown: ev => { if (ev.key === 'Escape') { state.search = ''; renderStep(); } }
-            }),
-            el('span', { class: 'counter' }, `Items matching: ${matchingItems.length} (${totalApplied} applied)`)
-        ),
-        el('div', { class: 'row' },
-            el('button', { onclick: () => { state.search = ''; renderStep(); } }, '< Back to categories'),
-            bulkSelectButton(matchingItems, resolved),
-            el('button', { onclick: () => ps({ type: 'save-profile-request', selections: state.selections }) }, 'Save profile...'),
-            el('button', { onclick: () => ps({ type: 'load-profile-request' }) }, 'Load profile...'),
-            el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
+        el('div', { class: 'sticky-header' },
+            el('div', { class: 'row' },
+                el('input', {
+                    id: 'search', type: 'text', value: state.search || '',
+                    placeholder: 'Search across all items...',
+                    oninput: ev => { state.search = ev.target.value; renderStep(); },
+                    onkeydown: ev => { if (ev.key === 'Escape') { state.search = ''; renderStep(); } }
+                }),
+                el('span', { class: 'counter' }, `Items matching: ${matchingItems.length} (${totalApplied} applied)`)
+            ),
+            el('div', { class: 'row' },
+                el('button', { onclick: () => { state.search = ''; renderStep(); } }, '< Back to categories'),
+                bulkSelectButton(matchingItems, resolved),
+                el('button', { onclick: () => {
+                    pendingSaveProfileSelections = JSON.parse(JSON.stringify(state.selections));
+                    ps({ type: 'browse-save-file', payload: { context: 'profile-save', title: 'Save profile as...', filter: 'JSON|*.json', defaultName: 'profile.json' } });
+                } }, 'Save profile...'),
+                el('button', { onclick: () => ps({ type: 'browse-file', payload: { context: 'profile-load', title: 'Load profile...', filter: 'JSON|*.json|All files|*.*' } }) }, 'Load profile...'),
+                el('button', { onclick: () => { state.selections = {}; renderStep(); } }, 'Reset to defaults')
+            )
         ),
         matchingItems.length === 0
             ? el('p', { class: 'hint' }, `No items match "${state.search}".`)
@@ -422,13 +827,15 @@ function renderDrillin(catId, resolved) {
     });
 
     return el('section', { class: 'drill' },
-        el('div', { class: 'row' },
-            el('button', {
-                onclick: () => { state.drilledCategory = null; renderStep(); }
-            }, '< Back to categories'),
-            bulkSelectButton(items, resolved)
+        el('div', { class: 'sticky-header' },
+            el('div', { class: 'row' },
+                el('button', {
+                    onclick: () => { state.drilledCategory = null; renderStep(); }
+                }, '< Back to categories'),
+                bulkSelectButton(items, resolved)
+            ),
+            el('h2', null, cat.displayName)
         ),
-        el('h2', null, cat.displayName),
         el('ul', { class: 'item-list' }, itemElements)
     );
 }
@@ -440,45 +847,24 @@ function renderSourceStep() {
 
     const errorBanner = el('div', { id: 'src-error', class: 'error hidden' });
 
-    const section = el('section', { class: 'form' },
-        el('label', null, 'Windows 11 ISO'),
-        el('div', { class: 'row' },
-            el('input', {
-                id: 'src-input', type: 'text', value: state.source || '',
-                placeholder: 'C:\\path\\to\\Win11.iso or drive letter where Windows 11 DVD or ISO are mounted (ex. E:)',
-                onchange: e => {
-                    state.source = e.target.value;
-                    state.editions = null;
-                    state.edition = null;
-                    ps({ type: 'validate-iso', path: state.source });
-                    renderStep();
-                }
-            }),
-            el('button', { id: 'src-browse', onclick: () => ps({ type: 'browse-iso' }) }, 'Browse...')
-        ),
-        errorBanner,
-        el('label', null, 'Edition'),
-        el('select', {
-            id: 'edition-select',
-            disabled: !state.editions,
-            onchange: e => { state.edition = parseInt(e.target.value, 10); updateNav(); }
-        }, editionsOptions),
-        el('label', null, 'Scratch directory'),
-        el('div', { class: 'row' },
-            el('input', {
-                id: 'scratch-input', type: 'text', value: state.scratchDir || '',
-                onchange: e => { state.scratchDir = e.target.value; prefillOutputIfEmpty(); }
-            }),
-            el('button', { onclick: () => ps({ type: 'browse-scratch' }) }, 'Browse...')
-        ),
-        el('label', { class: 'checkbox-label' },
-            el('input', {
-                id: 'unmount-source', type: 'checkbox',
-                checked: state.unmountSource,
-                onchange: e => state.unmountSource = e.target.checked
-            }),
-            'Unmount source ISO when build finishes'
-        ),
+    // Fast-build row + hint. Applies to both standard and Core builds (as of 2026-05-11):
+    // - Standard mode: skips /Cleanup-Image + /Compress:recovery (Tiny11.Worker.psm1).
+    // - Core mode:    skips Phase 20 /Compress:max + Phase 22 /Compress:recovery
+    //   (Tiny11.Core.psm1). Hint copy is mode-aware so the user knows what's getting
+    //   skipped in their current mode.
+    const fastBuildHint = state.coreMode
+        ? 'In Core mode, swaps DISM /Export-Image /Compress:max for the much faster ' +
+          '/Compress:fast (XPRESS) in Phase 20, and skips the /Compress:recovery esd ' +
+          'export in Phase 22 entirely. Phase 20 still narrows install.wim to your ' +
+          'selected edition (no edition prompt at install time). Saves roughly 15–30 ' +
+          'minutes per Core build; output ISO is modestly larger. Recommended for VM ' +
+          'testing and iterative Core builds.'
+        : 'Skips DISM /Cleanup-Image and /Export-Image /Compress:recovery. ' +
+          'Saves 25–40 minutes per build. With fast build the output ISO is typically ' +
+          '7–8 GB; leaving fast build off enables recovery compression and shrinks the ' +
+          'ISO by roughly 2 GB. Both produce functionally identical installs. Recommended ' +
+          'for VM testing or iterative builds where ISO size doesn\'t matter.';
+    const fastBuildRow = [
         el('label', { class: 'checkbox-label' },
             el('input', {
                 id: 'fast-build', type: 'checkbox',
@@ -487,13 +873,103 @@ function renderSourceStep() {
             }),
             'Fast build (skip recovery compression)'
         ),
-        el('p', { class: 'hint' },
-            'Skips DISM /Cleanup-Image and /Export-Image /Compress:recovery. ' +
-            'Saves 25–40 minutes per build. With fast build the output ISO is typically ' +
-            '7–8 GB; leaving fast build off enables recovery compression and shrinks the ' +
-            'ISO by roughly 2 GB. Both produce functionally identical installs. Recommended ' +
-            'for VM testing or iterative builds where ISO size doesn’t matter.'
-        )
+        el('p', { class: 'hint' }, fastBuildHint),
+    ];
+
+    // Core warning panel — shown only when coreMode is on.
+    const coreWarning = state.coreMode
+        ? el('div', { class: 'core-warning' },
+            'tiny11 Core builds a significantly smaller image, but the output is not serviceable: ' +
+            'you cannot install Windows Updates, add languages, or enable Windows features after install. ' +
+            'Suitable for VM testing or short-lived development environments — not as a daily-driver Windows install.'
+          )
+        : null;
+
+    // .NET 3.5 checkbox + hint — shown only when coreMode is on.
+    const net35Row = state.coreMode
+        ? [
+            el('label', { class: 'checkbox-label' },
+                el('input', {
+                    id: 'enable-net35', type: 'checkbox',
+                    checked: state.enableNet35,
+                    onchange: e => { state.enableNet35 = e.target.checked; }
+                }),
+                'Enable .NET 3.5 (legacy app compatibility)'
+            ),
+            el('p', { class: 'hint' },
+                '.NET 3.5 must be enabled at build time — cannot be added after install. Adds ~100 MB.'
+            ),
+          ]
+        : [];
+
+    const section = el('section', { class: 'form' },
+        el('label', null, 'Windows 11 ISO/DVD'),
+        el('div', { class: 'row' },
+            el('input', {
+                id: 'src-input', type: 'text', value: state.source || '',
+                placeholder: 'ISO or drive letter where Windows 11 media is located (ex - E: or C:\\path\\win11.iso)',
+                onchange: e => {
+                    state.source = e.target.value;
+                    state.editions = null;
+                    state.edition = null;
+                    ps({ type: 'validate-iso', payload: { path: state.source } });
+                    startValidationSpinner();
+                }
+            }),
+            el('button', { id: 'src-browse', onclick: () => ps({ type: 'browse-file', payload: { context: 'source', title: 'Select Win11 ISO', filter: 'ISO files|*.iso|All files|*.*' } }) }, 'Browse...')
+        ),
+        errorBanner,
+        el('label', null, 'Edition'),
+        el('div', { class: 'row' },
+            el('select', {
+                id: 'edition-select',
+                disabled: !state.editions,
+                onchange: e => { state.edition = parseInt(e.target.value, 10); updateNav(); }
+            }, editionsOptions),
+            el('button', { class: 'browse-spacer', 'aria-hidden': 'true', tabindex: '-1' }, 'Browse...')
+        ),
+        // Permanent status line below the dropdown — never appears/disappears (so the
+        // dropdown row's width never shifts as messages grow). The trailing value
+        // portion swaps content based on state via computeIsoStatusText().
+        el('div', { class: 'iso-status-line', role: 'status', 'aria-live': 'polite' },
+            el('span', { class: 'iso-status-label' }, 'ISO/DVD state: '),
+            state.validating
+                ? el('span', { class: 'wizard-spinner', 'aria-hidden': 'true' })
+                : null,
+            el('span', { id: 'iso-status-text', class: 'iso-status-value' }, computeIsoStatusText())
+        ),
+        el('label', null, 'Scratch directory'),
+        el('div', { class: 'row' },
+            el('input', {
+                id: 'scratch-input', type: 'text', value: state.scratchDir || '',
+                placeholder: 'Choose temp file location. If empty, a temporary folder under %TEMP% is created automatically.',
+                onchange: e => { state.scratchDir = e.target.value; prefillOutputIfEmpty(); }
+            }),
+            el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
+        ),
+        el('label', { class: 'checkbox-label' },
+            el('input', {
+                id: 'unmount-source', type: 'checkbox',
+                checked: state.unmountSource,
+                onchange: e => state.unmountSource = e.target.checked
+            }),
+            'Unmount source ISO/DVD when build finishes'
+        ),
+        ...fastBuildRow,
+        el('label', { class: 'checkbox-label' },
+            el('input', {
+                id: 'core-mode', type: 'checkbox',
+                checked: state.coreMode,
+                onchange: e => {
+                    state.coreMode = e.target.checked;
+                    syncOutputFilenameToMode();
+                    renderStep();
+                }
+            }),
+            'Build tiny11 Core (smaller, non-serviceable)'
+        ),
+        coreWarning,
+        ...net35Row
     );
     return section;
 }
@@ -501,50 +977,188 @@ function renderSourceStep() {
 document.addEventListener('DOMContentLoaded', () => { initTheme(); renderStep(); });
 
 onPs(msg => {
+    const p = msg.payload || {};
     if (msg.type === 'iso-validated') {
-        state.editions = msg.editions;
-        state.edition = (msg.editions[0] && msg.editions[0].index) || null;
-        state.source = msg.path || state.source;
+        stopValidationSpinner();
+        state.editions = p.editions;
+        state.edition = (p.editions && p.editions[0] && p.editions[0].index) || null;
+        state.source = p.path || state.source;
         renderStep();
     } else if (msg.type === 'iso-error') {
+        stopValidationSpinner();
+        renderStep();   // re-render to drop the spinner before the banner shows
         const banner = document.getElementById('src-error');
         if (banner) {
             banner.classList.remove('hidden');
-            banner.textContent = msg.message;
+            banner.textContent = p.message;
         }
     } else if (msg.type === 'browse-result') {
-        if (msg.field === 'source')  { state.source = msg.path; renderStep(); ps({ type: 'validate-iso', path: msg.path }); }
-        if (msg.field === 'scratch') { state.scratchDir = msg.path; prefillOutputIfEmpty(); renderStep(); }
-        if (msg.field === 'output')  { state.outputPath = msg.path; renderStep(); }
+        if (!p.path) return; // user cancelled the dialog
+        if (p.context === 'source')  { state.source = p.path; ps({ type: 'validate-iso', payload: { path: p.path } }); startValidationSpinner(); }
+        else if (p.context === 'scratch') { state.scratchDir = p.path; prefillOutputIfEmpty(); renderStep(); }
+        else if (p.context === 'output')  { state.outputPath = p.path; renderStep(); }
+        else if (p.context === 'profile-save') {
+            ps({ type: 'save-profile', payload: { path: p.path, selections: pendingSaveProfileSelections } });
+            pendingSaveProfileSelections = null;
+        }
+        else if (p.context === 'profile-load') {
+            ps({ type: 'load-profile', payload: { path: p.path } });
+        }
     } else if (msg.type === 'profile-loaded') {
         state.selections = {};
-        for (const [k, v] of Object.entries(msg.selections)) state.selections[k] = v;
+        for (const [k, v] of Object.entries(p.selections || {})) state.selections[k] = v;
         renderStep();
     }
 });
 
 // Extended onPs handler — Task 22 build-progress/complete/error + profile-saved + handler-error.
 onPs(msg => {
+    const p = msg.payload || {};
     if (msg.type === 'build-progress') {
-        state.progress = msg;
+        // mount-state markers carry mountActive / mountDir / sourceDir. They
+        // also flow through state.progress so any UI element that watches
+        // progress still works, but the dedicated fields are what
+        // renderCleanupBlock reads to decide whether to show the button.
+        if (p.phase === 'mount-state') {
+            state.mountActive = (p.mountActive === true);
+            if (p.mountActive === true) {
+                if (p.mountDir)  state.mountDir  = p.mountDir;
+                if (p.sourceDir) state.sourceDir = p.sourceDir;
+            }
+        }
+        state.progress = p;
         renderStep();
     } else if (msg.type === 'build-complete') {
         state.building = false;
-        state.completed = msg;
+        state.completed = p;
         renderStep();
     } else if (msg.type === 'build-error') {
         state.building = false;
+        // Chained "Cancel build & clean up": user clicked the chained button
+        // mid-build, we sent cancel-build, the build subprocess is now down
+        // and DISM mount locks are released. Now safe to fire start-cleanup.
+        if (state.pendingCleanupAfterCancel) {
+            state.pendingCleanupAfterCancel = false;
+            state.cleanupStatus = { kind: 'progress', message: 'Starting cleanup…' };
+            state.step = 'build';
+            state.completed = null;
+            renderStep();
+            ps({ type: 'start-cleanup', payload: { mountDir: state.mountDir, sourceDir: state.sourceDir } });
+            return;
+        }
         const root = document.getElementById('content');
         clear(root);
-        root.appendChild(el('section', { class: 'error' },
-            el('h2', null, 'Build failed'),
-            el('p', null, msg.message || 'Unknown error'),
-            el('button', { onclick: () => ps({ type: 'close' }) }, 'Close')
-        ));
+        // Cancel-vs-failure header polish: BuildHandlers.cs emits build-error with
+        // message "Build cancelled by user." when the user clicks plain "Cancel
+        // build". Surface that as a friendlier "Build cancelled" header rather
+        // than "Build failed" — same screen, less alarming.
+        const wasCancelled = ((p.message || '') + '').toLowerCase().includes('cancelled by user');
+        const children = [
+            el('h2', null, wasCancelled ? 'Build cancelled' : 'Build failed'),
+        ];
+        if (!wasCancelled) {
+            children.push(el('p', null, p.message || 'Unknown error'));
+        }
+        if (p.logPath) {
+            children.push(el('p', { class: 'log-hint' }, 'Full build log: ', el('code', null, p.logPath)));
+        }
+        // Cleanup section renders for both Core and Worker; the function
+        // self-gates on state.mountActive so it returns null outside the
+        // mount window. The button on this screen navigates the user to
+        // Step 3 (renderBuild) where the spinner-flow status row lives.
+        const cleanupBlock = renderCleanupBlock();
+        if (cleanupBlock) children.push(cleanupBlock);
+        children.push(el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close'));
+        root.appendChild(el('section', { class: 'error' }, ...children));
+    } else if (msg.type === 'cleanup-progress') {
+        state.cleanupStatus = { kind: 'progress', message: `(${p.percent || 0}%) ${p.step || ''}` };
+        renderStep();
+    } else if (msg.type === 'cleanup-complete') {
+        state.cleaning = false;
+        state.cleanupStatus = { kind: 'success', message: p.message || 'Cleanup complete.' };
+        state.mountActive = false;
+        renderStep();
+    } else if (msg.type === 'cleanup-error') {
+        state.cleaning = false;
+        state.cleanupStatus = { kind: 'error', message: p.message || 'Unknown cleanup error.' };
+        renderStep();
+    } else if (msg.type === 'cleanup-started') {
+        // Acknowledgement that the handler accepted the request and spawned
+        // pwsh. No UI change needed — cleanup-progress markers carry the
+        // narrative from here.
     } else if (msg.type === 'profile-saved') {
         // v1: log only; future: transient toast.
-        console.log('Profile saved:', msg.path);
+        console.log('Profile saved:', p.path);
     } else if (msg.type === 'handler-error') {
-        console.error('Handler error:', msg.message);
+        console.error('Handler error:', p.message);
+        // If a cleanup or cancel-and-cleanup was in flight, surface to the UI
+        // — otherwise a thrown handler (e.g. Process.Start) leaves the user
+        // stuck on a "Starting cleanup…" spinner forever. The Retry cleanup
+        // button on the error status row gives them a way out.
+        if (state.cleaning || state.pendingCleanupAfterCancel) {
+            state.cleaning = false;
+            state.pendingCleanupAfterCancel = false;
+            state.cleanupStatus = { kind: 'error', message: 'Cleanup handler failed: ' + (p.message || 'unknown') };
+            renderStep();
+        } else if (state.building) {
+            // start-build was rejected by C# server-side guards (empty outputIso /
+            // source, or some other handler-level failure) before the subprocess
+            // spawned. The Build ISO onclick had already set state.building=true,
+            // so we'd otherwise hang on the progress screen forever. Reset and
+            // surface the message; client-side gates make this rare in practice
+            // (defense in depth), so an alert is acceptable for v1.0.0 rather
+            // than building a dedicated inline banner.
+            state.building = false;
+            renderStep();
+            window.alert('Build could not start: ' + (p.message || 'unknown error'));
+        }
     }
+});
+
+// Velopack update indicator — Task 25.
+// update-available -> stash {version, changelog}, un-hide pulsing dot.
+// Click -> confirm() with version + truncated changelog -> ps({type:'apply-update'}).
+// update-applying -> log + disable badge while Velopack downloads.
+// update-error    -> log + re-show badge so the user can retry.
+let pendingUpdate = null;
+onPs(msg => {
+    const p = msg.payload || {};
+    const badge = document.getElementById('update-badge');
+    if (!badge) return;
+    if (msg.type === 'update-available') {
+        pendingUpdate = { version: p.version || '', changelog: p.changelog || '' };
+        badge.classList.remove('hidden');
+        badge.disabled = false;
+        badge.title = `Update available: v${pendingUpdate.version} — click to install`;
+    } else if (msg.type === 'update-applying') {
+        // v1: log only; future: transient toast. UpdateHandlers ApplyAndRestartAsync
+        // will tear down the process, so this state is brief.
+        console.info('Update applying — process will restart.');
+        badge.disabled = true;
+        badge.title = 'Update downloading...';
+    } else if (msg.type === 'update-error') {
+        console.error('Update error:', p.message);
+        if (pendingUpdate) badge.classList.remove('hidden');
+        badge.disabled = false;
+    }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    const badge = document.getElementById('update-badge');
+    if (!badge) return;
+    badge.addEventListener('click', () => {
+        if (!pendingUpdate) return;
+        const notes = (pendingUpdate.changelog || '').slice(0, 400);
+        const trail = pendingUpdate.changelog && pendingUpdate.changelog.length > 400 ? '\n...' : '';
+        if (confirm(`Install tiny11options v${pendingUpdate.version}?\n\n${notes}${trail}`)) {
+            ps({ type: 'apply-update', payload: {} });
+        }
+    });
+
+    // JS-initiated update-check handshake. C# UpdateHandlers receives this and
+    // fires UpdateNotifier.CheckAsync; the response comes back as update-available
+    // (or update-error) through the bridge. This guarantees the JS-side listener
+    // is wired before C# sends, eliminating the post-Navigation race that hid
+    // the badge in the prior smoke session.
+    ps({ type: 'request-update-check', payload: {} });
 });

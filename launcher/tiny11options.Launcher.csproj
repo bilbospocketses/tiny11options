@@ -1,0 +1,105 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Tiny11Options.Launcher</RootNamespace>
+    <AssemblyName>tiny11options</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <!-- Override WPF SDK's auto-generated Main() so our Program.Main is the entry point.
+         Without this, the App.xaml-derived auto-generated Main collides with Program.Main
+         and the build fails with CS0017 (multiple entry points defined). -->
+    <StartupObject>Tiny11Options.Launcher.Program</StartupObject>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <!-- Tests/ is a separate sibling project; exclude its files from the launcher's
+       default cs-glob to avoid double-compilation and missing-xunit errors. -->
+  <ItemGroup>
+    <Compile Remove="Tests/**" />
+    <Page Remove="Tests/**" />
+    <Resource Remove="Tests/**" />
+    <ApplicationDefinition Remove="Tests/**" />
+    <None Remove="Tests/**" />
+    <EmbeddedResource Remove="Tests/**" />
+  </ItemGroup>
+
+  <!-- Test fixture for EmbeddedResources unit tests. Real resources are added in Task 6. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\test-fixture.txt">
+      <LogicalName>test-fixture.txt</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- Expose internal types to the sibling test project. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="tiny11options.Launcher.Tests" />
+  </ItemGroup>
+
+  <!-- Embedded resources: ui, catalog, retained PS modules, autounattend, orchestrator.
+       LogicalName preserves the relative path used at runtime via Assembly.GetManifestResourceStream. -->
+  <ItemGroup>
+    <!-- ui/ - HTML/CSS/JS for the WebView2 UI -->
+    <EmbeddedResource Include="..\ui\**\*">
+      <LogicalName>ui/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+      <Link>Resources\ui\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+
+    <!-- catalog/ - YAML feature catalog -->
+    <EmbeddedResource Include="..\catalog\**\*">
+      <LogicalName>catalog/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+      <Link>Resources\catalog\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+
+    <!-- Retained PS modules (named explicitly per spec D3) -->
+    <EmbeddedResource Include="..\src\Tiny11.Iso.psm1"><LogicalName>src/Tiny11.Iso.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Worker.psm1"><LogicalName>src/Tiny11.Worker.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Catalog.psm1"><LogicalName>src/Tiny11.Catalog.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Hives.psm1"><LogicalName>src/Tiny11.Hives.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Selections.psm1"><LogicalName>src/Tiny11.Selections.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Autounattend.psm1"><LogicalName>src/Tiny11.Autounattend.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Actions.psm1"><LogicalName>src/Tiny11.Actions.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Actions.Registry.psm1"><LogicalName>src/Tiny11.Actions.Registry.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Actions.Filesystem.psm1"><LogicalName>src/Tiny11.Actions.Filesystem.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Actions.ProvisionedAppx.psm1"><LogicalName>src/Tiny11.Actions.ProvisionedAppx.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Actions.ScheduledTask.psm1"><LogicalName>src/Tiny11.Actions.ScheduledTask.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.Core.psm1"><LogicalName>src/Tiny11.Core.psm1</LogicalName></EmbeddedResource>
+
+    <!-- Orchestrator + wrapper scripts + autounattend template -->
+    <EmbeddedResource Include="..\tiny11maker.ps1"><LogicalName>tiny11maker.ps1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\tiny11maker-from-config.ps1"><LogicalName>tiny11maker-from-config.ps1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\tiny11Coremaker-from-config.ps1"><LogicalName>tiny11Coremaker-from-config.ps1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\tiny11-iso-validate.ps1"><LogicalName>tiny11-iso-validate.ps1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\tiny11-profile-validate.ps1"><LogicalName>tiny11-profile-validate.ps1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\tiny11-cancel-cleanup.ps1"><LogicalName>tiny11-cancel-cleanup.ps1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\autounattend.template.xml"><LogicalName>autounattend.template.xml</LogicalName></EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.Web.WebView2.Core">
+      <HintPath>..\dependencies\webview2\1.0.2535.41\Microsoft.Web.WebView2.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.Wpf">
+      <HintPath>..\dependencies\webview2\1.0.2535.41\Microsoft.Web.WebView2.Wpf.dll</HintPath>
+    </Reference>
+    <Content Include="..\dependencies\webview2\1.0.2535.41\WebView2Loader.dll">
+      <Link>WebView2Loader.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Velopack" Version="0.0.1298" />
+  </ItemGroup>
+
+</Project>

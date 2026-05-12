@@ -86,7 +86,6 @@ body {
 }
 
 .theme-toggle {
-    margin-left: auto;
     padding: 4px 8px;
     font-size: 16px;
     line-height: 1;
@@ -100,6 +99,34 @@ body {
 .theme-toggle:hover {
     background: var(--bg-card);
     border-color: var(--border);
+}
+
+/* Update-available indicator. Sits left-of theme-toggle when visible, takes
+   the right-anchor margin-left:auto. When hidden (display:none) the sibling
+   rule below puts the auto back on theme-toggle so it stays right-aligned. */
+.update-badge {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    margin-left: auto;
+    margin-right: 12px;
+    padding: 0;
+    cursor: pointer;
+    /* Intentionally NOT gated on prefers-reduced-motion. This is a notification
+       indicator the user needs to discover; the entire feature is "movement that
+       grabs your eye". Subtle scale + ring pulse, not a strobe. */
+    animation: badge-pulse 1.6s ease-in-out infinite;
+}
+.update-badge.hidden { display: none; }
+.update-badge:hover { background: var(--accent-hover); animation-play-state: paused; }
+.update-badge.hidden ~ .theme-toggle { margin-left: auto; }
+
+@keyframes badge-pulse {
+    0%   { transform: scale(0.85); box-shadow: 0 0 0 0   var(--accent); opacity: 1; }
+    50%  { transform: scale(1.35); box-shadow: 0 0 0 10px transparent; opacity: 0.85; }
+    100% { transform: scale(0.85); box-shadow: 0 0 0 0   transparent; opacity: 1; }
 }
 
 /* Main content area */
@@ -211,11 +238,40 @@ section.form {
     max-width: 720px;
 }
 
+/* Hidden Browse-style button placeholder, sits next to the Edition select
+   inside its .row wrapper. Reserves the same column width as a real Browse
+   button so the select's right edge aligns with the text inputs above and
+   below. The select itself picks up `flex: 1; min-width: 0` from the global
+   input/select rule once it's inside a flex .row, which also fixes the
+   pre-validation FOUC where the select would size to its (initially empty,
+   then post-validate longer-edition-name) content. visibility:hidden keeps
+   the spacer laid out; aria-hidden + tabindex=-1 keep it inert. */
+button.browse-spacer {
+    visibility: hidden;
+    pointer-events: none;
+}
+
 .hint {
     color: var(--fg-muted);
     font-size: 12px;
     margin: 4px 0 0 24px;
     line-height: 1.4;
+}
+
+/* When a checkbox-label contains a disabled input, dim the whole label
+   AND the immediately-following .hint paragraph. Used by the fast-build
+   row in Step 1, which stays visible but greys out when Core mode is on
+   (Core has its own fixed compression sequence). The :has() + sibling
+   combinator is supported by the WebView2 (Chromium) runtime. */
+label.checkbox-label:has(input:disabled),
+label.checkbox-label:has(input:disabled) + .hint {
+    opacity: 0.5;
+}
+label.checkbox-label:has(input:disabled) {
+    cursor: not-allowed;
+}
+input[type="checkbox"]:disabled {
+    cursor: not-allowed;
 }
 
 /* Customize step (Step 2) */
@@ -273,6 +329,32 @@ section.customize .row {
 /* Drill-in (Step 2) */
 section.drill h2 {
     margin: var(--gap) 0;
+}
+
+/* Sticky-header wraps the buttons + h2 (drill-in) or the search/counter +
+   buttons (search results) so they stay visible while the long item list
+   scrolls underneath. Negative side margins extend the background to the
+   #content padding edges so item rows don't visually bleed past the header. */
+.sticky-header {
+    position: sticky;
+    top: calc(-1 * var(--gap-lg));
+    background: var(--bg);
+    z-index: 2;
+    margin: calc(-1 * var(--gap-lg)) calc(-1 * var(--gap-lg)) 0 calc(-1 * var(--gap-lg));
+    padding: var(--gap-lg) var(--gap-lg) var(--gap) var(--gap-lg);
+    border-bottom: 1px solid var(--border);
+}
+
+.sticky-header > .row {
+    margin-bottom: var(--gap);
+}
+
+.sticky-header > .row:last-child {
+    margin-bottom: 0;
+}
+
+.sticky-header h2 {
+    margin: var(--gap) 0 0 0;
 }
 
 .item-list {
@@ -469,4 +551,206 @@ section.progress h2 {
 
 .error.hidden {
     display: none;
+}
+
+/* Output-required warning -- rendered on Step 3 (Ready to build) when
+   state.outputPath is empty. Theme-aware via --warn-bg / --warn-fg. */
+.output-required-warning {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    margin: var(--gap) 0 var(--gap-lg) 0;
+    border-radius: var(--radius);
+    background: var(--warn-bg);
+    color: var(--warn-fg);
+    font-size: 13px;
+    line-height: 1.4;
+}
+.output-required-glyph {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--warn-fg);
+    color: var(--warn-bg);
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1;
+}
+.output-required-message { flex: 1; }
+
+/* Core mode — warning panel (Step 1, visible when coreMode is on) */
+.core-warning {
+    background: var(--warn-bg);
+    color: var(--warn-fg);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    margin: var(--gap) 0 var(--gap) 24px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* Breadcrumb pip dim — Customize step is skipped in Core mode */
+.breadcrumb span[data-disabled="true"] {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+/* Inline cleanup status row — rendered at the top of Step 3 (renderBuild)
+   while a cleanup is in flight, just succeeded, or just failed. Drives the
+   spinner-then-checkmark UX the user sees after clicking "Cancel build &
+   clean up" or the cleanup button on the build-failed screen. */
+.cleanup-inline-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    margin: 0 0 var(--gap-lg) 0;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    font-size: 13px;
+}
+
+.cleanup-inline-message { flex: 1; }
+
+.cleanup-inline-glyph {
+    font-weight: 700;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.cleanup-inline-progress .cleanup-inline-message {
+    color: var(--fg);
+}
+
+.cleanup-inline-success {
+    border-color: #2e7d32;
+}
+[data-theme="dark"] .cleanup-inline-success { border-color: #6fbf73; }
+.cleanup-inline-success .cleanup-inline-glyph,
+.cleanup-inline-success .cleanup-inline-message {
+    color: #2e7d32;
+    font-weight: 600;
+}
+[data-theme="dark"] .cleanup-inline-success .cleanup-inline-glyph,
+[data-theme="dark"] .cleanup-inline-success .cleanup-inline-message {
+    color: #8fd394;
+}
+
+.cleanup-inline-error {
+    border-color: var(--error-fg);
+    background: var(--error-bg);
+}
+.cleanup-inline-error .cleanup-inline-glyph,
+.cleanup-inline-error .cleanup-inline-message {
+    color: var(--error-fg);
+    font-weight: 600;
+}
+
+.cleanup-retry-link {
+    flex-shrink: 0;
+    padding: 4px 12px;
+    font-size: 12px;
+}
+
+/* Cancel-row in the in-progress screen — holds "Cancel build" + the new
+   "Cancel build & clean up" side-by-side. */
+section.progress .cancel-row {
+    justify-content: center;
+    gap: var(--gap);
+    margin-top: var(--gap);
+}
+
+/* Cleanup panels — cancel/error (yellow warning) and build-complete (plain).
+   Theme-aware via var(--bg-card)/var(--border); replaced previous inline
+   #fafafa/#ddd which ignored dark mode. */
+.core-cleanup {
+    margin-top: 16px;
+    padding: var(--gap);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+}
+
+.completion-cleanup {
+    margin-top: var(--gap-lg);
+    padding: var(--gap);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+}
+
+/* Core cleanup command block */
+.cleanup-cmd {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--gap);
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.core-cleanup-intro {
+    color: var(--warn-fg);
+    margin: var(--gap) 0 6px 0;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* ISO/DVD validation status line — permanent row beneath the editions dropdown.
+   Renders even before any source is provided ("No ISO or DVD loaded"), so the
+   surrounding layout never shifts as the message updates. The spinner ring
+   appears between the label and the value while a validate-iso round-trip is
+   in flight (mount + Get-Editions + dismount can take up to ~10s). */
+.iso-status-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 var(--gap) 0;
+    font-size: 12px;
+    color: var(--fg-muted);
+    min-height: 18px;
+}
+
+.iso-status-label {
+    flex-shrink: 0;
+}
+
+.iso-status-value {
+    /* Truthful but not load-bearing — the surrounding row handles layout. */
+}
+
+.wizard-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid transparent;
+    border-top-color: var(--accent);
+    border-right-color: var(--accent);
+    border-radius: 50%;
+    animation: wizard-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes wizard-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* Accessibility — users with vestibular sensitivity get a static dot instead
+   of a rotating ring, while the text + colour change still convey "in progress". */
+@media (prefers-reduced-motion: reduce) {
+    .wizard-spinner {
+        animation: none;
+        border-color: var(--accent);
+        border-top-color: var(--accent);
+    }
 }

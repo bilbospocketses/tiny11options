@@ -75,6 +75,9 @@ function Invoke-Tiny11BuildPipeline {
         & $progress @{ phase='mount'; step='Mounting install.wim'; percent=15 }
         Set-ItemProperty -Path "$tinyDir\sources\install.wim" -Name IsReadOnly -Value $false
         Mount-WindowsImage -ImagePath "$tinyDir\sources\install.wim" -Index $ImageIndex -Path $scratchImg | Out-Null
+        # mount-state marker for the UI cleanup button. Worker layout differs from Core:
+        # mount dir is <scratch>\scratchdir (not \mount), copied source is <scratch>\tiny11 (not \source).
+        & $progress @{ phase='mount-state'; step="install.wim mounted at $scratchImg"; percent=16; mountActive=$true; mountDir=$scratchImg; sourceDir=$tinyDir }
 
         & $progress @{ phase='autounattend-render'; step='Rendering autounattend.xml'; percent=18 }
         $tplLocal = Join-Path (Split-Path $Catalog.Path) '..\autounattend.template.xml' | Resolve-Path | Select-Object -ExpandProperty Path
@@ -105,6 +108,7 @@ function Invoke-Tiny11BuildPipeline {
 
         & $progress @{ phase='wim-save'; step='Dismounting install.wim (save)'; percent=80 }
         Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
+        & $progress @{ phase='mount-state'; step='install.wim unmounted'; percent=81; mountActive=$false }
 
         if ($FastBuild) {
             & $progress @{ phase='export-skip'; step='Skipping /Export-Image recovery compression (FastBuild)'; percent=85 }
@@ -119,6 +123,7 @@ function Invoke-Tiny11BuildPipeline {
         $bootWim = "$tinyDir\sources\boot.wim"
         Set-ItemProperty -Path $bootWim -Name IsReadOnly -Value $false
         Mount-WindowsImage -ImagePath $bootWim -Index 2 -Path $scratchImg | Out-Null
+        & $progress @{ phase='mount-state'; step="boot.wim mounted at $scratchImg"; percent=89; mountActive=$true; mountDir=$scratchImg; sourceDir=$tinyDir }
         Mount-Tiny11AllHives -ScratchDir $scratchImg
         $hwItems = $Catalog.Items | Where-Object { $_.category -eq 'hardware-bypass' -and $ResolvedSelections[$_.id].EffectiveState -eq 'apply' }
         foreach ($item in $hwItems) {
@@ -126,6 +131,7 @@ function Invoke-Tiny11BuildPipeline {
         }
         Dismount-Tiny11AllHives
         Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
+        & $progress @{ phase='mount-state'; step='boot.wim unmounted'; percent=91; mountActive=$false }
 
         & $progress @{ phase='autounattend-iso'; step='Writing autounattend.xml to ISO root'; percent=92 }
         Set-Content -Path "$tinyDir\autounattend.xml" -Value $renderedAutounattend -Encoding UTF8

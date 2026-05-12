@@ -5,3 +5,13 @@ scratchdir/
 tiny11/
 tiny11_*.log
 autounattend.xml
+
+# .NET / launcher build artifacts (Path C onward)
+**/bin/
+**/obj/
+dist/
+*.user
+*.suo
+*.userprefs
+.vs/
+launcher/.claude/settings.local.json

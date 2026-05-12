@@ -44,7 +44,40 @@ pwsh -NoProfile -File tiny11maker.ps1 `
 `-ImageIndex` is the edition index inside `install.wim` (typically 6 for Pro on consumer ISOs). Mutually exclusive with `-Edition`; use whichever you prefer.
 `-Config` is one of the example profiles or your own.
 `-NonInteractive` suppresses the GUI; implied when both `-Source` and `-Config` are present.
-`-AllowVLSource` overrides the VL/MSDN ISO preflight rejection (see [System requirements](#system-requirements)).
+
+## Build modes
+
+The launcher offers two build modes in Step 1. Pick the one that fits your use case:
+
+### Standard tiny11 (default)
+
+Reduced Windows 11 image. Removes ~74 catalog items (consumer apps, Office stubs, telemetry components, sponsored apps, scheduled tasks, etc.) configurable per-item in Step 2. Output ISO is ~2 GB smaller than vanilla Windows 11; with the "Fast build" checkbox unchecked, recovery compression saves an additional ~2 GB.
+
+**Use when:** you want a leaner Windows 11 install for everyday use, kept up to date via Windows Update, with the option to add languages or enable features later. Suitable as a daily-driver Windows install.
+
+**Serviceability:** ✅ Windows Update works. Languages and features can be added post-install. Standard Microsoft servicing pipeline applies.
+
+### tiny11 Core (smaller, non-serviceable)
+
+Significantly more aggressive image reduction. In addition to standard tiny11's removals, Core also:
+- Removes the entire WinSxS component store (preserving only ~30 retained subdirs needed for boot)
+- Disables Windows Defender (services set to disabled)
+- Disables Windows Update (services + policies + RunOnce)
+- Removes additional system packages: Internet Explorer remnants, Media Player, WordPad, TabletPCMath, StepsRecorder, language features (Handwriting/OCR/Speech/TextToSpeech), Wallpaper-Content-Extended, Defender-Client
+- Replaces winre.wim with an empty file
+- Optionally enables .NET 3.5 at build time (the only feature you can opt into — cannot be added post-install)
+
+**Use when:** rapid VM testing, short-lived dev environments, embedded/appliance scenarios where post-install changes don't matter and the smallest practical Windows 11 image is the goal.
+
+**Serviceability:** ❌ Windows Update is disabled and the WinSxS store is gone. You cannot install Windows Updates, add languages, or enable Windows features after install. **Not suitable as a daily-driver Windows install.**
+
+**Build time:** Core builds take ~30-45 minutes with default compression. The WinSxS-wipe phase alone runs ~5-10 minutes — longer than any single phase in a standard build. **Fast Build** (checkbox in Step 1) skips Phase 22's recovery compression and swaps Phase 20's `/Compress:max` for `/Compress:fast`, saving roughly 15-30 minutes per Core build at the cost of a modestly larger ISO. Recommended for VM testing and iterative builds where ISO size doesn't matter.
+
+**Cancellation cleanup:** if you cancel during the WinSxS-wipe phase, the scratch directory is left in a non-resumable state (locked NTFS permissions, half-populated WinSxS_edit, dangling DISM mount). The Build failed screen surfaces a "⚠ Run cleanup automatically" button that runs the six recovery commands for you — one click, no manual elevated-PowerShell session needed. The same six commands are shown below the button as a copy-paste fallback for manual control or if the automatic run fails. Standard tiny11 builds don't reach this state — cancel cleanup is automatic in both modes.
+
+**Post-build cleanup:** after a successful build, the Build complete screen offers an optional "Clean up scratch directory" button that removes the temporary build directories (multi-GB on Core builds). Your output ISO is preserved — the script refuses to run if the ISO path falls inside one of the cleanup targets.
+
+To select Core mode, check the "Build tiny11 Core" box at the bottom of Step 1. The wizard then skips Step 2 (no per-item customization in Core) and goes directly to Step 3 with a Core-mode summary.
 
 ## WebView2 boundary
 
@@ -86,7 +119,7 @@ A profile JSON has shape `{ "version": 1, "selections": { "<item-id>": "apply"|"
 - PowerShell 7 (`pwsh.exe`) on PATH for the GUI; PowerShell 5.1 (`powershell.exe`) is sufficient for scripted mode
 - Microsoft Edge WebView2 Runtime (preinstalled on Win11; on Win10, install from https://developer.microsoft.com/microsoft-edge/webview2/)
 - ~10 GB free in the scratch directory
-- A retail / consumer Win11 ISO (Microsoft media-creation-tool, direct ISO download). VL / MSDN multi-edition ISOs are rejected at preflight by default (they trip Setup's stricter VL key validator); pass `-AllowVLSource` to override at your own risk.
+- A Windows 11 ISO (Microsoft media-creation-tool, direct ISO download, or VL/MSDN multi-edition).
 
 The build process self-elevates via UAC; no need to launch as admin manually.
 

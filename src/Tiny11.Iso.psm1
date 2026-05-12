@@ -58,22 +58,6 @@ function Get-Tiny11Editions {
     Get-WindowsImage -ImagePath $imgPath
 }
 
-function Test-Tiny11SourceIsConsumer {
-    # Heuristic: consumer Win11 ISOs from media-creation-tool / direct download contain 2-4
-    # editions (typically Home, Home N, Pro, Pro N or just Home + Pro). VL / MSDN multi-edition
-    # ISOs have 10+ including Enterprise / Education variants and trip Setup's stricter VL key
-    # validator regardless of selected edition. Returns $true if the source looks like a consumer
-    # ISO, $false otherwise.
-    [CmdletBinding()]
-    param([Parameter(Mandatory)] $Editions)
-    $list = @($Editions)
-    if ($list.Count -gt 4) { return $false }
-    foreach ($e in $list) {
-        if ($e.ImageName -match 'Enterprise|Education|Server') { return $false }
-    }
-    $true
-}
-
 function Resolve-Tiny11ImageIndex {
     [CmdletBinding()]
     param(
@@ -92,4 +76,4 @@ function Resolve-Tiny11ImageIndex {
     [int]$match[0].ImageIndex
 }
 
-Export-ModuleMember -Function Resolve-Tiny11Source, Mount-Tiny11Source, Dismount-Tiny11Source, Get-Tiny11Editions, Get-Tiny11VolumeForImage, Test-Tiny11SourceIsConsumer, Resolve-Tiny11ImageIndex
+Export-ModuleMember -Function Resolve-Tiny11Source, Mount-Tiny11Source, Dismount-Tiny11Source, Get-Tiny11Editions, Get-Tiny11VolumeForImage, Resolve-Tiny11ImageIndex

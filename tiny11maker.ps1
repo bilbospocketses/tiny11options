@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    tiny11options — interactive variant builder for Windows 11.
+    tiny11options -- interactive variant builder for Windows 11.
 
 .DESCRIPTION
     Builds a customized Windows 11 ISO. Each removable component and tweak is a
@@ -21,9 +21,6 @@
 .PARAMETER Edition
     Edition name (case-insensitive exact match) e.g. 'Windows 11 Pro'. Resolved to ImageIndex by enumerating the source. Cleaner alternative to -ImageIndex which varies by ISO source.
 
-.PARAMETER AllowVLSource
-    Allow building from a VL/MSDN multi-edition ISO. By default tiny11maker rejects sources that look like VL/MSDN (>4 editions, or any Enterprise/Education/Server variant) because Setup's stricter VL key validator fails on the empty <Key/> autounattend approach.
-
 .PARAMETER ScratchDir
     Working directory; needs ~10 GB free. Defaults to $PSScriptRoot.
 
@@ -34,7 +31,7 @@
     Suppresses the GUI. Implied if both -Source and -Config are passed.
 
 .PARAMETER Internal
-    For testing — when set, the script defines functions and exits without running the orchestrator.
+    For testing -- when set, the script defines functions and exits without running the orchestrator.
 #>
 [CmdletBinding()]
 param(
@@ -42,7 +39,6 @@ param(
     [string]$Config,
     [int]$ImageIndex,
     [string]$Edition,
-    [switch]$AllowVLSource,
     [string]$ScratchDir,
     [string]$OutputPath,
     [switch]$NonInteractive,
@@ -133,19 +129,10 @@ if ($nonInteractive) {
     if ($ImageIndex -and $Edition) { throw "-ImageIndex and -Edition are mutually exclusive; pick one." }
     if (-not $ImageIndex -and -not $Edition) { throw "-NonInteractive requires either -ImageIndex or -Edition." }
 
-    # Preflight: enumerate source editions, check VL/MSDN, resolve -Edition to -ImageIndex if needed.
+    # Preflight: enumerate source editions and resolve -Edition to -ImageIndex if needed.
     $preflightMount = Mount-Tiny11Source -InputPath $Source
     try {
         $editions = @(Get-Tiny11Editions -DriveLetter $preflightMount.DriveLetter)
-        $isConsumer = Test-Tiny11SourceIsConsumer -Editions $editions
-        if (-not $isConsumer) {
-            $editionsList = ($editions | ForEach-Object { $_.ImageName }) -join '; '
-            $vlMsg = "Source ISO appears to be VL/MSDN (more than 4 editions or contains Enterprise/Education/Server variants). tiny11 targets the consumer Win11 ISO; build will probably fail at install time with `"Setup has failed to validate the product key`". Editions found: $editionsList"
-            if (-not $AllowVLSource) {
-                throw "$vlMsg`nOverride with -AllowVLSource to proceed anyway."
-            }
-            Write-Warning $vlMsg
-        }
         if ($Edition) {
             $ImageIndex = Resolve-Tiny11ImageIndex -Editions $editions -Edition $Edition
             Write-Output "Resolved -Edition '$Edition' to ImageIndex $ImageIndex."

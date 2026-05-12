@@ -1,0 +1,154 @@
+name: release
+
+# Triggered by a `v*` tag push (e.g. `git tag v1.0.0 && git push --tags`).
+# Builds + tests + Velopack-packs + optionally signs + creates a GitHub Release
+# with the per-version CHANGELOG.md entries as the body.
+#
+# Trusted Signing is OPTIONAL and gated on secret presence. When the 5 signing
+# secrets documented in launcher/README.md ("Trusted Signing -- one-time setup"
+# section) are present, both the launcher exe and the Velopack artifacts are
+# signed before release. When the secrets are absent (e.g. v1.0.0 -- signing
+# infrastructure deferred to v1.0.2), the sign steps are skipped via an `if:`
+# guard and the release ships unsigned. SmartScreen will warn on first install
+# in the unsigned case; click-through is the documented v1.0.0 UX.
+#
+# vpk (Velopack CLI) is pinned to a specific stable version below so a vpk
+# breaking change between releases can't silently break delta-update plumbing.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  VPK_VERSION: 0.0.1298
+
+jobs:
+  build-sign-release:
+    runs-on: windows-latest
+    permissions:
+      id-token: write   # OIDC federation to Azure for Trusted Signing
+      contents: write   # gh release create
+    env:
+      # Surface signing secrets at job-level so step-level `if:` guards can
+      # check env.AZURE_TENANT_ID. Missing secrets evaluate to '' (empty
+      # string), letting the sign steps no-op cleanly when signing isn't
+      # configured yet.
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      TRUSTED_SIGNING_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+      TRUSTED_SIGNING_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+      TRUSTED_SIGNING_CERT_PROFILE: ${{ secrets.TRUSTED_SIGNING_CERT_PROFILE }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          # Pinned via global.json (SDK 10.0.203 + rollForward: latestPatch).
+          # Avoids the runner pulling an SDK whose matching runtime pack
+          # isn't on nuget.org yet (hit on 2026-05-12 v0.99.1-unsigned-smoke
+          # validation run: SDK 10.0.8xx requested Microsoft.NETCore.App.Runtime.win-x64 10.0.8
+          # which doesn't exist on nuget). Single source of truth between
+          # local dev box + CI.
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore launcher/Tiny11Options.Launcher.csproj
+
+      - name: Test (xUnit)
+        run: dotnet test launcher/Tests/tiny11options.Launcher.Tests.csproj -c Release --logger "trx"
+
+      - name: Test (Pester)
+        shell: pwsh
+        run: |
+          Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'tests/'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config
+
+      - name: Publish (single-file, self-contained)
+        run: |
+          dotnet publish launcher/Tiny11Options.Launcher.csproj `
+            -c Release -r win-x64 `
+            -p:PublishSingleFile=true -p:SelfContained=true -p:IncludeAllContentForSelfExtract=true `
+            -o dist/raw/
+
+      - name: Sign tiny11options.exe via Trusted Signing
+        # Skipped when signing secrets aren't configured (v1.0.0 ships unsigned;
+        # signing scheduled for v1.0.2). Presence-check on AZURE_TENANT_ID is
+        # sufficient because all 5 signing secrets are wired together.
+        if: env.AZURE_TENANT_ID != ''
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
+          azure-client-id: ${{ env.AZURE_CLIENT_ID }}
+          endpoint: ${{ env.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ env.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.TRUSTED_SIGNING_CERT_PROFILE }}
+          files-folder: dist/raw
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+
+      - name: Install vpk (Velopack CLI, pinned)
+        shell: pwsh
+        run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        shell: pwsh
+        run: |
+          # Pull lines under "## [<version>] - <date>" up to the next "## [" line.
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $changelog = Get-Content CHANGELOG.md -Raw
+          # Match: "## [version]" header, capture everything until the next "## [" or EOF.
+          $pattern = "(?ms)^## \[$([regex]::Escape($version))\][^\n]*\n(.+?)(?=^## \[|\z)"
+          $match = [regex]::Match($changelog, $pattern)
+          if (-not $match.Success) {
+            Write-Error "No CHANGELOG.md section found for version $version. Expected a '## [$version] - YYYY-MM-DD' header."
+            exit 1
+          }
+          $notes = $match.Groups[1].Value.Trim()
+          # Write to a temp file the next step can reference.
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -Path $notesPath -Value $notes -Encoding utf8
+          "notes-path=$notesPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Release notes extracted to $notesPath ($(($notes -split "`n").Count) lines)"
+
+      - name: Velopack pack
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          vpk pack `
+            --packId tiny11options `
+            --packVersion $version `
+            --packDir dist/raw `
+            --mainExe tiny11options.exe `
+            --releaseNotes "${{ steps.notes.outputs.notes-path }}" `
+            --outputDir dist/releases
+
+      - name: Sign Velopack artifacts via Trusted Signing
+        # Skipped when signing secrets aren't configured (see note on the
+        # earlier Sign step above).
+        if: env.AZURE_TENANT_ID != ''
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
+          azure-client-id: ${{ env.AZURE_CLIENT_ID }}
+          endpoint: ${{ env.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ env.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.TRUSTED_SIGNING_CERT_PROFILE }}
+          files-folder: dist/releases
+          files-folder-filter: exe,nupkg
+          file-digest: SHA256
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            (Get-ChildItem dist/releases/*.nupkg, dist/releases/*Setup.exe, dist/releases/RELEASES | ForEach-Object FullName) `
+            --notes-file "${{ steps.notes.outputs.notes-path }}" `
+            --target main
