@@ -44,7 +44,13 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.x
+          # Pinned via global.json (SDK 10.0.203 + rollForward: latestPatch).
+          # Avoids the runner pulling an SDK whose matching runtime pack
+          # isn't on nuget.org yet (hit on 2026-05-12 v0.99.1-unsigned-smoke
+          # validation run: SDK 10.0.8xx requested Microsoft.NETCore.App.Runtime.win-x64 10.0.8
+          # which doesn't exist on nuget). Single source of truth between
+          # local dev box + CI.
+          global-json-file: global.json
 
       - name: Restore
         run: dotnet restore launcher/Tiny11Options.Launcher.csproj
