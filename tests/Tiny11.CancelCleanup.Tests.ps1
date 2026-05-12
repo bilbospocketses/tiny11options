@@ -94,4 +94,71 @@ Describe 'tiny11-cancel-cleanup.ps1 — structural contract' {
         $script:content | Should -Match 'StartsWith\(\$normalizedTarget'
         $script:content | Should -Match "Refusing to clean up: output ISO"
     }
+
+    Context '2026-05-11 order-fix: hive-unload + source-last + mount-gone gate' {
+        # The first C5a smoke run surfaced two foot-guns:
+        #   (1) The pipeline's `reg load HKLM\z*` keeps the host's System process
+        #       holding NTUSER.DAT / SOFTWARE / SYSTEM / DEFAULT / COMPONENTS open
+        #       inside MountDir, so Remove-Item silently fails on those files
+        #       even though no other tool obviously holds them. Fixed by adding
+        #       a `reg unload` pass at the top of the script.
+        #   (2) The original step order deleted SourceDir unconditionally after
+        #       attempting MountDir removal. If DISM unmount didn't actually
+        #       succeed (mount still in Invalid state, source.wim still needed
+        #       as reference), deleting SourceDir leaves the mount permanently
+        #       unrecoverable until reboot. Fixed by gating Remove-Item SourceDir
+        #       on a Test-Path MountDir check, with a "reboot required" diagnostic.
+
+        It 'iterates the five zHive mount-key names in a foreach' {
+            # The script unloads via foreach over an array literal of the 5 names,
+            # building the HKLM\$mountKey path at runtime. Assert the array literal
+            # contains each name.
+            foreach ($key in @('zCOMPONENTS','zDEFAULT','zNTUSER','zSOFTWARE','zSYSTEM')) {
+                $script:content | Should -Match "'$key'"
+            }
+        }
+
+        It 'invokes reg.exe unload (not load — defensive against accidental hive mount in the cleanup script)' {
+            $script:content | Should -Match "&\s+'reg\.exe'\s+'unload'"
+            # No `reg.exe' 'load'` call (only `reg load`-references in comments,
+            # which use backticks for code spans).
+            $script:content | Should -Not -Match "&\s+'reg\.exe'\s+'load'"
+        }
+
+        It 'reg unload call site precedes the DISM /Unmount-Image call site (order is load-bearing)' {
+            # Find the actual `& 'reg.exe'` invocation and the actual `& 'dism.exe' '/Unmount-Image'`
+            # invocation — NOT the comment references (which appear earlier).
+            $regIdx     = $script:content.IndexOf("& 'reg.exe' 'unload'")
+            $unmountIdx = $script:content.IndexOf("& 'dism.exe' '/Unmount-Image'")
+            $regIdx     | Should -BeGreaterThan -1
+            $unmountIdx | Should -BeGreaterThan $regIdx
+        }
+
+        It 'verifies the DISM mount registry after /Cleanup-Mountpoints (re-runs cleanup if mount still listed)' {
+            $script:content | Should -Match '/Get-MountedWimInfo'
+            $script:content | Should -Match '\$mountInfo\s+-match\s+\[regex\]::Escape\(\$MountDir\)'
+        }
+
+        It 'removes MountDir BEFORE SourceDir (source-last) — source.wim must remain available for DISM unmount' {
+            $mountRemove  = $script:content.IndexOf('Remove-Item -LiteralPath $MountDir')
+            $sourceRemove = $script:content.IndexOf('Remove-Item -LiteralPath $SourceDir')
+            $mountRemove  | Should -BeGreaterThan -1
+            $sourceRemove | Should -BeGreaterThan $mountRemove
+        }
+
+        It 'gates SourceDir removal on Test-Path MountDir verification (post-removal mount-gone check)' {
+            # After Remove-Item MountDir, the script re-checks Test-Path -LiteralPath $MountDir;
+            # if the dir is still present (kernel handles held by wimmount driver), it bails
+            # WITHOUT deleting SourceDir.
+            $script:content | Should -Match '(?ms)if \(Test-Path -LiteralPath \$MountDir\) \{[\s\S]{0,1000}REBOOT REQUIRED[\s\S]{0,300}exit 1'
+        }
+
+        It 'emits a REBOOT REQUIRED cleanup-error when mount removal failed' {
+            $script:content | Should -Match "REBOOT REQUIRED"
+        }
+
+        It 'reboot-required diagnostic explains why SourceDir was preserved' {
+            $script:content | Should -Match "SourceDir.*preserved"
+        }
+    }
 }

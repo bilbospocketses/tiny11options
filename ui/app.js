@@ -96,12 +96,16 @@ const state = {
     mountActive: false,
     mountDir: null,
     sourceDir: null,
-    // cleanup button is one-shot per the v1.0.0 design: disabled on click,
-    // never re-enabled. cleanupRequested flips true on click and stays true.
-    // cleanupStatus carries the latest cleanup-* marker payload for the
-    // status line below the button: { kind: 'progress'|'success'|'error', message }.
-    cleanupRequested: false,
+    // Cleanup spinner flow (2026-05-11 redesign): when the user invokes
+    // cleanup, the wizard navigates back to Step 3 (renderBuild) and shows an
+    // inline spinner + status row above the Build ISO button. Build ISO stays
+    // disabled while `cleaning` is true and re-enables once status reaches
+    // 'success'. `pendingCleanupAfterCancel` chains start-cleanup off the
+    // build-error marker we receive after a cancel-build, so the cleanup
+    // script doesn't race a still-mounted DISM in the build subprocess.
+    cleaning: false,
     cleanupStatus: null,
+    pendingCleanupAfterCancel: false,
 };
 
 // Snapshot of selections taken when "Save profile..." is clicked, used after the
@@ -258,8 +262,12 @@ function renderBuildStep() {
             el('dt', null, 'Changes'), el('dd', null, `${totalApplied} items applied`),
           ];
 
+    const inlineStatus = renderInlineCleanupStatus();
+    const buildDisabled = state.cleaning || (state.cleanupStatus && state.cleanupStatus.kind === 'error');
+
     return el('section', { class: 'build' },
         el('h2', null, 'Ready to build'),
+        inlineStatus,
         el('dl', null,
             el('dt', null, 'Source'),     el('dd', null, state.source || ''),
             el('dt', null, 'Edition'),    el('dd', null, editionLabel ? editionLabel.name : String(state.edition || '')),
@@ -276,14 +284,16 @@ function renderBuildStep() {
         ),
         el('button', {
             class: 'primary',
+            disabled: buildDisabled,
             onclick: () => {
+                if (buildDisabled) return;
                 state.building = true;
-                // Reset cleanup state from any prior build in this session so
-                // the new run starts with a fresh one-shot button. Mount/source
+                // Reset cleanup state so a new run starts fresh. Mount/source
                 // dirs get refreshed by the mount-state marker when install.wim
                 // mounts in the new build.
-                state.cleanupRequested = false;
+                state.cleaning = false;
                 state.cleanupStatus = null;
+                state.pendingCleanupAfterCancel = false;
                 state.mountActive = false;
                 renderStep();
                 ps({
@@ -305,25 +315,10 @@ function renderBuildStep() {
     );
 }
 
-// Renders the cancel-cleanup section. Mode-agnostic — works for both Core and
-// catalog-driven Worker builds, since the mount-state marker carries the
-// mountDir + sourceDir paths directly. Returns null when no install.wim is
-// currently mounted (cancel/error outside the danger window doesn't need
-// any cleanup beyond ordinary directory deletion).
-//
-// Layout (top to bottom):
-//   1. Yellow-bordered "⚠ Run cleanup automatically" button + tooltip
-//   2. Status line (empty until button clicked; then live progress, then
-//      success or error)
-//   3. Copy-paste fallback block with the 6 commands for users who prefer
-//      manual control or whose automatic run failed
-function renderCleanupBlock() {
-    if (!state.mountActive) return null;
-    const mount  = state.mountDir  || '';
-    const source = state.sourceDir || '';
-    if (!mount || !source) return null;
-
-    const cmds = [
+// Common cleanup command list, surfaced both in the recipe block (in-progress
+// details panel) and the cancel/error screen's cleanup section.
+function buildCleanupCommands(mount, source) {
+    return [
         `dism /unmount-image /mountdir:"${mount}" /discard`,
         `dism /cleanup-mountpoints`,
         `takeown /F "${mount}" /R /D Y`,
@@ -331,55 +326,118 @@ function renderCleanupBlock() {
         `Remove-Item -Path "${mount}" -Recurse -Force -ErrorAction SilentlyContinue`,
         `Remove-Item -Path "${source}" -Recurse -Force -ErrorAction SilentlyContinue`,
     ];
+}
 
+// Cleanup spinner flow (2026-05-11): centralised dispatch. Sets the in-flight
+// flag, primes the cleanupStatus row, navigates to Step 3 (renderBuild), then
+// asks the launcher to spawn the cleanup script. The status row + Build ISO
+// disable wiring lives in renderBuildStep / renderInlineCleanupStatus.
+function startCleanupFlow() {
+    if (!state.mountDir || !state.sourceDir) return;
+    state.cleaning = true;
+    state.cleanupStatus = { kind: 'progress', message: 'Starting cleanup…' };
+    state.building = false;
+    state.completed = null;
+    state.step = 'build';
+    renderStep();
+    ps({ type: 'start-cleanup', payload: { mountDir: state.mountDir, sourceDir: state.sourceDir } });
+}
+
+// Two-step flow for mid-build "Cancel build & clean up": send cancel-build now,
+// arm pendingCleanupAfterCancel so the build-error handler chains start-cleanup
+// once the build subprocess has actually torn down (releasing DISM locks on
+// the mount). Without this two-step, the cleanup script races a live DISM
+// session and silently fails to delete the locked mount dir.
+function cancelBuildAndCleanup() {
+    if (state.cleaning || state.pendingCleanupAfterCancel) return;
+    state.cleaning = true;
+    state.pendingCleanupAfterCancel = true;
+    state.cleanupStatus = { kind: 'progress', message: 'Cancelling build…' };
+    renderStep();
+    ps({ type: 'cancel-build', payload: {} });
+}
+
+// Recipe-only block (no button, no status) used in the in-progress details
+// panel. The auto-cleanup button was removed from this context because:
+//   1. renderProgress re-runs on every build-progress marker, so a status
+//      line that toggles state.mountActive=false on cleanup-complete would
+//      cause the whole block (including the success line) to vanish.
+//   2. Clicking cleanup mid-build races the live DISM mount — the script's
+//      Remove-Item silently fails because files are locked by the build PS
+//      subprocess. The new "Cancel build & clean up" button in renderProgress
+//      drives the cancel-then-cleanup chain instead.
+function renderCleanupRecipe() {
+    if (!state.mountActive) return null;
+    const mount  = state.mountDir  || '';
+    const source = state.sourceDir || '';
+    if (!mount || !source) return null;
+    const cmds = buildCleanupCommands(mount, source);
+    return el('div', { class: 'core-cleanup' },
+        el('p', { class: 'core-cleanup-intro' },
+            '⚠ install.wim is currently mounted at the path below. If something goes wrong, click "Cancel build & clean up" above (preferred), or run these commands manually in an elevated PowerShell window:'
+        ),
+        el('pre', { class: 'cleanup-cmd' }, cmds.join('\n'))
+    );
+}
+
+// Cleanup section for the build-error / build-cancelled screen. Has a button
+// that triggers startCleanupFlow (which navigates to Step 3 + dispatches the
+// PS script). Status is rendered in Step 3, not here — the user follows the
+// spinner there.
+function renderCleanupBlock() {
+    if (!state.mountActive) return null;
+    const mount  = state.mountDir  || '';
+    const source = state.sourceDir || '';
+    if (!mount || !source) return null;
+
+    const cmds = buildCleanupCommands(mount, source);
     const tooltip = 'Runs the six cleanup commands automatically. WARNING: dism /cleanup-mountpoints clears the system-wide DISM mount-point cache — only click this if no other DISM operations are running on this machine.';
 
-    // Button style: yellow warning border with caution-glyph in the label.
-    // Inline styles because this button is uniquely treated (not a reusable class).
-    // Disabled state is the one-shot lock: once clicked, never re-enabled.
     const cleanupButton = el('button', {
         class: 'cleanup-button',
         title: tooltip,
-        disabled: state.cleanupRequested,
-        style: 'border: 2px solid #f4c430; background-color: #fff8e1; color: #5d4e00; padding: 8px 16px; font-weight: 600; border-radius: 4px; cursor: ' + (state.cleanupRequested ? 'not-allowed' : 'pointer') + '; font-size: 1em;' + (state.cleanupRequested ? ' opacity: 0.55;' : ''),
-        onclick: () => {
-            if (state.cleanupRequested) return;
-            state.cleanupRequested = true;
-            state.cleanupStatus = { kind: 'progress', message: 'Starting cleanup...' };
-            ps({ type: 'start-cleanup', payload: { mountDir: mount, sourceDir: source } });
-            renderStep();
-        },
+        disabled: state.cleaning,
+        style: 'border: 2px solid #f4c430; background-color: #fff8e1; color: #5d4e00; padding: 8px 16px; font-weight: 600; border-radius: 4px; cursor: ' + (state.cleaning ? 'not-allowed' : 'pointer') + '; font-size: 1em;' + (state.cleaning ? ' opacity: 0.55;' : ''),
+        onclick: () => { if (!state.cleaning) startCleanupFlow(); },
     }, '⚠ Run cleanup automatically');
 
-    // Status line: empty (placeholder) until cleanup is requested, then
-    // shows live progress / success / error messages.
-    let statusEl;
-    if (!state.cleanupStatus) {
-        statusEl = el('div', { class: 'cleanup-status', style: 'margin-top: 10px; min-height: 1.2em; font-family: monospace; font-size: 0.9em;' }, '');
-    } else if (state.cleanupStatus.kind === 'progress') {
-        statusEl = el('div', { class: 'cleanup-status cleanup-status-progress', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em;' }, state.cleanupStatus.message);
-    } else if (state.cleanupStatus.kind === 'success') {
-        statusEl = el('div', { class: 'cleanup-status cleanup-status-success', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em; color: #2e7d32; font-weight: 600;' }, '✓ ' + state.cleanupStatus.message);
-    } else {
-        // 'error' — render the failure plus an instruction telling the user
-        // to run the commands manually in an elevated PowerShell window
-        // (the copy-paste block immediately below provides them).
-        statusEl = el('div', { class: 'cleanup-status cleanup-status-error', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em; color: #c62828; font-weight: 600;' },
-            el('div', null, '✗ Cleanup failed: ' + state.cleanupStatus.message),
-            el('div', { style: 'margin-top: 6px; font-weight: 400; color: #5d4037;' },
-                'Run the commands below manually in another elevated PowerShell window.'
-            )
-        );
-    }
-
-    return el('div', { class: 'core-cleanup', style: 'margin-top: 16px; padding: 12px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa;' },
+    return el('div', { class: 'core-cleanup' },
         el('p', { class: 'core-cleanup-intro' },
-            '⚠ install.wim is currently mounted at the path below. If you cancel or the build failed, the scratch directory is left in a non-resumable state. Click the button to run cleanup automatically, or run the commands in an elevated PowerShell window manually:'
+            '⚠ install.wim is currently mounted at the path below. Click the button to run cleanup automatically (you will be returned to the Build step where a spinner tracks progress), or run the commands in an elevated PowerShell window manually:'
         ),
         cleanupButton,
-        statusEl,
         el('p', { style: 'margin-top: 12px; font-size: 0.9em;' }, 'Manual fallback (run in elevated PowerShell):'),
         el('pre', { class: 'cleanup-cmd' }, cmds.join('\n'))
+    );
+}
+
+// Inline cleanup-status row rendered at the top of renderBuildStep when a
+// cleanup is in flight, just succeeded, or just failed. Three visual states:
+//   - progress: spinner + message
+//   - success:  green ✓ + message
+//   - error:    red ✗ + message + "Retry cleanup" button
+function renderInlineCleanupStatus() {
+    const s = state.cleanupStatus;
+    if (!s) return null;
+    if (s.kind === 'progress') {
+        return el('div', { class: 'cleanup-inline-status cleanup-inline-progress' },
+            el('span', { class: 'wizard-spinner' }),
+            el('span', { class: 'cleanup-inline-message' }, s.message)
+        );
+    }
+    if (s.kind === 'success') {
+        return el('div', { class: 'cleanup-inline-status cleanup-inline-success' },
+            el('span', { class: 'cleanup-inline-glyph' }, '✓'),
+            el('span', { class: 'cleanup-inline-message' }, s.message)
+        );
+    }
+    return el('div', { class: 'cleanup-inline-status cleanup-inline-error' },
+        el('span', { class: 'cleanup-inline-glyph' }, '✗'),
+        el('span', { class: 'cleanup-inline-message' }, 'Cleanup failed: ' + s.message),
+        el('button', {
+            class: 'cleanup-retry-link',
+            onclick: () => { if (!state.cleaning) startCleanupFlow(); }
+        }, 'Retry cleanup')
     );
 }
 
@@ -409,7 +467,7 @@ function renderProgress() {
                 el('dt', null, 'Build mode'), el('dd', null, buildMode),
                 el('dt', null, 'Output ISO'), el('dd', null, state.outputPath || '—')
             ),
-            renderCleanupBlock(),
+            renderCleanupRecipe(),
           ]
         : [
             el('dl', { class: 'build-details-summary' },
@@ -421,7 +479,7 @@ function renderProgress() {
             el('ul', { class: 'build-details-items' },
                 appliedItems.map(it => el('li', null, it.displayName))
             ),
-            renderCleanupBlock(),
+            renderCleanupRecipe(),
           ];
 
     return el('section', { class: 'progress' },
@@ -429,7 +487,16 @@ function renderProgress() {
         progressBar,
         el('p', null, `Phase: ${p.phase || '—'}`),
         el('p', null, `Step: ${p.step || '—'}`),
-        el('button', { onclick: () => ps({ type: 'cancel-build', payload: {} }) }, 'Cancel build'),
+        el('div', { class: 'row cancel-row' },
+            el('button', { onclick: () => ps({ type: 'cancel-build', payload: {} }) }, 'Cancel build'),
+            el('button', {
+                disabled: state.cleaning || !state.mountActive,
+                title: state.mountActive
+                    ? 'Cancel the in-progress build and then automatically clean the scratch mount + source directories.'
+                    : 'Cleanup is only available once install.wim is mounted.',
+                onclick: cancelBuildAndCleanup
+            }, 'Cancel build & clean up'),
+        ),
         el('details', {
             class: 'build-details',
             open: state.buildDetailsOpen,
@@ -482,7 +549,7 @@ function renderCompletionCleanupBlock() {
         }
     }
 
-    return el('div', { class: 'completion-cleanup', style: 'margin-top: 20px; padding: 12px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa;' },
+    return el('div', { class: 'completion-cleanup' },
         el('p', { style: 'margin: 0 0 8px 0;' },
             'Optional: remove temporary scratch directories used during the build. The output ISO at ',
             el('code', null, state.outputPath || '—'),
@@ -914,18 +981,38 @@ onPs(msg => {
         renderStep();
     } else if (msg.type === 'build-error') {
         state.building = false;
+        // Chained "Cancel build & clean up": user clicked the chained button
+        // mid-build, we sent cancel-build, the build subprocess is now down
+        // and DISM mount locks are released. Now safe to fire start-cleanup.
+        if (state.pendingCleanupAfterCancel) {
+            state.pendingCleanupAfterCancel = false;
+            state.cleanupStatus = { kind: 'progress', message: 'Starting cleanup…' };
+            state.step = 'build';
+            state.completed = null;
+            renderStep();
+            ps({ type: 'start-cleanup', payload: { mountDir: state.mountDir, sourceDir: state.sourceDir } });
+            return;
+        }
         const root = document.getElementById('content');
         clear(root);
+        // Cancel-vs-failure header polish: BuildHandlers.cs emits build-error with
+        // message "Build cancelled by user." when the user clicks plain "Cancel
+        // build". Surface that as a friendlier "Build cancelled" header rather
+        // than "Build failed" — same screen, less alarming.
+        const wasCancelled = ((p.message || '') + '').toLowerCase().includes('cancelled by user');
         const children = [
-            el('h2', null, 'Build failed'),
-            el('p', null, p.message || 'Unknown error'),
+            el('h2', null, wasCancelled ? 'Build cancelled' : 'Build failed'),
         ];
+        if (!wasCancelled) {
+            children.push(el('p', null, p.message || 'Unknown error'));
+        }
         if (p.logPath) {
             children.push(el('p', { class: 'log-hint' }, 'Full build log: ', el('code', null, p.logPath)));
         }
         // Cleanup section renders for both Core and Worker; the function
         // self-gates on state.mountActive so it returns null outside the
-        // mount window.
+        // mount window. The button on this screen navigates the user to
+        // Step 3 (renderBuild) where the spinner-flow status row lives.
         const cleanupBlock = renderCleanupBlock();
         if (cleanupBlock) children.push(cleanupBlock);
         children.push(el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close'));
@@ -934,14 +1021,12 @@ onPs(msg => {
         state.cleanupStatus = { kind: 'progress', message: `(${p.percent || 0}%) ${p.step || ''}` };
         renderStep();
     } else if (msg.type === 'cleanup-complete') {
+        state.cleaning = false;
         state.cleanupStatus = { kind: 'success', message: p.message || 'Cleanup complete.' };
-        // Mark mount as cleared so the section will hide on the next non-error
-        // render (e.g. if user starts a new build). On the current cancel/error
-        // screen the section keeps showing the success line until the user
-        // navigates away.
         state.mountActive = false;
         renderStep();
     } else if (msg.type === 'cleanup-error') {
+        state.cleaning = false;
         state.cleanupStatus = { kind: 'error', message: p.message || 'Unknown cleanup error.' };
         renderStep();
     } else if (msg.type === 'cleanup-started') {
@@ -953,6 +1038,16 @@ onPs(msg => {
         console.log('Profile saved:', p.path);
     } else if (msg.type === 'handler-error') {
         console.error('Handler error:', p.message);
+        // If a cleanup or cancel-and-cleanup was in flight, surface to the UI
+        // — otherwise a thrown handler (e.g. Process.Start) leaves the user
+        // stuck on a "Starting cleanup…" spinner forever. The Retry cleanup
+        // button on the error status row gives them a way out.
+        if (state.cleaning || state.pendingCleanupAfterCancel) {
+            state.cleaning = false;
+            state.pendingCleanupAfterCancel = false;
+            state.cleanupStatus = { kind: 'error', message: 'Cleanup handler failed: ' + (p.message || 'unknown') };
+            renderStep();
+        }
     }
 });
 

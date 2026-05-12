@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Path C — bundled `.exe` launcher implementation in progress on `feat/path-c-launcher`. Phases 1-4 complete + Phase 4.5 audit pass + audit rounds 2/3/4 + thread-affinity fix + VL heuristic empirically disproved + diagnostic-stub revert + smoke check 6 verified end-to-end. 35 xUnit tests green; 81 Pester tests green. Not yet released.
+Path C — bundled `.exe` launcher implementation in progress on `feat/path-c-launcher`. Phases 1-4 complete + Phase 4.5 audit pass + audit rounds 2/3/4 + thread-affinity fix + VL heuristic empirically disproved + diagnostic-stub revert + smoke check 6 verified end-to-end. C5 cleanup-UX redesign 2026-05-11: two-button Cancel row, spinner-flow on Step 3, theme-aware cleanup panels, cancel-cleanup script reordered to mount-first / source-last with hive-unload prophylactic + reboot-required diagnostic. 63 xUnit tests green; 251 Pester tests green. Not yet released.
+
+### Fixed (2026-05-11 — C5a smoke surfaced + fixed)
+- **Cleanup script left the mount dir partially populated when the build pipeline had `reg load`-ed hives into `HKLM\z*`.** The host System process held NTUSER.DAT / SOFTWARE / SYSTEM / DEFAULT / COMPONENTS open inside the mount, and `Remove-Item -ErrorAction SilentlyContinue` silently failed on every locked file. `tiny11-cancel-cleanup.ps1` now begins with a `reg unload HKLM\z{COMPONENTS,DEFAULT,NTUSER,SOFTWARE,SYSTEM}` pass before any DISM operation.
+- **Cleanup script deleted `source\` even when the mount didn't actually release.** With `source\sources\install.wim` gone, DISM cannot complete a `/Unmount-Image /Discard` on the orphaned mount — the wimmount driver keeps kernel handles on the mount dir contents until reboot. Cleanup now: (1) attempts unmount + `/Cleanup-Mountpoints` + verification; (2) takeown/icacls/Remove-Item the mount; (3) **verifies `Test-Path $MountDir` returns false**; (4) only THEN removes `source\`. If the mount dir persists, the script emits a `cleanup-error` with a `REBOOT REQUIRED` diagnostic explaining that `source\` has been preserved so a post-reboot retry can complete a clean unmount.
+- **Cleanup section vanished on success during active build.** `renderProgress` re-runs on every build-progress marker; `cleanup-complete` set `state.mountActive = false`, `renderCleanupBlock` returned null, and the whole status section (success line included) disappeared on the next marker. Fixed by removing the cleanup BUTTON from the in-progress details panel (now `renderCleanupRecipe`, recipe-only, no button) and moving cleanup status to an inline row at the top of Step 3 that persists through cleanup-complete.
+- **Mid-build cleanup races a live DISM mount.** Build subprocess held DISM + file locks; cleanup script's `/Unmount-Image` failed, `Remove-Item -ErrorAction SilentlyContinue` silently failed, but script reported `cleanup-complete` anyway (false success). Fixed by introducing a **"Cancel build & clean up"** button in `renderProgress` (alongside the existing "Cancel build") that sends `cancel-build` first, waits for the resulting `build-error` marker (build subprocess fully torn down + DISM locks released), then chains `start-cleanup` via `state.pendingCleanupAfterCancel`.
+- **`handler-error` was console-only.** If C# `Process.Start` (or any handler) threw, `Bridge.cs` returned `handler-error` and JS only `console.error`-d it. The user saw a stuck "Starting cleanup…" spinner with no diagnostic. Now surfaces to `state.cleanupStatus = { kind: 'error', message: ... }` when a cleanup was in flight, with a "Retry cleanup" button in the inline status row.
+- **Mid-build details panel showed an auto-cleanup button that silently failed.** The button is removed from the in-progress context (button-click would race live DISM); recipe + manual fallback commands remain visible as a read-only reference for power users.
+- **Theme awareness on cleanup panels.** `renderCleanupBlock` + `renderCompletionCleanupBlock` shipped with hardcoded `background: #fafafa; border: 1px solid #ddd;` inline styles. Light mode looked correct; dark mode showed a white panel. Moved chrome to `style.css` using `var(--bg-card)` / `var(--border)`; inline cleanup-status row also fully theme-aware.
+- **"Build failed" header polish for the cancel case.** `BuildHandlers.cs` emits `build-error { message: "Build cancelled by user." }` on plain Cancel — JS now detects that substring and renders **"Build cancelled"** instead of "Build failed", and omits the duplicate message paragraph.
+
+### Added (2026-05-11)
+- New state fields in `ui/app.js`: `state.cleaning`, `state.pendingCleanupAfterCancel`. Removed legacy `state.cleanupRequested` one-shot latch.
+- `startCleanupFlow()` — centralised dispatch that navigates to Step 3, primes the spinner, and posts `start-cleanup`.
+- `cancelBuildAndCleanup()` — mid-build chained flow.
+- `renderCleanupRecipe()` — recipe-only block for in-progress details panel.
+- `renderInlineCleanupStatus()` — spinner / green ✓ / red ✗ with Retry button in error state.
+- `tiny11-cancel-cleanup.ps1` ordering rewrite (steps 1-6 documented in the script header).
+- 67 new Pester assertions across `Tiny11.CancelCleanup.Tests.ps1` (8 new for the order fix) and `Tiny11.UiApp.Cleanup.Tests.ps1` (35 covering the entire spinner-flow wiring, header polish, and theme regression).
 
 ### Added
 - `tiny11options.sln` solution file at repo root.

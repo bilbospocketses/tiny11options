@@ -569,6 +569,91 @@ section.progress h2 {
     pointer-events: none;
 }
 
+/* Inline cleanup status row — rendered at the top of Step 3 (renderBuild)
+   while a cleanup is in flight, just succeeded, or just failed. Drives the
+   spinner-then-checkmark UX the user sees after clicking "Cancel build &
+   clean up" or the cleanup button on the build-failed screen. */
+.cleanup-inline-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    margin: 0 0 var(--gap-lg) 0;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    font-size: 13px;
+}
+
+.cleanup-inline-message { flex: 1; }
+
+.cleanup-inline-glyph {
+    font-weight: 700;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.cleanup-inline-progress .cleanup-inline-message {
+    color: var(--fg);
+}
+
+.cleanup-inline-success {
+    border-color: #2e7d32;
+}
+[data-theme="dark"] .cleanup-inline-success { border-color: #6fbf73; }
+.cleanup-inline-success .cleanup-inline-glyph,
+.cleanup-inline-success .cleanup-inline-message {
+    color: #2e7d32;
+    font-weight: 600;
+}
+[data-theme="dark"] .cleanup-inline-success .cleanup-inline-glyph,
+[data-theme="dark"] .cleanup-inline-success .cleanup-inline-message {
+    color: #8fd394;
+}
+
+.cleanup-inline-error {
+    border-color: var(--error-fg);
+    background: var(--error-bg);
+}
+.cleanup-inline-error .cleanup-inline-glyph,
+.cleanup-inline-error .cleanup-inline-message {
+    color: var(--error-fg);
+    font-weight: 600;
+}
+
+.cleanup-retry-link {
+    flex-shrink: 0;
+    padding: 4px 12px;
+    font-size: 12px;
+}
+
+/* Cancel-row in the in-progress screen — holds "Cancel build" + the new
+   "Cancel build & clean up" side-by-side. */
+section.progress .cancel-row {
+    justify-content: center;
+    gap: var(--gap);
+    margin-top: var(--gap);
+}
+
+/* Cleanup panels — cancel/error (yellow warning) and build-complete (plain).
+   Theme-aware via var(--bg-card)/var(--border); replaced previous inline
+   #fafafa/#ddd which ignored dark mode. */
+.core-cleanup {
+    margin-top: 16px;
+    padding: var(--gap);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+}
+
+.completion-cleanup {
+    margin-top: var(--gap-lg);
+    padding: var(--gap);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+}
+
 /* Core cleanup command block */
 .cleanup-cmd {
     background: var(--bg-input);
