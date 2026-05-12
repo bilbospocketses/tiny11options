@@ -245,6 +245,22 @@ public class BuildHandlers : IBridgeHandler
             if (t is "build-progress" or "build-complete" or "build-error")
             {
                 if (t is "build-complete" or "build-error") _terminalMarkerSeen = true;
+                // Race guard against the d637289-flagged double-emit case: when the
+                // wrapper script writes a build-error to stdout milliseconds before
+                // our Kill arrives (e.g. the pipeline's own catch fired on a
+                // different abort path), the cancel handler has already sent its
+                // own "Build cancelled by user." build-error. Suppress this
+                // stdout-sourced one so JS doesn't receive two back-to-back
+                // build-errors. Reviewer marked 🟡 not 🔴 because the later cancel
+                // message wins in JS rendering, so the behavior was correct but
+                // the cause-of-failure ordering was reversed on screen. Note we
+                // still set _terminalMarkerSeen above before this gate -- that
+                // protects the stderr-fallback Task from firing a spurious
+                // post-exit message. build-progress / build-complete are NOT
+                // gated: surplus progress is harmless, and build-complete with
+                // _cancelRequested=true means the script raced past our Kill and
+                // actually finished -- surfacing the success is fine.
+                if (t is "build-error" && _cancelRequested) return;
                 // DeepClone the payload so the new BridgeMessage owns it cleanly.
                 // Without the clone, node["payload"] is still parented under `node`
                 // and System.Text.Json throws "node already has a parent" when
