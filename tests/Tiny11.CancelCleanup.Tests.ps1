@@ -118,6 +118,36 @@ Describe 'tiny11-cancel-cleanup.ps1 -- structural contract' {
             }
         }
 
+        It 'unloads EXACTLY five hive keys (catches expansion drift -- new hive added to script but missed in recipe)' {
+            # Existing test asserts "all 5 expected keys present" but doesn't catch
+            # the case where someone adds a 6th hive to the script (e.g. zCOMPAT) and
+            # forgets to mirror it in ui/app.js buildCleanupCommands(). Count all
+            # 'z*' tokens in single quotes within the foreach array and assert == 5.
+            # The script's only `'z*'` quoted strings ARE the foreach array entries;
+            # no other code path quotes hive names.
+            $matches = [regex]::Matches($script:content, "'(z[A-Z]+)'")
+            $hiveKeys = $matches | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+            $hiveKeys.Count | Should -Be 5
+            $hiveKeys -join ',' | Should -Be 'zCOMPONENTS,zDEFAULT,zNTUSER,zSOFTWARE,zSYSTEM'
+        }
+
+        It 'cleanup script hive list MATCHES the in-UI recipe verbatim (lockstep parity guard)' {
+            # Cross-file parity test (the reason this Context exists at all is the
+            # C5h-iteration regression where the recipe lacked reg unload while the
+            # script had it). Extract the hive-key list from BOTH files and assert
+            # they are identical. If they ever diverge -- recipe gains a key the
+            # script doesn't unload, or script unloads a key the recipe doesn't
+            # show -- this fires before users hit a divergence in production.
+            $appJsPath  = (Resolve-Path (Join-Path $PSScriptRoot '..\ui\app.js')).Path
+            $appJs      = Get-Content $appJsPath -Raw
+            # Recipe lines look like: 'reg unload HKLM\\zCOMPONENTS',
+            $recipeKeys = [regex]::Matches($appJs, "reg unload HKLM\\\\(z[A-Z]+)") |
+                ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+            $scriptKeys = [regex]::Matches($script:content, "'(z[A-Z]+)'") |
+                ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+            $recipeKeys -join ',' | Should -Be ($scriptKeys -join ',')
+        }
+
         It 'invokes reg.exe unload (not load -- defensive against accidental hive mount in the cleanup script)' {
             $script:content | Should -Match "&\s+'reg\.exe'\s+'unload'"
             # No `reg.exe' 'load'` call (only `reg load`-references in comments,

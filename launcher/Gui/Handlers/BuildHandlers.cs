@@ -55,7 +55,15 @@ public class BuildHandlers : IBridgeHandler
             // somehow still slips. C5g iteration-4 regression: 2026-05-12.
             _terminalMarkerSeen = true;
             _cancelRequested = true;
-            _activeBuild?.Kill(entireProcessTree: true);
+            // Kill can throw InvalidOperationException (process already exited
+            // between our HasExited checks elsewhere and this call) or
+            // Win32Exception (rare AccessDenied on locked-down child). Swallow:
+            // flags are already set; we still need to fire dismount + return the
+            // friendly build-error below. Without this catch the exception would
+            // propagate to the bridge dispatcher and JS would see no build-error,
+            // leaving the UI stuck on the progress screen.
+            try { _activeBuild?.Kill(entireProcessTree: true); }
+            catch { /* see note above */ }
             // Catch-all: dismount the source ISO if the build was cancelled mid-
             // preflight (Phase 1 mounts the ISO, copies to scratch, dismounts in
             // a try/finally -- but Process.Kill bypasses finally entirely, so a
@@ -166,33 +174,53 @@ public class BuildHandlers : IBridgeHandler
         // error, ImportModule failure), it never writes a build-error JSON marker.
         // Capture stderr and emit build-error on non-zero exit only when no
         // build-error / build-complete has come through stdout.
+        // Capture _activeBuild into the closure so the finally block can dispose
+        // the right Process object even if _activeBuild is replaced by a fresh
+        // start-build before this fallback Task runs to completion.
+        var capturedBuild = _activeBuild;
         _ = Task.Run(async () =>
         {
-            await _activeBuild.WaitForExitAsync();
-            // Belt-and-suspenders: if _cancelRequested is set, the cancel handler
-            // already returned the "Build cancelled by user." build-error and JS
-            // rendered it. Skip the fallback entirely so we never overwrite that
-            // with the misleading "exit -1" message. The _terminalMarkerSeen check
-            // covers the normal completion/error paths.
-            if (_cancelRequested || _terminalMarkerSeen) return;
-            // Abnormal exit BEFORE the script's own try/finally ran (parse error,
-            // ImportModule failure, etc.) -- the source ISO may still be attached
-            // if the crash landed between Mount-Tiny11Source and Dismount-Tiny11Source.
-            // Same catch-all as the cancel handler; idempotent if not mounted.
-            DismountSourceIsoIfApplicable();
-            if (_activeBuild.ExitCode != 0)
+            try
             {
-                var err = await _activeBuild.StandardError.ReadToEndAsync();
-                _bridge.SendToJs(new Bridge.BridgeMessage
+                await capturedBuild.WaitForExitAsync();
+                // Belt-and-suspenders: if _cancelRequested is set, the cancel handler
+                // already returned the "Build cancelled by user." build-error and JS
+                // rendered it. Skip the fallback entirely so we never overwrite that
+                // with the misleading "exit -1" message. The _terminalMarkerSeen check
+                // covers the normal completion/error paths.
+                if (_cancelRequested || _terminalMarkerSeen) return;
+                // Abnormal exit BEFORE the script's own try/finally ran (parse error,
+                // ImportModule failure, etc.) -- the source ISO may still be attached
+                // if the crash landed between Mount-Tiny11Source and Dismount-Tiny11Source.
+                // Same catch-all as the cancel handler; idempotent if not mounted.
+                DismountSourceIsoIfApplicable();
+                if (capturedBuild.ExitCode != 0)
                 {
-                    Type = "build-error",
-                    Payload = new JsonObject
+                    var err = await capturedBuild.StandardError.ReadToEndAsync();
+                    _bridge.SendToJs(new Bridge.BridgeMessage
                     {
-                        ["message"] = string.IsNullOrWhiteSpace(err)
-                            ? $"Build process exited with code {_activeBuild.ExitCode} and no output"
-                            : err.Trim(),
-                    },
-                });
+                        Type = "build-error",
+                        Payload = new JsonObject
+                        {
+                            ["message"] = string.IsNullOrWhiteSpace(err)
+                                ? $"Build process exited with code {capturedBuild.ExitCode} and no output"
+                                : err.Trim(),
+                        },
+                    });
+                }
+            }
+            finally
+            {
+                // Release the Process handle + std stream buffers and clear the
+                // stale source path. If a new start-build raced this Task and
+                // already replaced _activeBuild, ReferenceEquals keeps us from
+                // nulling the fresh reference; only clear the slots we owned.
+                try { capturedBuild.Dispose(); } catch { /* dispose must not throw out of finally */ }
+                if (ReferenceEquals(_activeBuild, capturedBuild))
+                {
+                    _activeBuild = null;
+                    _activeSource = "";
+                }
             }
         });
 

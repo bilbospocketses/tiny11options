@@ -1100,6 +1100,17 @@ onPs(msg => {
             state.pendingCleanupAfterCancel = false;
             state.cleanupStatus = { kind: 'error', message: 'Cleanup handler failed: ' + (p.message || 'unknown') };
             renderStep();
+        } else if (state.building) {
+            // start-build was rejected by C# server-side guards (empty outputIso /
+            // source, or some other handler-level failure) before the subprocess
+            // spawned. The Build ISO onclick had already set state.building=true,
+            // so we'd otherwise hang on the progress screen forever. Reset and
+            // surface the message; client-side gates make this rare in practice
+            // (defense in depth), so an alert is acceptable for v1.0.0 rather
+            // than building a dedicated inline banner.
+            state.building = false;
+            renderStep();
+            window.alert('Build could not start: ' + (p.message || 'unknown error'));
         }
     }
 });
