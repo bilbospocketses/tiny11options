@@ -1,5 +1,11 @@
 # Release signing setup — step by step
 
+> **Status (2026-05-12):** **v1.0.0 ships unsigned; code signing is scheduled for v1.0.2.** This guide is the forward-looking reference for the v1.0.2 signing pass — pick it up when you're ready to land Trusted Signing. The release workflow (`.github/workflows/release.yml`) already gates its two signing steps on `if: env.AZURE_TENANT_ID != ''`, so the moment the 5 secrets in Part 4 are added to the repo, the next tag push produces signed binaries automatically with no workflow edits needed.
+>
+> Until then, v1.0.0 (and any other pre-v1.0.2 releases) ship unsigned and rely on Windows SmartScreen click-through for first install. Velopack auto-updates work fine across the unsigned-to-signed transition, so v1.0.0 users will pick up the signed v1.0.2 build without manual reinstall.
+
+---
+
 This is the verbose walkthrough for wiring Microsoft Trusted Signing (a.k.a. Artifact Signing) into the GitHub Actions release workflow. Follow this once; after it's done, every `v*` tag push produces signed binaries automatically.
 
 > **Naming note (2025 rebrand):** Microsoft renamed **Trusted Signing** to **Artifact Signing** in their Azure Portal UI in 2025. The GitHub Action is still published at `azure/trusted-signing-action` and our `release.yml` references that name. **Azure Portal screens say "Artifact Signing"; the GitHub Action and our secret names say "Trusted Signing".** Both refer to the same service. Don't worry about the inconsistency.

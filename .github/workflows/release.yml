@@ -1,13 +1,16 @@
 name: release
 
 # Triggered by a `v*` tag push (e.g. `git tag v1.0.0 && git push --tags`).
-# Builds + tests + signs + Velopack-packs + signs Velopack artifacts + creates
-# a GitHub Release with the per-version CHANGELOG.md entries as the body.
+# Builds + tests + Velopack-packs + optionally signs + creates a GitHub Release
+# with the per-version CHANGELOG.md entries as the body.
 #
-# Trusted Signing requires the 5 repo secrets documented in launcher/README.md
-# ("Trusted Signing -- one-time setup" section). Without those secrets the
-# sign steps will fail; treat that as a "secrets not configured" failure mode
-# rather than a workflow bug.
+# Trusted Signing is OPTIONAL and gated on secret presence. When the 5 signing
+# secrets documented in launcher/README.md ("Trusted Signing -- one-time setup"
+# section) are present, both the launcher exe and the Velopack artifacts are
+# signed before release. When the secrets are absent (e.g. v1.0.0 -- signing
+# infrastructure deferred to v1.0.2), the sign steps are skipped via an `if:`
+# guard and the release ships unsigned. SmartScreen will warn on first install
+# in the unsigned case; click-through is the documented v1.0.0 UX.
 #
 # vpk (Velopack CLI) is pinned to a specific stable version below so a vpk
 # breaking change between releases can't silently break delta-update plumbing.
@@ -26,6 +29,16 @@ jobs:
     permissions:
       id-token: write   # OIDC federation to Azure for Trusted Signing
       contents: write   # gh release create
+    env:
+      # Surface signing secrets at job-level so step-level `if:` guards can
+      # check env.AZURE_TENANT_ID. Missing secrets evaluate to '' (empty
+      # string), letting the sign steps no-op cleanly when signing isn't
+      # configured yet.
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      TRUSTED_SIGNING_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+      TRUSTED_SIGNING_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+      TRUSTED_SIGNING_CERT_PROFILE: ${{ secrets.TRUSTED_SIGNING_CERT_PROFILE }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,13 +70,17 @@ jobs:
             -o dist/raw/
 
       - name: Sign tiny11options.exe via Trusted Signing
+        # Skipped when signing secrets aren't configured (v1.0.0 ships unsigned;
+        # signing scheduled for v1.0.2). Presence-check on AZURE_TENANT_ID is
+        # sufficient because all 5 signing secrets are wired together.
+        if: env.AZURE_TENANT_ID != ''
         uses: azure/trusted-signing-action@v0.5.1
         with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.TRUSTED_SIGNING_CERT_PROFILE }}
+          azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
+          azure-client-id: ${{ env.AZURE_CLIENT_ID }}
+          endpoint: ${{ env.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ env.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.TRUSTED_SIGNING_CERT_PROFILE }}
           files-folder: dist/raw
           files-folder-filter: exe,dll
           file-digest: SHA256
@@ -106,13 +123,16 @@ jobs:
             --output dist/releases
 
       - name: Sign Velopack artifacts via Trusted Signing
+        # Skipped when signing secrets aren't configured (see note on the
+        # earlier Sign step above).
+        if: env.AZURE_TENANT_ID != ''
         uses: azure/trusted-signing-action@v0.5.1
         with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.TRUSTED_SIGNING_CERT_PROFILE }}
+          azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
+          azure-client-id: ${{ env.AZURE_CLIENT_ID }}
+          endpoint: ${{ env.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ env.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.TRUSTED_SIGNING_CERT_PROFILE }}
           files-folder: dist/releases
           files-folder-filter: exe,nupkg
           file-digest: SHA256
