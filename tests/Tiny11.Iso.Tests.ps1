@@ -10,6 +10,16 @@ Describe "Resolve-Tiny11Source" {
         $r.Kind | Should -Be 'IsoFile'; $r.IsoPath | Should -Be 'C:\foo.iso'
     }
     It "throws on unrecognized input"                 { { Resolve-Tiny11Source -InputPath 'C:\not-an-iso.txt' } | Should -Throw }
+    It "rejects non-.iso file paths like .img" {
+        # COUPLED CONSTRAINT (d637289 review item): the C# DismountSourceIsoIfApplicable
+        # in launcher/Gui/Handlers/BuildHandlers.cs filters _activeSource on
+        # EndsWith(".iso"). That filter is functionally correct ONLY because this
+        # upstream resolver rejects non-.iso file paths. If you loosen this to
+        # accept .img (USB Setup media often arrives as .img), you MUST also
+        # update DismountSourceIsoIfApplicable's filter -- otherwise post-cancel
+        # the user's mounted source will stay attached. Both sides change together.
+        { Resolve-Tiny11Source -InputPath 'C:\Win11.img' } | Should -Throw
+    }
 }
 
 Describe "Mount-Tiny11Source / Get-Tiny11Editions" {

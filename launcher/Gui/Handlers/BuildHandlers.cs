@@ -375,6 +375,16 @@ public class BuildHandlers : IBridgeHandler
         // _activeSource can't swap the path out from under the background
         // shell-out. Pre-checks also run sync to avoid spinning up a Task
         // for the common no-op case (no active source / non-.iso).
+        //
+        // COUPLED CONSTRAINT (d637289 review item): the EndsWith(".iso") filter
+        // is correct ONLY because the upstream `Resolve-Tiny11Source` in
+        // `src/Tiny11.Iso.psm1` rejects file paths that don't match `*.iso`.
+        // If validate-iso is ever loosened to accept `.img` or extension-less
+        // files (Windows Setup media on USB is sometimes `.img`), this filter
+        // must be updated to match -- otherwise the user's mounted source will
+        // stay attached after a build cancel. The paired Pester test in
+        // `tests/Tiny11.Iso.Tests.ps1` ("rejects non-.iso file paths like .img")
+        // locks in the upstream side; both sides must change together.
         var src = _activeSource;
         if (string.IsNullOrWhiteSpace(src)) return Task.CompletedTask;
         if (!src.EndsWith(".iso", StringComparison.OrdinalIgnoreCase)) return Task.CompletedTask;
