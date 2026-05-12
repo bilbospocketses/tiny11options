@@ -5,10 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.99.1-unsigned-smoke] - 2026-05-12
-
-**TEMPORARY — DELETE THIS BLOCK AFTER VALIDATION RUN.** Throwaway tag pushed to validate that `.github/workflows/release.yml` runs green when Trusted Signing secrets are absent (signing deferred to v1.0.2). Both `Sign ... via Trusted Signing` steps should be skipped by the `if: env.AZURE_TENANT_ID != ''` guard; the rest of the pipeline (restore, xUnit, Pester, publish, vpk pack, gh release create) should complete normally with unsigned artifacts attached to the release. After the workflow run is verified green, the release + tag + this CHANGELOG block all get deleted.
-
 ## [Unreleased]
 
 ### v1.0.0 release scope (Path C — bundled .exe launcher)
