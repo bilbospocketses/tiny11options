@@ -36,3 +36,18 @@ Describe "Invoke-Tiny11ApplyActions" {
         $script:calls | Should -BeGreaterThan 0
     }
 }
+
+Describe 'Invoke-Tiny11BuildPipeline post-boot cleanup integration' {
+    It 'source calls Install-Tiny11PostBootCleanup and threads $InstallPostBootCleanup' {
+        $source = Get-Content (Join-Path $PSScriptRoot '..' 'src' 'Tiny11.Worker.psm1') -Raw
+        $source | Should -Match 'Install-Tiny11PostBootCleanup'
+        $source | Should -Match '\$InstallPostBootCleanup'
+        $source | Should -Match '-Enabled:\$InstallPostBootCleanup'
+    }
+
+    It 'has an InstallPostBootCleanup parameter on Invoke-Tiny11BuildPipeline' {
+        $cmd = Get-Command Invoke-Tiny11BuildPipeline
+        $cmd.Parameters.Keys | Should -Contain 'InstallPostBootCleanup'
+        $cmd.Parameters['InstallPostBootCleanup'].ParameterType.Name | Should -Be 'Boolean'
+    }
+}

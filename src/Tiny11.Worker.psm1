@@ -3,6 +3,7 @@ Import-Module "$PSScriptRoot/Tiny11.Actions.psm1"        -Force -Global -Disable
 Import-Module "$PSScriptRoot/Tiny11.Hives.psm1"          -Force -Global -DisableNameChecking
 Import-Module "$PSScriptRoot/Tiny11.Iso.psm1"            -Force -Global -DisableNameChecking
 Import-Module "$PSScriptRoot/Tiny11.Autounattend.psm1"   -Force -Global -DisableNameChecking
+Import-Module "$PSScriptRoot/Tiny11.PostBoot.psm1"       -Force -Global -DisableNameChecking
 
 function Get-Tiny11ApplyItems {
     [CmdletBinding()]
@@ -40,7 +41,8 @@ function Invoke-Tiny11BuildPipeline {
         [Parameter(Mandatory)][hashtable]$ResolvedSelections,
         [Parameter(Mandatory)][scriptblock]$ProgressCallback,
         [Parameter()]$CancellationToken = $null,
-        [Parameter()][bool]$FastBuild = $false
+        [Parameter()][bool]$FastBuild = $false,
+        [Parameter()][bool]$InstallPostBootCleanup = $true
     )
 
     function CheckCancel { if ($CancellationToken -and $CancellationToken.IsCancellationRequested) { throw "Build cancelled by user" } }
@@ -105,6 +107,9 @@ function Invoke-Tiny11BuildPipeline {
             & $progress @{ phase='cleanup-image'; step='dism /Cleanup-Image /StartComponentCleanup /ResetBase'; percent=75 }
             & 'dism.exe' "/Image:$scratchImg" '/Cleanup-Image' '/StartComponentCleanup' '/ResetBase' | Out-Null
         }
+
+        & $progress @{ phase='inject-postboot-cleanup'; step='Installing post-boot cleanup task'; percent=78 }
+        Install-Tiny11PostBootCleanup -MountDir $scratchImg -Catalog $Catalog -ResolvedSelections $ResolvedSelections -Enabled:$InstallPostBootCleanup
 
         & $progress @{ phase='wim-save'; step='Dismounting install.wim (save)'; percent=80 }
         Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
