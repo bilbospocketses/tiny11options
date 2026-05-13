@@ -15,4 +15,18 @@ function Invoke-ScheduledTaskAction {
     else                 { Remove-Item -Path $full -Force -ErrorAction SilentlyContinue }
 }
 
-Export-ModuleMember -Function Invoke-ScheduledTaskAction
+function Get-Tiny11ScheduledTaskOnlineCommand {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Action)
+
+    if ($Action.op -ne 'remove') { throw "Invalid scheduled-task op: $($Action.op)" }
+    $relPath = $Action.path -replace '/', '\'
+
+    ,([pscustomobject]@{
+        Kind        = 'Remove-PathIfPresent'
+        Args        = [ordered]@{ Path = '$env:SystemRoot\System32\Tasks\' + $relPath; Recurse = [bool]$Action.recurse }
+        Description = "Remove scheduled task XML '$relPath'" + $(if ([bool]$Action.recurse) { ' (recurse)' } else { '' })
+    })
+}
+
+Export-ModuleMember -Function Invoke-ScheduledTaskAction, Get-Tiny11ScheduledTaskOnlineCommand
