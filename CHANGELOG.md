@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-05-12
+
+### Added (post-boot cleanup scheduled task -- primary feature)
+
+- **Post-boot cleanup scheduled task** that re-removes inbox apps and re-applies tweaks after Windows Update restages them. Tailored PER BUILD to the user's catalog selections at build time -- items the user chose to KEEP are NEVER touched by the cleanup task. Runs as SYSTEM at 10 minutes after every boot, daily at 03:00, and on every Windows Update install-complete event (`Microsoft-Windows-WindowsUpdateClient/Operational` EventID 19). Idempotent: re-running on a clean machine produces all-`already` log lines and zero mutations. Installed via SetupComplete.cmd at first boot. Worker builds get one task (`tiny11options\Post-Boot Cleanup`); Core builds get two (`Keep WU Disabled` existing + `Post-Boot Cleanup` new). Default ON; opt out with the Step 1 "Install post-boot cleanup task" checkbox or `-NoPostBootCleanup` on any wrapper CLI.
+- **`src/Tiny11.PostBoot.psm1`** generator module with:
+  - `New-Tiny11PostBootCleanupScript` -- pure generator that consumes `ResolvedSelections + Catalog` and emits the per-build `tiny11-cleanup.ps1` content. Header + log-rotation prelude (5000-line rotation to `.log.1`, copying Core's WU-enforce pattern), helpers block (`Set-RegistryValue`, `Set-RegistryValueForAllUsers`, `Remove-RegistryKey`, `Remove-RegistryKeyForAllUsers`, `Remove-PathIfPresent`, `Remove-PathWithOwnership`, `Remove-AppxByPackagePrefix`), and body composition that iterates catalog items in declared order with `# --- Item: <displayName> (<id>) ---` separators. Output is fully ASCII (~36 KB against the default catalog).
+  - `New-Tiny11PostBootTaskXml` -- static 3-trigger XML (BootTrigger PT10M + CalendarTrigger 03:00 + EventTrigger WU EventID 19). SYSTEM with HighestAvailable, PT30M execution time limit (longer than Core's PT10M because per-user appx removal can be slow).
+  - `New-Tiny11PostBootSetupCompleteScript` -- Worker SetupComplete.cmd content that registers the cleanup task via `schtasks /create /xml` at first boot, runs the script once immediately, and self-deletes.
+  - `Install-Tiny11PostBootCleanup` -- 3-file writer (ASCII+CRLF SetupComplete.cmd / UTF-8+BOM tiny11-cleanup.ps1 / UTF-16 LE+BOM tiny11-cleanup.xml). No-op when `-Enabled:$false`.
+  - `Format-PSNamedParams` -- inline arg serializer (named-parameter form, not splat -- PS splat requires a variable, not an inline hashtable). Handles string / int / long / bool / byte[] / string[] types with proper PS-source quoting.
+- **Sibling `Get-Tiny11<Type>OnlineCommand` emitters** on each Actions module (`Tiny11.Actions.Registry/Filesystem/ScheduledTask/ProvisionedAppx.psm1`) plus a dispatcher `Get-Tiny11ActionOnlineCommand` on `Tiny11.Actions.psm1`. Each returns an array of structured `[pscustomobject]@{Kind; Args; Description}` command objects -- single-sources action knowledge between offline-apply and online-cleanup paths. NTUSER hive emits ONE command with `RelativeKeyPath`; the helper iterates loaded HKU SIDs + `HKU\.DEFAULT` at runtime. COMPONENTS hive throws (regression-tested; no current catalog item uses it).
+- **`-InstallPostBootCleanup` / `-NoPostBootCleanup` switches** on `tiny11maker.ps1`, `tiny11maker-from-config.ps1`, and `tiny11Coremaker-from-config.ps1`. Default `-InstallPostBootCleanup:$true`; `-NoPostBootCleanup` wins when both are set. C# launcher (`BuildHandlers.cs`) reads `installPostBootCleanup` from the start-build payload (default true when missing) and appends `-NoPostBootCleanup` to the wrapper invocation when JS sends `installPostBootCleanup: false`.
+- **Step 1 UI checkbox** "Install post-boot cleanup task" in `ui/app.js` (rendered between Fast Build and Core Mode rows). Bound to `state.installPostBootCleanup` (default true). NOT exported to profile JSON (per-session build preference, same category as Fast Build).
+- **Pipeline integration:** `Invoke-Tiny11BuildPipeline` (Worker) and `Invoke-Tiny11CoreBuildPipeline` (Core) both gain `-InstallPostBootCleanup` parameter and call into `Install-Tiny11PostBootCleanup` / `Install-Tiny11CorePostBootCleanup` respectively. Core's `Install-Tiny11CorePostBootCleanup` extended with `-PostBootCleanupCatalog` / `-PostBootCleanupResolvedSelections` / `-PostBootCleanupEnabled` params. Core's `New-Tiny11CorePostBootCleanupScript` extended with `-IncludePostBootCleanupRegistration` switch that splices a second `schtasks /create` line into the existing SetupComplete.cmd when cleanup is enabled.
+
+### Added (tests)
+
+- **5 new Pester test files** (~40 new tests):
+  - `tests/Tiny11.Actions.Registry.Online.Tests.ps1` (11 tests: hive routing, value-type translation, NTUSER fan-out, COMPONENTS guard)
+  - `tests/Tiny11.Actions.Filesystem.Online.Tests.ps1` (6 tests)
+  - `tests/Tiny11.Actions.ScheduledTask.Online.Tests.ps1` (5 tests including path-separator normalization)
+  - `tests/Tiny11.Actions.ProvisionedAppx.Online.Tests.ps1` (3 tests)
+  - `tests/Tiny11.PostBoot.FormatArgs.Tests.ps1` (9 tests for `Format-PSNamedParams`)
+  - `tests/Tiny11.PostBoot.HeaderBlock.Tests.ps1` (7 tests for header + log rotation)
+  - `tests/Tiny11.PostBoot.Helpers.Golden.Tests.ps1` (8 tests including byte-equal golden fixture at `tests/golden/tiny11-cleanup-helpers.txt`)
+  - `tests/Tiny11.PostBoot.Generator.Tests.ps1` (11 tests covering catalog-order iteration, skip filter, multi-action ordering, determinism, targeted snippets for NTUSER / takeown / DWORD / SZ / QWORD / ASCII)
+  - `tests/Tiny11.PostBoot.TaskXml.Tests.ps1` (9 tests for XML structure)
+  - `tests/Tiny11.PostBoot.SetupComplete.Tests.ps1` (6 tests for Worker SetupComplete content)
+  - `tests/Tiny11.PostBoot.Install.Tests.ps1` (6 tests covering enabled/disabled paths and file encodings)
+  - `tests/Tiny11.UiApp.PostBootCleanup.Tests.ps1` (4 tests for `state.installPostBootCleanup` wiring)
+- **Test extensions** to existing files: `Tiny11.Actions.Tests.ps1` (dispatcher routing), `Tiny11.Worker.Tests.ps1` (pipeline integration), `Tiny11.Core.Tests.ps1` (SetupComplete switch + install variants + Core pipeline wiring), `Tiny11.Wrappers.Tests.ps1` (3 wrapper switches).
+- **xUnit:** 4 new BuildHandlers tests (`BuildStandardArgs` / `BuildCoreArgs` `installPostBootCleanup` parameter handling). Total xUnit 80 -> 82.
+
+### Changed
+
+- **Core builds now register TWO scheduled tasks** at first boot: `tiny11options\Keep WU Disabled` (existing) + `tiny11options\Post-Boot Cleanup` (new). Core's existing SetupComplete.cmd is extended with one extra `schtasks /create` line, gated on `state.installPostBootCleanup`.
+- **`tiny11options.Launcher.csproj`** -- new `<EmbeddedResource Include="..\src\Tiny11.PostBoot.psm1" />` so the module ships embedded in the launcher .exe. EmbeddedResources drift test covers this.
+
+### Known limitations
+
+- **Partial CDM re-enforcement.** The cleanup script only re-applies what the catalog enumerates. The current `tweak-disable-sponsored-apps` item covers 4 of the 11 canonical `ContentDeliveryManager` registry values per the Microsoft Q&A confirmation (Q&A 4081909). The other 7 (FeatureManagementEnabled, PreInstalledAppsEverEnabled, RotatingLockScreenEnabled, RotatingLockScreenOverlayEnabled, SlideshowEnabled, SoftLandingEnabled, SystemPaneSuggestionsEnabled) plus `HKLM\SOFTWARE\Policies\Microsoft\WindowsStore\AutoDownload=2` and the `HKU\.DEFAULT` mirror remain restored by CUs even after cleanup runs. Catalog completeness deferred to v1.0.2.
+- **COMPONENTS hive online not supported.** No catalog item uses this hive today; regression-tested.
+- **No in-OS UI for disabling the task after install.** Users can disable manually via `Disable-ScheduledTask -TaskPath '\tiny11options\' -TaskName 'Post-Boot Cleanup'` or `Unregister-ScheduledTask` if needed.
+
+### Test counts
+
+- Pester 283 -> 383 (+100 tests including extensions). Note: 7 Hives tests show as failed in full-suite runs due to a pre-existing test-isolation issue with module-scope `-Force` reloads -- all 7 pass when `tests/Tiny11.Hives.Tests.ps1` is run in isolation. Not blocking; tracked as separate tech debt.
+- xUnit 80 -> 82 (+2 BuildStandardArgs + 2 BuildCoreArgs payload-handling cases).
+
 ### Fixed (2026-05-12 -- v1.0.1 follow-up sweep: 4 d637289 code-review items + Defender Settings URI)
 - **`launcher/Gui/Handlers/BuildHandlers.cs` `ForwardJsonLine` -- suppress stdout `build-error` when `_cancelRequested` is set.** Pre-fix, if the wrapper script wrote a build-error to stdout milliseconds before our `Process.Kill` arrived (e.g. the pipeline's own catch fired on a different abort path), JS would receive TWO back-to-back build-errors: the stdout-sourced one followed by the cancel handler's "Build cancelled by user." Later message won in JS rendering so user-facing behavior was correct, but the cause-of-failure ordering was reversed on screen. Reviewer marked 🟡 not 🔴 (commit `d440c90`). Gate added: `if (t is "build-error" && _cancelRequested) return;`. `_terminalMarkerSeen` still set first so the stderr-fallback Task still skips correctly. build-progress / build-complete NOT gated -- surplus progress is harmless and build-complete with `_cancelRequested=true` means the script genuinely raced past Kill and finished (surfacing the success is the correct behavior). 3 new xUnit cases negative-test the suppression, positive control, and build-progress boundary.
 - **`launcher/Gui/Handlers/BuildHandlers.cs` `DismountSourceIsoIfApplicable` moved off UI thread via `Task.Run`.** Pre-fix, the cancel handler shelled out to `powershell.exe Dismount-DiskImage` synchronously on the WebView2 message-pump thread with a 10s timeout. A hung Dismount would freeze the UI for up to 10s before the friendly build-error reached JS. Refactor (commit `a4ada16`): signature now returns `Task`. Active-source check + path validation stay synchronous (so a fresh start-build replacing `_activeSource` can't swap the path out from under the background shell-out -- captured into a local before Task.Run dispatch). Shell-out itself runs on the thread pool. Cancel-handler caller: fire-and-forget via `_ =` so build-error reaches JS within ms regardless of Dismount duration. Stderr-fallback caller (already a background Task.Run): `await` since we want post-dismount state reflected in the build-error. Accepted race documented inline: if user cancels then immediately re-starts with same source path, pending dismount could fire after the new mount -- needs sub-second user re-action against a 1-3s typical dismount; per reviewer guidance, accept best-effort. 2 new xUnit cases lock in the signature (returns Task) + early-return performance (<250ms).
