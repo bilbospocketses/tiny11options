@@ -45,6 +45,21 @@ pwsh -NoProfile -File tiny11maker.ps1 `
 `-Config` is one of the example profiles or your own.
 `-NonInteractive` suppresses the GUI; implied when both `-Source` and `-Config` are present.
 
+## Post-boot cleanup task (v1.0.1+)
+
+Windows cumulative updates silently restage inbox apps (Clipchamp, Copilot, Outlook, etc.) and reset hardening registry values. Microsoft confirms this is by design ([Q&A 4081909](https://learn.microsoft.com/en-us/answers/questions/4081909/windows-11-cumulative-update-changing-registry-com): *"Windows Update restores registry settings. This is by design."*).
+
+The post-boot cleanup task re-removes only the items you chose to remove at build time, every time Windows Update finishes installing a CU (plus daily at 03:00 and 10 minutes after every boot, as a backstop).
+
+The task:
+
+- Is **tailored per build** -- your selections at Step 2 of the launcher determine exactly what gets re-removed. Items you chose to keep are never touched.
+- Is **idempotent** -- already-correct state is a fast read-and-skip; only restaged items get the work done. Logged to `C:\Windows\Logs\tiny11-cleanup.log` (5000-line rolling, ~3 months of history).
+- Runs as **SYSTEM** at boot + daily + on every WU EventID 19. Default execution time limit 30 minutes.
+- Is **opt-out**. Uncheck "Install post-boot cleanup task" in Step 1 of the launcher, or pass `-NoPostBootCleanup` on the CLI.
+
+**Known limitation (v1.0.1):** the cleanup script only re-applies what the catalog enumerates. The `tweak-disable-sponsored-apps` item currently covers 4 of the 11 canonical `ContentDeliveryManager` registry values; the other 7 (FeatureManagementEnabled, PreInstalledAppsEverEnabled, RotatingLockScreenEnabled, RotatingLockScreenOverlayEnabled, SlideshowEnabled, SoftLandingEnabled, SystemPaneSuggestionsEnabled) plus `HKLM\SOFTWARE\Policies\Microsoft\WindowsStore\AutoDownload=2` and the `HKU\.DEFAULT` mirror remain restored by CUs even after cleanup runs. Catalog completeness lands in v1.0.2.
+
 ## Build modes
 
 The launcher offers two build modes in Step 1. Pick the one that fits your use case:
