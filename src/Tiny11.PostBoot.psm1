@@ -276,7 +276,25 @@ function New-Tiny11PostBootTaskXml {
 
 function New-Tiny11PostBootSetupCompleteScript {
     [CmdletBinding()] param()
-    throw 'New-Tiny11PostBootSetupCompleteScript not yet implemented'
+    @'
+@echo off
+:: tiny11options post-boot cleanup
+:: Runs once at first boot via SetupComplete.cmd contract:
+::   Registers the Post-Boot Cleanup scheduled task.
+
+set TINY11_LOG=%SystemDrive%\Windows\Logs\tiny11-cleanup-setup.log
+if not exist "%SystemDrive%\Windows\Logs" mkdir "%SystemDrive%\Windows\Logs" >nul 2>&1
+
+echo [tiny11options] Registering Post-Boot Cleanup scheduled task at %date% %time% > "%TINY11_LOG%"
+schtasks /create /xml "%SystemDrive%\Windows\Setup\Scripts\tiny11-cleanup.xml" /tn "tiny11options\Post-Boot Cleanup" /f >> "%TINY11_LOG%" 2>&1
+echo [tiny11options] schtasks exited with %ERRORLEVEL% >> "%TINY11_LOG%"
+
+echo [tiny11options] Running tiny11-cleanup.ps1 once immediately >> "%TINY11_LOG%"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SystemDrive%\Windows\Setup\Scripts\tiny11-cleanup.ps1" >> "%TINY11_LOG%" 2>&1
+echo [tiny11options] cleanup.ps1 exited with %ERRORLEVEL% >> "%TINY11_LOG%"
+
+del /F /Q "%~f0"
+'@
 }
 
 function Install-Tiny11PostBootCleanup {
