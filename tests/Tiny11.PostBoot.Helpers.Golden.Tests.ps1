@@ -25,6 +25,15 @@ Describe 'PostBoot helpers block' {
         $script:helpers | Should -Match 'tiny11_default'
         $script:helpers | Should -Not -Match "\$sids \+= '\.DEFAULT'"
     }
+    It 'HKU SID list uses Select-Object -ExpandProperty (not .PSChildName) so empty pipelines stay empty' {
+        # Regression guard for the smoke-surfaced bug: @((empty | Where).PSChildName)
+        # returns @($null) -- a single-null-element array -- and iterating that
+        # produces one bogus HKU:\\<path> write per fan-out call. -ExpandProperty
+        # preserves empty-when-empty semantics. Pre-fix log lines looked like:
+        #   "HKU:\\Software\... key-create FAILED: The parameter is incorrect."
+        $script:helpers | Should -Match 'Select-Object -ExpandProperty PSChildName'
+        $script:helpers | Should -Not -Match '\}\)\.PSChildName\)'
+    }
     It 'Set-RegistryValue uses "already" vs "CORRECTED" idempotent-log pattern' {
         $script:helpers | Should -Match 'already'
         $script:helpers | Should -Match 'CORRECTED'
