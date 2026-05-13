@@ -39,4 +39,15 @@ function Invoke-ProvisionedAppxAction {
     foreach ($pkg in $matchedPackages) { Invoke-DismRemoveAppx -ScratchDir $ScratchDir -PackageName $pkg }
 }
 
-Export-ModuleMember -Function Invoke-ProvisionedAppxAction, Get-ProvisionedAppxPackagesFromImage, Invoke-DismRemoveAppx, Clear-Tiny11AppxPackageCache
+function Get-Tiny11ProvisionedAppxOnlineCommand {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Action)
+
+    ,([pscustomobject]@{
+        Kind        = 'Remove-AppxByPackagePrefix'
+        Args        = [ordered]@{ Prefix = $Action.packagePrefix }
+        Description = "Remove provisioned + installed appx matching '$($Action.packagePrefix)*'"
+    })
+}
+
+Export-ModuleMember -Function Invoke-ProvisionedAppxAction, Get-ProvisionedAppxPackagesFromImage, Invoke-DismRemoveAppx, Clear-Tiny11AppxPackageCache, Get-Tiny11ProvisionedAppxOnlineCommand
