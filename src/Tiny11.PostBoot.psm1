@@ -1,6 +1,12 @@
 Set-StrictMode -Version Latest
 
-Import-Module (Join-Path $PSScriptRoot 'Tiny11.Actions.psm1') -Force -Global -DisableNameChecking
+# NOTE: -Force omitted DELIBERATELY. With -Force, this re-import cascades through
+# Tiny11.Actions.psm1 -> Actions.Registry.psm1 -> Tiny11.Hives.psm1 (which has no
+# -Global flag in Actions.Registry's import), causing Hives to be reloaded at
+# non-global scope. That replaces the global Hives instance that Tiny11.Worker.psm1
+# established at its top-level import, and Mount-Tiny11AllHives becomes invisible
+# to the Worker pipeline at runtime (verified via P1c smoke).
+Import-Module (Join-Path $PSScriptRoot 'Tiny11.Actions.psm1') -Global -DisableNameChecking
 
 # Module-scope constants populated by tasks 8-9.
 $script:headerBlock = @'
