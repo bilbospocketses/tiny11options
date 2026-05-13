@@ -305,7 +305,34 @@ function Install-Tiny11PostBootCleanup {
         [Parameter(Mandatory)][hashtable] $ResolvedSelections,
         [bool]                            $Enabled = $true
     )
-    throw 'Install-Tiny11PostBootCleanup not yet implemented'
+    if (-not $Enabled) { return }
+
+    $scriptsDir = Join-Path $MountDir 'Windows\Setup\Scripts'
+    if (-not (Test-Path -LiteralPath $scriptsDir)) {
+        New-Item -ItemType Directory -Path $scriptsDir -Force | Out-Null
+    }
+
+    # 1. SetupComplete.cmd -- ASCII + CRLF
+    $cmdContent     = New-Tiny11PostBootSetupCompleteScript
+    $cmdContentCRLF = ($cmdContent -split "`r?`n") -join "`r`n"
+    [System.IO.File]::WriteAllText(
+        (Join-Path $scriptsDir 'SetupComplete.cmd'),
+        $cmdContentCRLF,
+        [System.Text.Encoding]::ASCII)
+
+    # 2. tiny11-cleanup.ps1 -- UTF-8 + BOM
+    $psContent = New-Tiny11PostBootCleanupScript -Catalog $Catalog -ResolvedSelections $ResolvedSelections
+    [System.IO.File]::WriteAllText(
+        (Join-Path $scriptsDir 'tiny11-cleanup.ps1'),
+        $psContent,
+        [System.Text.UTF8Encoding]::new($true))
+
+    # 3. tiny11-cleanup.xml -- UTF-16 LE + BOM
+    $xmlContent = New-Tiny11PostBootTaskXml
+    [System.IO.File]::WriteAllText(
+        (Join-Path $scriptsDir 'tiny11-cleanup.xml'),
+        $xmlContent,
+        [System.Text.Encoding]::Unicode)
 }
 
 Export-ModuleMember -Function `
