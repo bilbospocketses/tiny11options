@@ -968,3 +968,29 @@ Describe 'Install-Tiny11CorePostBootCleanup' {
         }
     }
 }
+
+Describe 'New-Tiny11CorePostBootCleanupScript -IncludePostBootCleanupRegistration' {
+    BeforeAll {
+        $modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $modulePath -Force
+    }
+
+    It 'without the switch: ONE schtasks /create line (Keep WU Disabled only)' {
+        $cmd = New-Tiny11CorePostBootCleanupScript
+        ([regex]::Matches($cmd, 'schtasks /create /xml')).Count | Should -Be 1
+        $cmd | Should -Match '/tn "tiny11options\\Keep WU Disabled"'
+        $cmd | Should -Not -Match '/tn "tiny11options\\Post-Boot Cleanup"'
+    }
+
+    It 'with -IncludePostBootCleanupRegistration: TWO schtasks /create lines' {
+        $cmd = New-Tiny11CorePostBootCleanupScript -IncludePostBootCleanupRegistration
+        ([regex]::Matches($cmd, 'schtasks /create /xml')).Count | Should -Be 2
+        $cmd | Should -Match '/tn "tiny11options\\Keep WU Disabled"'
+        $cmd | Should -Match '/tn "tiny11options\\Post-Boot Cleanup"'
+    }
+
+    It 'both variants still self-delete' {
+        (New-Tiny11CorePostBootCleanupScript)                                  | Should -Match 'del /F /Q "%~f0"'
+        (New-Tiny11CorePostBootCleanupScript -IncludePostBootCleanupRegistration) | Should -Match 'del /F /Q "%~f0"'
+    }
+}
