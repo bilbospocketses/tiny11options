@@ -994,3 +994,45 @@ Describe 'New-Tiny11CorePostBootCleanupScript -IncludePostBootCleanupRegistratio
         (New-Tiny11CorePostBootCleanupScript -IncludePostBootCleanupRegistration) | Should -Match 'del /F /Q "%~f0"'
     }
 }
+
+Describe 'Install-Tiny11CorePostBootCleanup with cleanup params' {
+    BeforeAll {
+        $modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $modulePath -Force
+    }
+
+    BeforeEach {
+        $script:tempMount = Join-Path ([System.IO.Path]::GetTempPath()) ("core-postboot-" + [Guid]::NewGuid())
+        New-Item -ItemType Directory -Path $script:tempMount -Force | Out-Null
+        $script:tinyCatalog = [pscustomobject]@{
+            Version=1; Categories=@(); Items=@(
+                [pscustomobject]@{ id='only'; category='c'; displayName='Only'; description='only'; default='apply'; runtimeDepsOn=@(); actions=@([pscustomobject]@{ type='provisioned-appx'; packagePrefix='Only.Pkg' }) }
+            ); Path='test://catalog'
+        }
+        $script:tinyResolved = @{
+            'only' = [pscustomobject]@{ ItemId='only'; UserState='apply'; EffectiveState='apply'; Locked=$false; LockedBy=@() }
+        }
+    }
+    AfterEach { Remove-Item -LiteralPath $script:tempMount -Recurse -Force -ErrorAction SilentlyContinue }
+
+    It 'with -PostBootCleanupEnabled $true writes cleanup files AND extends SetupComplete.cmd with cleanup task registration' {
+        Install-Tiny11CorePostBootCleanup -MountDir $script:tempMount `
+            -PostBootCleanupCatalog $script:tinyCatalog `
+            -PostBootCleanupResolvedSelections $script:tinyResolved `
+            -PostBootCleanupEnabled $true
+        $scripts = Join-Path $script:tempMount 'Windows\Setup\Scripts'
+        Test-Path (Join-Path $scripts 'tiny11-cleanup.ps1') | Should -Be $true
+        Test-Path (Join-Path $scripts 'tiny11-cleanup.xml') | Should -Be $true
+        $setupCmd = Get-Content (Join-Path $scripts 'SetupComplete.cmd') -Raw
+        ([regex]::Matches($setupCmd, 'schtasks /create /xml')).Count | Should -Be 2
+    }
+
+    It 'with -PostBootCleanupEnabled $false skips cleanup files AND keeps SetupComplete.cmd at one schtasks line' {
+        Install-Tiny11CorePostBootCleanup -MountDir $script:tempMount -PostBootCleanupEnabled $false
+        $scripts = Join-Path $script:tempMount 'Windows\Setup\Scripts'
+        Test-Path (Join-Path $scripts 'tiny11-cleanup.ps1') | Should -Be $false
+        Test-Path (Join-Path $scripts 'tiny11-cleanup.xml') | Should -Be $false
+        $setupCmd = Get-Content (Join-Path $scripts 'SetupComplete.cmd') -Raw
+        ([regex]::Matches($setupCmd, 'schtasks /create /xml')).Count | Should -Be 1
+    }
+}

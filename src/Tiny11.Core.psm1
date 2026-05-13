@@ -11,6 +11,8 @@
 
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot 'Tiny11.PostBoot.psm1') -Force -Global -DisableNameChecking
+
 # ---------- Build log infrastructure ----------
 # Persistent on-disk log of every Core build, written to $ScratchDir\tiny11-core-build.log.
 # Survives the post-failure cleanup commands (those only nuke `mount/` and `source/` subdirs of the scratch root).
@@ -949,7 +951,10 @@ function New-Tiny11CoreWuEnforceTaskXml {
 function Install-Tiny11CorePostBootCleanup {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$MountDir
+        [Parameter(Mandatory)][string]$MountDir,
+        [object]    $PostBootCleanupCatalog,
+        [hashtable] $PostBootCleanupResolvedSelections,
+        [bool]      $PostBootCleanupEnabled = $true
     )
 
     $scriptDir = Join-Path $MountDir 'Windows\Setup\Scripts'
@@ -957,9 +962,12 @@ function Install-Tiny11CorePostBootCleanup {
         New-Item -ItemType Directory -Path $scriptDir -Force | Out-Null
     }
 
+    # Whether to ALSO write the v1.0.1 cleanup files + extend SetupComplete with cleanup-task registration
+    $writeCleanupFiles = $PostBootCleanupEnabled -and $PostBootCleanupCatalog -and $PostBootCleanupResolvedSelections
+
     # 1. SetupComplete.cmd
     $cmdPath = Join-Path $scriptDir 'SetupComplete.cmd'
-    $cmdContent = New-Tiny11CorePostBootCleanupScript
+    $cmdContent = New-Tiny11CorePostBootCleanupScript -IncludePostBootCleanupRegistration:$writeCleanupFiles
     $cmdContentCRLF = ($cmdContent -split "`r?`n") -join "`r`n"
     [System.IO.File]::WriteAllText($cmdPath, $cmdContentCRLF, [System.Text.Encoding]::ASCII)
 
@@ -974,6 +982,21 @@ function Install-Tiny11CorePostBootCleanup {
     $xmlContent = New-Tiny11CoreWuEnforceTaskXml
     $xmlContentCRLF = ($xmlContent -split "`r?`n") -join "`r`n"
     [System.IO.File]::WriteAllText($xmlPath, $xmlContentCRLF, [System.Text.Encoding]::Unicode)
+
+    # 4. tiny11-cleanup.{ps1,xml} (NEW for v1.0.1) -- only when enabled + selections provided
+    if ($writeCleanupFiles) {
+        $cleanupPs1 = New-Tiny11PostBootCleanupScript -Catalog $PostBootCleanupCatalog -ResolvedSelections $PostBootCleanupResolvedSelections
+        [System.IO.File]::WriteAllText(
+            (Join-Path $scriptDir 'tiny11-cleanup.ps1'),
+            $cleanupPs1,
+            [System.Text.UTF8Encoding]::new($true))
+
+        $cleanupXml = New-Tiny11PostBootTaskXml
+        [System.IO.File]::WriteAllText(
+            (Join-Path $scriptDir 'tiny11-cleanup.xml'),
+            $cleanupXml,
+            [System.Text.Encoding]::Unicode)
+    }
 
     Write-Verbose "Installed post-boot cleanup artifacts at $scriptDir"
 }

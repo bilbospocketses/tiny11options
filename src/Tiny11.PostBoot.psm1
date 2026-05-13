@@ -1,5 +1,7 @@
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot 'Tiny11.Actions.psm1') -Force -Global -DisableNameChecking
+
 # Module-scope constants populated by tasks 8-9.
 $script:headerBlock = @'
 # tiny11-cleanup.ps1 -- Re-applies the catalog-driven removal/tweak recipe on every boot,
