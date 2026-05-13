@@ -74,6 +74,7 @@
     <EmbeddedResource Include="..\src\Tiny11.Actions.ProvisionedAppx.psm1"><LogicalName>src/Tiny11.Actions.ProvisionedAppx.psm1</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\src\Tiny11.Actions.ScheduledTask.psm1"><LogicalName>src/Tiny11.Actions.ScheduledTask.psm1</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\src\Tiny11.Core.psm1"><LogicalName>src/Tiny11.Core.psm1</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\src\Tiny11.PostBoot.psm1"><LogicalName>src/Tiny11.PostBoot.psm1</LogicalName></EmbeddedResource>
 
     <!-- Orchestrator + wrapper scripts + autounattend template -->
     <EmbeddedResource Include="..\tiny11maker.ps1"><LogicalName>tiny11maker.ps1</LogicalName></EmbeddedResource>
