@@ -106,3 +106,77 @@ Describe 'New-Tiny11PostBootCleanupScript' {
         $a | Should -Be $b
     }
 }
+
+Describe 'New-Tiny11PostBootCleanupScript -- targeted snippets' {
+
+    It 'NTUSER fan-out renders as Set-RegistryValueForAllUsers with RelativeKeyPath (no HKU prefix)' {
+        $items = @(
+            [pscustomobject]@{ id='ntuser'; category='store-apps'; displayName='NTU'; description='x'; default='apply'; runtimeDepsOn=@(); actions=@(
+                [pscustomobject]@{ type='registry'; hive='NTUSER'; key='Software\Microsoft\X'; op='set'; name='Y'; valueType='REG_DWORD'; value='0' }
+            ) }
+        )
+        $catalog  = New-TestCatalog -Items $items
+        $resolved = New-AllApplySelections -Catalog $catalog
+        $script   = New-Tiny11PostBootCleanupScript -Catalog $catalog -ResolvedSelections $resolved
+        $body     = $script.Substring($script.IndexOf('# --- Item: NTU (ntuser) ---'))
+        $body | Should -Match "Set-RegistryValueForAllUsers -RelativeKeyPath 'Software\\Microsoft\\X' -Name 'Y' -Type 'DWord' -Value 0"
+    }
+
+    It 'takeown-and-remove with path containing spaces preserves quoting' {
+        $items = @(
+            [pscustomobject]@{ id='to'; category='store-apps'; displayName='TO'; description='x'; default='apply'; runtimeDepsOn=@(); actions=@(
+                [pscustomobject]@{ type='filesystem'; op='takeown-and-remove'; path='Windows\System32\Microsoft-Edge-Webview'; recurse=$true }
+            ) }
+        )
+        $catalog  = New-TestCatalog -Items $items
+        $resolved = New-AllApplySelections -Catalog $catalog
+        $script   = New-Tiny11PostBootCleanupScript -Catalog $catalog -ResolvedSelections $resolved
+        $script | Should -Match "Remove-PathWithOwnership -Path '\`$env:SystemDrive\\Windows\\System32\\Microsoft-Edge-Webview' -Recurse \`$true"
+    }
+
+    It 'REG_DWORD emits unquoted int Value' {
+        $items = @(
+            [pscustomobject]@{ id='dw'; category='store-apps'; displayName='DW'; description='x'; default='apply'; runtimeDepsOn=@(); actions=@(
+                [pscustomobject]@{ type='registry'; hive='SOFTWARE'; key='X'; op='set'; name='Y'; valueType='REG_DWORD'; value='7' }
+            ) }
+        )
+        $catalog  = New-TestCatalog -Items $items
+        $resolved = New-AllApplySelections -Catalog $catalog
+        $script   = New-Tiny11PostBootCleanupScript -Catalog $catalog -ResolvedSelections $resolved
+        $script | Should -Match "Set-RegistryValue -KeyPath 'HKLM:\\Software\\X' -Name 'Y' -Type 'DWord' -Value 7"
+    }
+
+    It 'REG_SZ emits quoted string Value' {
+        $items = @(
+            [pscustomobject]@{ id='sz'; category='store-apps'; displayName='SZ'; description='x'; default='apply'; runtimeDepsOn=@(); actions=@(
+                [pscustomobject]@{ type='registry'; hive='SOFTWARE'; key='X'; op='set'; name='Y'; valueType='REG_SZ'; value='hello world' }
+            ) }
+        )
+        $catalog  = New-TestCatalog -Items $items
+        $resolved = New-AllApplySelections -Catalog $catalog
+        $script   = New-Tiny11PostBootCleanupScript -Catalog $catalog -ResolvedSelections $resolved
+        $script | Should -Match "Set-RegistryValue -KeyPath 'HKLM:\\Software\\X' -Name 'Y' -Type 'String' -Value 'hello world'"
+    }
+
+    It 'REG_QWORD emits unquoted long Value' {
+        $items = @(
+            [pscustomobject]@{ id='qw'; category='store-apps'; displayName='QW'; description='x'; default='apply'; runtimeDepsOn=@(); actions=@(
+                [pscustomobject]@{ type='registry'; hive='SOFTWARE'; key='X'; op='set'; name='Y'; valueType='REG_QWORD'; value='4294967296' }
+            ) }
+        )
+        $catalog  = New-TestCatalog -Items $items
+        $resolved = New-AllApplySelections -Catalog $catalog
+        $script   = New-Tiny11PostBootCleanupScript -Catalog $catalog -ResolvedSelections $resolved
+        $script | Should -Match "Set-RegistryValue -KeyPath 'HKLM:\\Software\\X' -Name 'Y' -Type 'QWord' -Value 4294967296"
+    }
+
+    It 'generated script is pure ASCII (no smart quotes / em-dashes anywhere)' {
+        $items = @(
+            [pscustomobject]@{ id='x'; category='store-apps'; displayName='X'; description='x'; default='apply'; runtimeDepsOn=@(); actions=@([pscustomobject]@{ type='provisioned-appx'; packagePrefix='X.Y' }) }
+        )
+        $catalog  = New-TestCatalog -Items $items
+        $resolved = New-AllApplySelections -Catalog $catalog
+        $script   = New-Tiny11PostBootCleanupScript -Catalog $catalog -ResolvedSelections $resolved
+        ($script.ToCharArray() | Where-Object { [int]$_ -gt 127 }).Count | Should -Be 0
+    }
+}
