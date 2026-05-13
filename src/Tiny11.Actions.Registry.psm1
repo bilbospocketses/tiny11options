@@ -1,5 +1,5 @@
 Set-StrictMode -Version Latest
-Import-Module "$PSScriptRoot/Tiny11.Hives.psm1" -Force -DisableNameChecking
+Import-Module "$PSScriptRoot/Tiny11.Hives.psm1" -Force -DisableNameChecking -Global
 
 function Invoke-RegistryAction {
     [CmdletBinding()]
