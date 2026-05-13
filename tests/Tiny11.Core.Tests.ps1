@@ -1007,6 +1007,25 @@ Describe 'New-Tiny11CorePostBootCleanupScript -IncludePostBootCleanupRegistratio
         (New-Tiny11CorePostBootCleanupScript)                                  | Should -Match 'del /F /Q "%~f0"'
         (New-Tiny11CorePostBootCleanupScript -IncludePostBootCleanupRegistration) | Should -Match 'del /F /Q "%~f0"'
     }
+    It 'with -IncludePostBootCleanupRegistration: invokes cleanup.ps1 immediately (matching Worker symmetry)' {
+        # P4 smoke surfaced: Core registered the task but never ran cleanup.ps1
+        # at SetupComplete time, so tiny11-cleanup.log did not exist until the
+        # first trigger fired (BootTrigger PT10M earliest). Worker's SetupComplete
+        # ran cleanup.ps1 immediately right after registration, producing the log
+        # at first user logon. Make Core mirror Worker so smoke verification +
+        # first-impression UX are symmetric.
+        $cmd = New-Tiny11CorePostBootCleanupScript -IncludePostBootCleanupRegistration
+        # Two powershell.exe invocations expected: one for wu-enforce, one for cleanup.
+        ([regex]::Matches($cmd, 'powershell\.exe -NoProfile')).Count | Should -Be 2
+        $cmd | Should -Match 'tiny11-cleanup\.ps1'
+        $cmd | Should -Match '\[tiny11options\] Running tiny11-cleanup\.ps1 once immediately'
+        $cmd | Should -Match '\[tiny11options\] cleanup\.ps1 exited with'
+    }
+    It 'without the switch: cleanup.ps1 is NOT invoked (only wu-enforce.ps1)' {
+        $cmd = New-Tiny11CorePostBootCleanupScript
+        ([regex]::Matches($cmd, 'powershell\.exe -NoProfile')).Count | Should -Be 1
+        $cmd | Should -Not -Match 'tiny11-cleanup\.ps1'
+    }
 }
 
 Describe 'Install-Tiny11CorePostBootCleanup with cleanup params' {

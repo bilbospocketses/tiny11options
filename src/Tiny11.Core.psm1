@@ -692,6 +692,11 @@ echo [tiny11options] Registering Post-Boot Cleanup scheduled task >> "%TINY11_LO
 schtasks /create /xml "%SystemDrive%\Windows\Setup\Scripts\tiny11-cleanup.xml" /tn "tiny11options\Post-Boot Cleanup" /f >> "%TINY11_LOG%" 2>&1
 echo [tiny11options] cleanup-task schtasks exited with %ERRORLEVEL% >> "%TINY11_LOG%"
 echo. >> "%TINY11_LOG%"
+
+echo [tiny11options] Running tiny11-cleanup.ps1 once immediately (so we don't wait for next trigger) >> "%TINY11_LOG%"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%SystemDrive%\Windows\Setup\Scripts\tiny11-cleanup.ps1" >> "%TINY11_LOG%" 2>&1
+echo [tiny11options] cleanup.ps1 exited with %ERRORLEVEL% >> "%TINY11_LOG%"
+echo. >> "%TINY11_LOG%"
 '@
 
     $tail = @'
