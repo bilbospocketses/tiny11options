@@ -14,3 +14,30 @@ Describe "Invoke-Tiny11Action" {
     It "routes provisioned-appx" { Invoke-Tiny11Action -Action @{ type='provisioned-appx'; packagePrefix='X' } -ScratchDir 'C:\s'; Should -Invoke -CommandName 'Invoke-ProvisionedAppxAction' -ModuleName 'Tiny11.Actions' -Times 1 }
     It "throws on unknown type"  { { Invoke-Tiny11Action -Action @{ type='ghost' } -ScratchDir 'C:\s' } | Should -Throw }
 }
+
+Describe 'Get-Tiny11ActionOnlineCommand (dispatcher)' {
+    It 'routes registry action to Get-Tiny11RegistryOnlineCommand' {
+        $action = [pscustomobject]@{ type='registry'; hive='SOFTWARE'; key='X'; op='set'; name='Y'; valueType='REG_DWORD'; value='1' }
+        $cmds = @(Get-Tiny11ActionOnlineCommand -Action $action)
+        $cmds[0].Kind | Should -Be 'Set-RegistryValue'
+    }
+    It 'routes filesystem action' {
+        $action = [pscustomobject]@{ type='filesystem'; op='remove'; path='X'; recurse=$false }
+        $cmds = @(Get-Tiny11ActionOnlineCommand -Action $action)
+        $cmds[0].Kind | Should -Be 'Remove-PathIfPresent'
+    }
+    It 'routes scheduled-task action' {
+        $action = [pscustomobject]@{ type='scheduled-task'; op='remove'; path='X'; recurse=$false }
+        $cmds = @(Get-Tiny11ActionOnlineCommand -Action $action)
+        $cmds[0].Kind | Should -Be 'Remove-PathIfPresent'
+    }
+    It 'routes provisioned-appx action' {
+        $action = [pscustomobject]@{ type='provisioned-appx'; packagePrefix='X.Y' }
+        $cmds = @(Get-Tiny11ActionOnlineCommand -Action $action)
+        $cmds[0].Kind | Should -Be 'Remove-AppxByPackagePrefix'
+    }
+    It 'throws on unknown action type' {
+        $action = [pscustomobject]@{ type='quantum-defrag' }
+        { Get-Tiny11ActionOnlineCommand -Action $action } | Should -Throw '*Unknown action type*'
+    }
+}

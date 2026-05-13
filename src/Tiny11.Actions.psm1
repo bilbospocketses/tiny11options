@@ -16,4 +16,16 @@ function Invoke-Tiny11Action {
     }
 }
 
-Export-ModuleMember -Function Invoke-Tiny11Action
+function Get-Tiny11ActionOnlineCommand {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Action)
+    switch ($Action.type) {
+        'registry'         { Get-Tiny11RegistryOnlineCommand        -Action $Action }
+        'filesystem'       { Get-Tiny11FilesystemOnlineCommand      -Action $Action }
+        'scheduled-task'   { Get-Tiny11ScheduledTaskOnlineCommand   -Action $Action }
+        'provisioned-appx' { Get-Tiny11ProvisionedAppxOnlineCommand -Action $Action }
+        default            { throw "Unknown action type: $($Action.type)" }
+    }
+}
+
+Export-ModuleMember -Function Invoke-Tiny11Action, Get-Tiny11ActionOnlineCommand
