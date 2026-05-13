@@ -21,7 +21,9 @@ param(
     [string]$Edition,
     [string]$ScratchDir,
     [switch]$FastBuild,
-    [switch]$UnmountSource
+    [switch]$UnmountSource,
+    [bool]$InstallPostBootCleanup = $true,
+    [switch]$NoPostBootCleanup
 )
 
 Set-StrictMode -Version Latest
@@ -115,6 +117,7 @@ try {
         -Catalog $catalog `
         -ResolvedSelections $resolvedSelections `
         -FastBuild $FastBuild.IsPresent `
+        -InstallPostBootCleanup ([bool]($InstallPostBootCleanup -and -not $NoPostBootCleanup)) `
         -ProgressCallback {
             param($p)
             # Forward the entire payload -- Worker pipeline emits mount-state
