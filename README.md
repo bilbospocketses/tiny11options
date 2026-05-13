@@ -58,7 +58,7 @@ The task:
 - Runs as **SYSTEM** at boot + daily + on every WU EventID 19. Default execution time limit 30 minutes.
 - Is **opt-out**. Uncheck "Install post-boot cleanup task" in Step 1 of the launcher, or pass `-NoPostBootCleanup` on the CLI.
 
-**Known limitation (v1.0.1):** the cleanup script only re-applies what the catalog enumerates. The `tweak-disable-sponsored-apps` item currently covers 4 of the 11 canonical `ContentDeliveryManager` registry values; the other 7 (FeatureManagementEnabled, PreInstalledAppsEverEnabled, RotatingLockScreenEnabled, RotatingLockScreenOverlayEnabled, SlideshowEnabled, SoftLandingEnabled, SystemPaneSuggestionsEnabled) plus `HKLM\SOFTWARE\Policies\Microsoft\WindowsStore\AutoDownload=2` and the `HKU\.DEFAULT` mirror remain restored by CUs even after cleanup runs. Catalog completeness lands in v1.0.2.
+**Known limitation (v1.0.1):** the cleanup script only re-applies what the catalog enumerates. The `tweak-disable-sponsored-apps` item currently covers 4 of the 11 canonical `ContentDeliveryManager` registry values; the other 7 (FeatureManagementEnabled, PreInstalledAppsEverEnabled, RotatingLockScreenEnabled, RotatingLockScreenOverlayEnabled, SlideshowEnabled, SoftLandingEnabled, SystemPaneSuggestionsEnabled) plus `HKLM\SOFTWARE\Policies\Microsoft\WindowsStore\AutoDownload=2` remain uncovered by the catalog and will be restored by CUs. The 4 values that *are* covered propagate to user profiles created after cleanup runs (the cleanup loads `C:\Users\Default\NTUSER.DAT` into a transient `HKU:\tiny11_default` mount, writes through it, and unloads -- new accounts inherit the disabled state). Catalog completeness lands in v1.0.2.
 
 ## Build modes
 
