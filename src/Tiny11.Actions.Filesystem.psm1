@@ -36,4 +36,21 @@ function Invoke-FilesystemAction {
     else                 { Remove-Item -Path $full -Force -ErrorAction SilentlyContinue }
 }
 
-Export-ModuleMember -Function Invoke-FilesystemAction, Invoke-Takeown, Invoke-Icacls, Get-AdminGroupAccount
+function Get-Tiny11FilesystemOnlineCommand {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Action)
+
+    $kind = switch ($Action.op) {
+        'remove'              { 'Remove-PathIfPresent' }
+        'takeown-and-remove'  { 'Remove-PathWithOwnership' }
+        default               { throw "Invalid filesystem op: $($Action.op)" }
+    }
+
+    ,([pscustomobject]@{
+        Kind        = $kind
+        Args        = [ordered]@{ Path = '$env:SystemDrive\' + $Action.path; Recurse = [bool]$Action.recurse }
+        Description = "$kind '$($Action.path)'" + $(if ([bool]$Action.recurse) { ' (recurse)' } else { '' })
+    })
+}
+
+Export-ModuleMember -Function Invoke-FilesystemAction, Invoke-Takeown, Invoke-Icacls, Get-AdminGroupAccount, Get-Tiny11FilesystemOnlineCommand
