@@ -24,7 +24,9 @@ param(
     [string]$ScratchDir,
     [switch]$EnableNet35,
     [switch]$UnmountSource,
-    [switch]$FastBuild
+    [switch]$FastBuild,
+    [bool]$InstallPostBootCleanup = $true,
+    [switch]$NoPostBootCleanup
 )
 
 Set-StrictMode -Version Latest
@@ -47,8 +49,18 @@ try {
     $RepoRoot = Split-Path -Parent $PSCommandPath
     $ModulesDir = Join-Path $RepoRoot 'src'
 
-    Import-Module (Join-Path $ModulesDir 'Tiny11.Iso.psm1')   -Force
-    Import-Module (Join-Path $ModulesDir 'Tiny11.Core.psm1')  -Force
+    Import-Module (Join-Path $ModulesDir 'Tiny11.Iso.psm1')        -Force
+    Import-Module (Join-Path $ModulesDir 'Tiny11.Core.psm1')       -Force
+    Import-Module (Join-Path $ModulesDir 'Tiny11.Catalog.psm1')    -Force
+    Import-Module (Join-Path $ModulesDir 'Tiny11.Selections.psm1') -Force
+
+    # Load default catalog + selections for the post-boot cleanup task. Core builds
+    # don't expose Step 2 selections in the UI; the catalog defaults are sane targets
+    # for re-removal (apps the user expected to be gone after a Core build).
+    $catalogPath = Join-Path $RepoRoot 'catalog\catalog.json'
+    $catalog     = Get-Tiny11Catalog -Path $catalogPath
+    $selections  = New-Tiny11Selections -Catalog $catalog
+    $resolved    = Resolve-Tiny11Selections -Catalog $catalog -Selections $selections
 
     # Scratch dir resolution. Honour caller's -ScratchDir if provided
     # (matches BuildHandlers payload pass-through); fall back to process-
@@ -102,6 +114,9 @@ try {
         -EnableNet35 $EnableNet35.IsPresent `
         -UnmountSource $UnmountSource.IsPresent `
         -FastBuild $FastBuild.IsPresent `
+        -InstallPostBootCleanup ([bool]($InstallPostBootCleanup -and -not $NoPostBootCleanup)) `
+        -PostBootCleanupCatalog $catalog `
+        -PostBootCleanupResolvedSelections $resolved `
         -ProgressCallback {
             param($p)
             # Forward the entire payload, not just phase/step/percent. The Core

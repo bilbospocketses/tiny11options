@@ -39,6 +39,22 @@ Describe "Wrapper-script payload-splat regression guard" {
     }
 }
 
+Describe 'tiny11Coremaker-from-config.ps1 -InstallPostBootCleanup switches' {
+    BeforeAll { $script:wrapperPath = Join-Path $PSScriptRoot '..' 'tiny11Coremaker-from-config.ps1' }
+    It 'defines both switches' {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:wrapperPath, [ref]$null, [ref]$null)
+        $params = ($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
+        $params | Should -Contain 'InstallPostBootCleanup'
+        $params | Should -Contain 'NoPostBootCleanup'
+    }
+    It 'threads InstallPostBootCleanup to the pipeline' {
+        $source = Get-Content $script:wrapperPath -Raw
+        $source | Should -Match '-InstallPostBootCleanup'
+        $source | Should -Match '-PostBootCleanupCatalog'
+        $source | Should -Match '-PostBootCleanupResolvedSelections'
+    }
+}
+
 Describe 'tiny11maker-from-config.ps1 -InstallPostBootCleanup switches' {
     BeforeAll { $script:wrapperPath = Join-Path $PSScriptRoot '..' 'tiny11maker-from-config.ps1' }
 

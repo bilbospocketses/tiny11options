@@ -1085,7 +1085,10 @@ function Invoke-Tiny11CoreBuildPipeline {
         [Parameter(Mandatory)][bool]$EnableNet35,
         [Parameter(Mandatory)][bool]$UnmountSource,
         [bool]$FastBuild = $false,
-        [Parameter(Mandatory)][scriptblock]$ProgressCallback
+        [Parameter(Mandatory)][scriptblock]$ProgressCallback,
+        [bool]$InstallPostBootCleanup = $true,
+        $PostBootCleanupCatalog = $null,
+        [hashtable]$PostBootCleanupResolvedSelections = $null
     )
 
     Import-Module (Join-Path $PSScriptRoot 'Tiny11.Iso.psm1')   -Force
@@ -1325,7 +1328,10 @@ function Invoke-Tiny11CoreBuildPipeline {
         # Tradeoff: image ships at the offline size (~1-2 GB heavier than upstream-against-23H2)
         # and shrinks at first user boot.
         & $ProgressCallback @{ phase='inject-postboot-cleanup'; step='Installing SetupComplete.cmd for first-boot /Cleanup-Image'; percent=84 }
-        Install-Tiny11CorePostBootCleanup -MountDir $mountDir
+        Install-Tiny11CorePostBootCleanup -MountDir $mountDir `
+            -PostBootCleanupCatalog $PostBootCleanupCatalog `
+            -PostBootCleanupResolvedSelections $PostBootCleanupResolvedSelections `
+            -PostBootCleanupEnabled $InstallPostBootCleanup
 
         $pipelineSucceeded = $true
     }

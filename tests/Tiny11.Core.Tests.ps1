@@ -1036,3 +1036,26 @@ Describe 'Install-Tiny11CorePostBootCleanup with cleanup params' {
         ([regex]::Matches($setupCmd, 'schtasks /create /xml')).Count | Should -Be 1
     }
 }
+
+Describe 'Invoke-Tiny11CoreBuildPipeline post-boot cleanup wiring' {
+    BeforeAll {
+        $modulePath = (Resolve-Path (Join-Path $PSScriptRoot '..\src\Tiny11.Core.psm1')).Path
+        Import-Module $modulePath -Force
+    }
+    It 'has an InstallPostBootCleanup parameter' {
+        $cmd = Get-Command Invoke-Tiny11CoreBuildPipeline
+        $cmd.Parameters.Keys | Should -Contain 'InstallPostBootCleanup'
+        $cmd.Parameters['InstallPostBootCleanup'].ParameterType.Name | Should -Be 'Boolean'
+    }
+    It 'has PostBootCleanupCatalog + PostBootCleanupResolvedSelections parameters' {
+        $cmd = Get-Command Invoke-Tiny11CoreBuildPipeline
+        $cmd.Parameters.Keys | Should -Contain 'PostBootCleanupCatalog'
+        $cmd.Parameters.Keys | Should -Contain 'PostBootCleanupResolvedSelections'
+    }
+    It 'source passes the cleanup catalog and resolved selections to Install-Tiny11CorePostBootCleanup' {
+        $source = Get-Content (Join-Path $PSScriptRoot '..' 'src' 'Tiny11.Core.psm1') -Raw
+        $source | Should -Match '-PostBootCleanupCatalog'
+        $source | Should -Match '-PostBootCleanupResolvedSelections'
+        $source | Should -Match '-PostBootCleanupEnabled'
+    }
+}
