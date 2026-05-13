@@ -196,7 +196,30 @@ function New-Tiny11PostBootCleanupScript {
         [Parameter(Mandatory)]            $Catalog,
         [Parameter(Mandatory)][hashtable] $ResolvedSelections
     )
-    throw 'New-Tiny11PostBootCleanupScript not yet implemented'
+    $sb = [System.Text.StringBuilder]::new()
+    [void]$sb.AppendLine($script:headerBlock)
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine($script:helpersBlock)
+    [void]$sb.AppendLine('')
+
+    foreach ($item in $Catalog.Items) {
+        if (-not $ResolvedSelections.ContainsKey($item.id)) { continue }
+        if ($ResolvedSelections[$item.id].EffectiveState -ne 'apply') { continue }
+
+        [void]$sb.AppendLine("# --- Item: $($item.displayName) ($($item.id)) ---")
+        foreach ($action in $item.actions) {
+            $commands = @(Get-Tiny11ActionOnlineCommand -Action $action)
+            foreach ($cmd in $commands) {
+                [void]$sb.AppendLine("# $($cmd.Description)")
+                $argsRendered = Format-PSNamedParams -Arguments $cmd.Args
+                [void]$sb.AppendLine("$($cmd.Kind) $argsRendered")
+            }
+        }
+        [void]$sb.AppendLine('')
+    }
+
+    [void]$sb.AppendLine($script:footerBlock)
+    $sb.ToString()
 }
 
 function New-Tiny11PostBootTaskXml {
