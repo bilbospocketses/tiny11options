@@ -1291,7 +1291,12 @@ function Invoke-Tiny11CoreBuildPipeline {
                     $mountKey = "HKLM\$($t.Hive)"
                     $fullKey  = "$mountKey\$($t.Path)"
                     if ($t.Op -eq 'add') {
-                        & 'reg.exe' 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $t.Value '/f' | Out-Null
+                        # Pre-escape " for reg.exe -- PS 5.1 legacy native-command
+                        # quoting strips inner quotes otherwise. Same fix as
+                        # Tiny11.Actions.Registry.psm1's Invoke-RegistryAction;
+                        # required here too because Core has its own inline path.
+                        $regValue = ([string]$t.Value) -replace '"', '\"'
+                        & 'reg.exe' 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $regValue '/f' | Out-Null
                     } elseif ($t.Op -eq 'delete') {
                         if ($t.PSObject.Properties['Name'] -and $t.Name) {
                             & 'reg.exe' 'delete' $fullKey '/v' $t.Name '/f' | Out-Null
@@ -1412,7 +1417,9 @@ function Invoke-Tiny11CoreBuildPipeline {
                 $mountKey = "HKLM\$($t.Hive)"
                 $fullKey  = "$mountKey\$($t.Path)"
                 if ($t.Op -eq 'add') {
-                    & 'reg.exe' 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $t.Value '/f' | Out-Null
+                    # Pre-escape " for reg.exe (see Tiny11.Actions.Registry.psm1).
+                    $regValue = ([string]$t.Value) -replace '"', '\"'
+                    & 'reg.exe' 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $regValue '/f' | Out-Null
                 }
             }
             # Plus the setup-image-only CmdLine override (upstream tiny11Coremaker.ps1 line 514)

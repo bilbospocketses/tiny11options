@@ -183,6 +183,20 @@ Describe 'Get-Tiny11CoreRegistryTweaks' {
         $bypass | Where-Object { $_.Name -eq 'BypassSecureBootCheck' } | Should -Not -BeNullOrEmpty
         $bypass | Where-Object { $_.Name -eq 'BypassRAMCheck' } | Should -Not -BeNullOrEmpty
     }
+    It 'Core reg.exe call sites pre-escape embedded " for PS 5.1 quoting (regression guard for Finding 2)' {
+        # P4 smoke surfaced: the Finding-2 fix applied to Tiny11.Actions.Registry
+        # did NOT cover Core, which has its own inline reg.exe write loops at
+        # lines ~1294 and ~1415. Both sites must pre-escape value-side double
+        # quotes via -replace '"', '\"' before invoking reg.exe; otherwise
+        # ConfigureStartPins (value contains " ") lands as '{pinnedList: [{}]}'
+        # in the offline SOFTWARE hive instead of '{"pinnedList": [{}]}'.
+        $coreSource = Get-Content (Join-Path $PSScriptRoot '..' 'src' 'Tiny11.Core.psm1') -Raw
+        # No reg.exe 'add' call should pass $t.Value directly without escape;
+        # all such call sites must use $regValue (the escaped variant).
+        $coreSource | Should -Not -Match "reg\.exe' 'add'[^|]*'/d' \`$t\.Value '/f'"
+        # ConfigureStartPins (with embedded ") must be in the tweaks table.
+        ($script:tweaks | Where-Object Name -eq 'ConfigureStartPins').Value | Should -Match '"pinnedList"'
+    }
 
     It 'defender-disable category contains all 5 services with Start=4' {
         $defender = $script:tweaks | Where-Object Category -eq 'defender-disable'
