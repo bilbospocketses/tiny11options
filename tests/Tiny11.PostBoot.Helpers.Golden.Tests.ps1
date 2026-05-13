@@ -34,6 +34,15 @@ Describe 'PostBoot helpers block' {
         $script:helpers | Should -Match 'Select-Object -ExpandProperty PSChildName'
         $script:helpers | Should -Not -Match '\}\)\.PSChildName\)'
     }
+    It 'HKU SID filter excludes _Classes suffix (per-user hive only, not user HKCR)' {
+        # Regression guard for Finding 4 (smoke P2): the bare '^S-1-5-21-' regex
+        # matches both 'S-1-5-21-...-1001' (real user) AND 'S-1-5-21-...-1001_Classes'
+        # (user's HKEY_CLASSES_ROOT portion). Writing policy keys like
+        # InputPersonalization / ContentDeliveryManager to _Classes pollutes that
+        # hive with COM-namespace-irrelevant orphan keys. End-anchored regex
+        # '^S-1-5-21-\d+-\d+-\d+-\d+$' rejects the _Classes suffix.
+        $script:helpers | Should -Match '\^S-1-5-21-\\d\+-\\d\+-\\d\+-\\d\+\$'
+    }
     It 'Set-RegistryValue uses "already" vs "CORRECTED" idempotent-log pattern' {
         $script:helpers | Should -Match 'already'
         $script:helpers | Should -Match 'CORRECTED'
