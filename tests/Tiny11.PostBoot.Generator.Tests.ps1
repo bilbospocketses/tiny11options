@@ -122,7 +122,10 @@ Describe 'New-Tiny11PostBootCleanupScript -- targeted snippets' {
         $body | Should -Match "Set-RegistryValueForAllUsers -RelativeKeyPath 'Software\\Microsoft\\X' -Name 'Y' -Type 'DWord' -Value 0"
     }
 
-    It 'takeown-and-remove with path containing spaces preserves quoting' {
+    It 'takeown-and-remove with path containing spaces emits DOUBLE-quoted $env:SystemDrive so PS expands at runtime' {
+        # Regression guard for B1: single-quoted '$env:SystemDrive\...' is a literal
+        # path PS cannot resolve. The emitter MUST produce double quotes so the
+        # env-var expands when the cleanup script runs on the target machine.
         $items = @(
             [pscustomobject]@{ id='to'; category='store-apps'; displayName='TO'; description='x'; default='apply'; runtimeDepsOn=@(); actions=@(
                 [pscustomobject]@{ type='filesystem'; op='takeown-and-remove'; path='Windows\System32\Microsoft-Edge-Webview'; recurse=$true }
@@ -131,7 +134,7 @@ Describe 'New-Tiny11PostBootCleanupScript -- targeted snippets' {
         $catalog  = New-TestCatalog -Items $items
         $resolved = New-AllApplySelections -Catalog $catalog
         $script   = New-Tiny11PostBootCleanupScript -Catalog $catalog -ResolvedSelections $resolved
-        $script | Should -Match "Remove-PathWithOwnership -Path '\`$env:SystemDrive\\Windows\\System32\\Microsoft-Edge-Webview' -Recurse \`$true"
+        $script | Should -Match 'Remove-PathWithOwnership -Path "\$env:SystemDrive\\Windows\\System32\\Microsoft-Edge-Webview" -Recurse \$true'
     }
 
     It 'REG_DWORD emits unquoted int Value' {

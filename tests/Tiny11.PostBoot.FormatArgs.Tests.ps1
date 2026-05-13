@@ -34,4 +34,18 @@ Describe 'Format-PSNamedParams' {
     It 'string array renders as @() literal' {
         Format-PSNamedParams -Arguments([ordered]@{ Value = @('a','b') }) | Should -Be "-Value @('a','b')"
     }
+    It 'string containing $env: renders DOUBLE-quoted so PS expands at runtime' {
+        # Regression guard for B1: single-quoted '$env:SystemDrive\...' is a literal
+        # path PS cannot resolve. Must be double-quoted so the env-var expands.
+        $r = Format-PSNamedParams -Arguments([ordered]@{ Path = '$env:SystemDrive\Program Files\Foo' })
+        $r | Should -Be '-Path "$env:SystemDrive\Program Files\Foo"'
+    }
+    It 'string containing $env: at non-start position still renders double-quoted' {
+        $r = Format-PSNamedParams -Arguments([ordered]@{ Path = 'prefix-$env:SystemRoot-suffix' })
+        $r | Should -Be '-Path "prefix-$env:SystemRoot-suffix"'
+    }
+    It 'plain string without $env: stays single-quoted' {
+        # Lock in the original behavior for non-expandable strings.
+        Format-PSNamedParams -Arguments([ordered]@{ Path = 'HKLM:\Software\Foo' }) | Should -Be "-Path 'HKLM:\Software\Foo'"
+    }
 }

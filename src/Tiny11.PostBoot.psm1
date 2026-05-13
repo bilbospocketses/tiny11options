@@ -189,6 +189,14 @@ function Format-PSNamedParams {
         } elseif ($value -is [array]) {
             $quoted = ($value | ForEach-Object { "'" + ([string]$_ -replace "'", "''") + "'" }) -join ','
             "@($quoted)"
+        } elseif (([string]$value) -match '\$env:') {
+            # Contains an env-var reference -- emit DOUBLE-quoted so PowerShell
+            # expands it at runtime on the target machine. Single quotes would
+            # suppress expansion and leave a literal '$env:...' path that
+            # Test-Path can never resolve, silently no-op'ing the action.
+            $s = [string]$value
+            $escaped = $s -replace '`','``' -replace '"','`"'
+            '"' + $escaped + '"'
         } else {
             $s = [string]$value
             "'" + ($s -replace "'", "''") + "'"
