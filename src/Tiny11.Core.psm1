@@ -496,9 +496,14 @@ function Invoke-CoreIcacls {
         [Parameter(Mandatory)][string]$Path,
         [switch]$Recurse
     )
-    $args = @($Path, '/grant', 'Administrators:F')
-    if ($Recurse) { $args += @('/T', '/C') }
-    Start-CoreProcess -FileName 'icacls.exe' -Arguments $args
+    # Local var named $argList (not $args) -- $args is a PS automatic variable.
+    # Under Set-StrictMode -Version Latest the assignment is fragile and
+    # version-dependent; a misfire would call icacls without arguments and
+    # leave subsequent Remove-Item access-denied. Matches Invoke-CoreTakeown
+    # immediately above.
+    $argList = @($Path, '/grant', 'Administrators:F')
+    if ($Recurse) { $argList += @('/T', '/C') }
+    Start-CoreProcess -FileName 'icacls.exe' -Arguments $argList
 }
 
 # DISM /Remove-Package loop. Enumerates installed packages once, then
