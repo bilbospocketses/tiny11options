@@ -77,6 +77,7 @@ const state = {
     outputPath: null,
     unmountSource: true,
     fastBuild: true,
+    installPostBootCleanup: true,
     coreMode: false,
     enableNet35: false,
     drilledCategory: null,
@@ -324,6 +325,7 @@ function renderBuildStep() {
                         outputIso: state.outputPath,
                         unmountSource: state.unmountSource,
                         fastBuild: state.fastBuild,
+                        installPostBootCleanup: state.installPostBootCleanup,
                         selections: state.selections,
                         coreMode: state.coreMode,
                         enableNet35: state.enableNet35,
@@ -876,6 +878,26 @@ function renderSourceStep() {
         el('p', { class: 'hint' }, fastBuildHint),
     ];
 
+    // Post-boot cleanup task -- re-removes apps and re-applies tweaks if Windows
+    // Update brings them back. Tailored per-build to the user's catalog selections;
+    // default on. Adds a scheduled task that fires at boot + daily + on every CU
+    // install. See docs/superpowers/specs/2026-05-12-post-boot-cleanup-design.md.
+    const postBootRow = [
+        el('label', { class: 'checkbox-label' },
+            el('input', {
+                id: 'install-post-boot-cleanup', type: 'checkbox',
+                checked: state.installPostBootCleanup,
+                onchange: e => state.installPostBootCleanup = e.target.checked
+            }),
+            'Install post-boot cleanup task'
+        ),
+        el('p', { class: 'hint' },
+            'Re-removes apps and re-applies tweaks if Windows Update brings them back. ' +
+            'Adds a scheduled task that fires 10 minutes after boot, daily at 03:00, ' +
+            'and on every CU install. Tailored to your catalog selections; idempotent.'
+        ),
+    ];
+
     // Core warning panel — shown only when coreMode is on.
     const coreWarning = state.coreMode
         ? el('div', { class: 'core-warning' },
@@ -956,6 +978,7 @@ function renderSourceStep() {
             'Unmount source ISO/DVD when build finishes'
         ),
         ...fastBuildRow,
+        ...postBootRow,
         el('label', { class: 'checkbox-label' },
             el('input', {
                 id: 'core-mode', type: 'checkbox',
