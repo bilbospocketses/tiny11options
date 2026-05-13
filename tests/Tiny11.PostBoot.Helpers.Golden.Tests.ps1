@@ -16,10 +16,14 @@ Describe 'PostBoot helpers block' {
             $script:helpers | Should -Match "function $fn"
         }
     }
-    It 'Set-RegistryValueForAllUsers iterates HKU SIDs + .DEFAULT' {
+    It 'Set-RegistryValueForAllUsers iterates HKU SIDs + the loaded default-user hive mount (NOT .DEFAULT)' {
+        # Regression guard for B4: .DEFAULT is the LOCAL_SERVICE/NETWORK_SERVICE
+        # hive, NOT the new-user-profile template. The helpers must target
+        # tiny11_default (loaded from C:\Users\Default\NTUSER.DAT by the header).
         $script:helpers | Should -Match 'HKU:'
         $script:helpers | Should -Match '\^S-1-5-21-'
-        $script:helpers | Should -Match '\.DEFAULT'
+        $script:helpers | Should -Match 'tiny11_default'
+        $script:helpers | Should -Not -Match "\$sids \+= '\.DEFAULT'"
     }
     It 'Set-RegistryValue uses "already" vs "CORRECTED" idempotent-log pattern' {
         $script:helpers | Should -Match 'already'

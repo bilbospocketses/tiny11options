@@ -46,6 +46,41 @@ function Write-CleanupLog {
 }
 
 Write-CleanupLog '==== tiny11-cleanup triggered ===='
+
+# Mount HKU: PSDrive -- SYSTEM-context PS 5.1 sessions (which is what the
+# scheduled task gets) don't auto-mount it, and every Set-RegistryValueForAllUsers
+# call below depends on it. Idempotent: skip if already present.
+if (-not (Get-PSDrive -Name HKU -ErrorAction SilentlyContinue)) {
+    try {
+        New-PSDrive -Name HKU -PSProvider Registry -Root HKEY_USERS -Scope Global -ErrorAction Stop | Out-Null
+        Write-CleanupLog "  HKU: PSDrive mounted"
+    } catch {
+        Write-CleanupLog "  HKU: PSDrive mount FAILED: $($_.Exception.Message)"
+    }
+}
+
+# Load the default-user registry hive (C:\Users\Default\NTUSER.DAT) into a
+# transient HKU subkey so writes from Set-RegistryValueForAllUsers and
+# Remove-RegistryKeyForAllUsers propagate to user profiles created AFTER this
+# run. Replaces the legacy .DEFAULT target -- .DEFAULT actually backs the
+# LOCAL_SERVICE / NETWORK_SERVICE hive, NOT the new-user-profile template.
+$defaultHivePath = "$env:SystemDrive\Users\Default\NTUSER.DAT"
+$defaultHiveOwnedByThisRun = $false
+if (Test-Path -LiteralPath $defaultHivePath) {
+    if (-not (Test-Path -LiteralPath 'HKU:\tiny11_default')) {
+        & reg.exe load 'HKU\tiny11_default' $defaultHivePath 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $defaultHiveOwnedByThisRun = $true
+            Write-CleanupLog '  default-user hive loaded into HKU:\tiny11_default'
+        } else {
+            Write-CleanupLog "  default-user hive load FAILED (reg.exe rc=$LASTEXITCODE) -- new profiles will NOT inherit changes from this run"
+        }
+    } else {
+        Write-CleanupLog '  default-user hive HKU:\tiny11_default already mounted; reusing (will NOT unload at end)'
+    }
+} else {
+    Write-CleanupLog "  default-user hive file not found at $defaultHivePath -- new profiles will NOT inherit changes"
+}
 '@
 
 $script:helpersBlock = @'
@@ -72,7 +107,10 @@ function Set-RegistryValueForAllUsers {
     param([string]$RelativeKeyPath, [string]$Name, [string]$Type, $Value)
     $sids = @((Get-ChildItem 'HKU:\' -ErrorAction SilentlyContinue |
               Where-Object { $_.PSChildName -match '^S-1-5-21-' }).PSChildName)
-    $sids += '.DEFAULT'
+    # Append the loaded default-user hive (so new profiles inherit) instead of
+    # .DEFAULT (which is the LOCAL_SERVICE/NETWORK_SERVICE hive, not the
+    # new-user template). The hive is loaded once in the header.
+    if (Test-Path -LiteralPath 'HKU:\tiny11_default') { $sids += 'tiny11_default' }
     foreach ($sid in $sids) {
         Set-RegistryValue -KeyPath "HKU:\$sid\$RelativeKeyPath" -Name $Name -Type $Type -Value $Value
     }
@@ -96,7 +134,10 @@ function Remove-RegistryKeyForAllUsers {
     param([string]$RelativeKeyPath)
     $sids = @((Get-ChildItem 'HKU:\' -ErrorAction SilentlyContinue |
               Where-Object { $_.PSChildName -match '^S-1-5-21-' }).PSChildName)
-    $sids += '.DEFAULT'
+    # Append the loaded default-user hive (so new profiles inherit) instead of
+    # .DEFAULT (which is the LOCAL_SERVICE/NETWORK_SERVICE hive, not the
+    # new-user template). The hive is loaded once in the header.
+    if (Test-Path -LiteralPath 'HKU:\tiny11_default') { $sids += 'tiny11_default' }
     foreach ($sid in $sids) {
         Remove-RegistryKey -KeyPath "HKU:\$sid\$RelativeKeyPath"
     }
@@ -171,6 +212,21 @@ function Remove-AppxByPackagePrefix {
 '@
 
 $script:footerBlock = @'
+# Unload the default-user hive if WE loaded it (don't unload one we found
+# already mounted from a prior unclean run -- the owner cleans up). Force a
+# GC + brief pause first because Set-ItemProperty / Get-ItemProperty leave
+# handles open momentarily; reg.exe unload would otherwise return non-zero
+# with the hive still mounted.
+if ($defaultHiveOwnedByThisRun) {
+    [GC]::Collect(); [GC]::WaitForPendingFinalizers(); Start-Sleep -Milliseconds 200
+    & reg.exe unload 'HKU\tiny11_default' 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-CleanupLog '  default-user hive unloaded'
+    } else {
+        Write-CleanupLog "  default-user hive unload FAILED (reg.exe rc=$LASTEXITCODE) -- handle may still be open; the next run will reuse the existing mount"
+    }
+}
+
 Write-CleanupLog '==== tiny11-cleanup done ===='
 '@
 

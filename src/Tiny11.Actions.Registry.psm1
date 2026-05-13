@@ -61,7 +61,7 @@ function Get-Tiny11RegistryOnlineCommand {
                 ,([pscustomobject]@{
                     Kind = 'Set-RegistryValueForAllUsers'
                     Args = [ordered]@{ RelativeKeyPath = $Action.key; Name = $Action.name; Type = $type; Value = $parsedValue }
-                    Description = "Set HKU:*\$($Action.key)!$($Action.name) = $($Action.value) (per-user, all loaded SIDs + .DEFAULT)"
+                    Description = "Set HKU:*\$($Action.key)!$($Action.name) = $($Action.value) (per-user, all loaded SIDs + tiny11_default hive when mounted)"
                 })
             } else {
                 ,([pscustomobject]@{
@@ -76,7 +76,7 @@ function Get-Tiny11RegistryOnlineCommand {
                 ,([pscustomobject]@{
                     Kind = 'Remove-RegistryKeyForAllUsers'
                     Args = [ordered]@{ RelativeKeyPath = $Action.key }
-                    Description = "Remove HKU:*\$($Action.key) (per-user, all loaded SIDs + .DEFAULT)"
+                    Description = "Remove HKU:*\$($Action.key) (per-user, all loaded SIDs + tiny11_default hive when mounted)"
                 })
             } else {
                 ,([pscustomobject]@{

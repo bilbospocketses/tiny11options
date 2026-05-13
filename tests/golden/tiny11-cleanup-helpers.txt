@@ -21,7 +21,10 @@ function Set-RegistryValueForAllUsers {
     param([string]$RelativeKeyPath, [string]$Name, [string]$Type, $Value)
     $sids = @((Get-ChildItem 'HKU:\' -ErrorAction SilentlyContinue |
               Where-Object { $_.PSChildName -match '^S-1-5-21-' }).PSChildName)
-    $sids += '.DEFAULT'
+    # Append the loaded default-user hive (so new profiles inherit) instead of
+    # .DEFAULT (which is the LOCAL_SERVICE/NETWORK_SERVICE hive, not the
+    # new-user template). The hive is loaded once in the header.
+    if (Test-Path -LiteralPath 'HKU:\tiny11_default') { $sids += 'tiny11_default' }
     foreach ($sid in $sids) {
         Set-RegistryValue -KeyPath "HKU:\$sid\$RelativeKeyPath" -Name $Name -Type $Type -Value $Value
     }
@@ -45,7 +48,10 @@ function Remove-RegistryKeyForAllUsers {
     param([string]$RelativeKeyPath)
     $sids = @((Get-ChildItem 'HKU:\' -ErrorAction SilentlyContinue |
               Where-Object { $_.PSChildName -match '^S-1-5-21-' }).PSChildName)
-    $sids += '.DEFAULT'
+    # Append the loaded default-user hive (so new profiles inherit) instead of
+    # .DEFAULT (which is the LOCAL_SERVICE/NETWORK_SERVICE hive, not the
+    # new-user template). The hive is loaded once in the header.
+    if (Test-Path -LiteralPath 'HKU:\tiny11_default') { $sids += 'tiny11_default' }
     foreach ($sid in $sids) {
         Remove-RegistryKey -KeyPath "HKU:\$sid\$RelativeKeyPath"
     }
