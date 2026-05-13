@@ -10,7 +10,16 @@ function Invoke-RegistryAction {
 
     switch ($Action.op) {
         'set' {
-            Invoke-RegCommand 'add' $fullKey '/v' $Action.name '/t' $Action.valueType '/d' $Action.value '/f' | Out-Null
+            # Pre-escape embedded " for reg.exe. Windows PowerShell 5.1's legacy
+            # native-command argument passing does NOT auto-escape inner quotes,
+            # so a value like `{"pinnedList": [{}]}` reaches reg.exe with the
+            # quotes consumed as argument delimiters and the stored value
+            # becomes `{pinnedList: [{}]}`. PS 7+'s Standard mode handles this,
+            # but tiny11maker.ps1:91-112 blocks pwsh and forces PS 5.1.
+            # Verified empirically: post-build offline SOFTWARE hive read
+            # confirms quoted form lands intact after this escape is applied.
+            $regValue = ([string]$Action.value) -replace '"', '\"'
+            Invoke-RegCommand 'add' $fullKey '/v' $Action.name '/t' $Action.valueType '/d' $regValue '/f' | Out-Null
         }
         'remove' {
             try { Invoke-RegCommand 'delete' $fullKey '/f' | Out-Null }

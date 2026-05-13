@@ -33,4 +33,36 @@ Describe "Invoke-RegistryAction" {
         $action = @{ type='registry'; op='nope'; hive='SOFTWARE'; key='X' }
         { Invoke-RegistryAction -Action $action -ScratchDir 'C:\s' } | Should -Throw "*op*"
     }
+    It "escapes embedded double-quotes in REG_SZ values for PS 5.1 reg.exe quoting" {
+        # Regression guard for Finding 2 (ConfigureStartPins quote-strip): Windows
+        # PowerShell 5.1's legacy native-command argument passing does NOT escape
+        # embedded " characters when invoking reg.exe via the splat operator.
+        # Without pre-escaping, '{"pinnedList": [{}]}' lands as '{pinnedList: [{}]}'
+        # in the registry. Verified empirically against the offline SOFTWARE hive
+        # of a fresh build before this fix.
+        $action = @{
+            type='registry'; op='set'; hive='SOFTWARE'
+            key='Microsoft\PolicyManager\current\device\Start'
+            name='ConfigureStartPins'; valueType='REG_SZ'
+            value='{"pinnedList": [{}]}'
+        }
+        Invoke-RegistryAction -Action $action -ScratchDir 'C:\s'
+        Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Actions.Registry' -ParameterFilter {
+            # The value at the /d position must contain BACKSLASH-DQUOTE pairs, not bare quotes.
+            $dIndex = [Array]::IndexOf($RegArgs, '/d')
+            $dIndex -ge 0 -and $RegArgs[$dIndex + 1] -eq '{\"pinnedList\": [{}]}'
+        }
+    }
+    It "leaves quote-free values unchanged (no spurious escaping)" {
+        $action = @{
+            type='registry'; op='set'; hive='SOFTWARE'
+            key='Policies\Microsoft\Windows\DataCollection'
+            name='AllowTelemetry'; valueType='REG_DWORD'; value='0'
+        }
+        Invoke-RegistryAction -Action $action -ScratchDir 'C:\s'
+        Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Actions.Registry' -ParameterFilter {
+            $dIndex = [Array]::IndexOf($RegArgs, '/d')
+            $dIndex -ge 0 -and $RegArgs[$dIndex + 1] -eq '0'
+        }
+    }
 }
