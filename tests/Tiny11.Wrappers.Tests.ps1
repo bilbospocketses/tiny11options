@@ -38,3 +38,25 @@ Describe "Wrapper-script payload-splat regression guard" {
         $content | Should -Not -Match '@\{\s*percent\s*=\s*\$p\.percent'
     }
 }
+
+Describe 'tiny11maker.ps1 -InstallPostBootCleanup switches' {
+    BeforeAll { $script:wrapperPath = Join-Path $PSScriptRoot '..' 'tiny11maker.ps1' }
+
+    It 'defines -InstallPostBootCleanup and -NoPostBootCleanup switches' {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:wrapperPath, [ref]$null, [ref]$null)
+        $params = ($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
+        $params | Should -Contain 'InstallPostBootCleanup'
+        $params | Should -Contain 'NoPostBootCleanup'
+    }
+
+    It 'passes InstallPostBootCleanup through to Invoke-Tiny11BuildPipeline' {
+        $source = Get-Content $script:wrapperPath -Raw
+        $source | Should -Match '-InstallPostBootCleanup'
+    }
+
+    It 'NoPostBootCleanup overrides InstallPostBootCleanup via and -not pattern' {
+        $source = Get-Content $script:wrapperPath -Raw
+        $source | Should -Match 'NoPostBootCleanup'
+        $source | Should -Match '\$InstallPostBootCleanup\s+-and\s+-not\s+\$NoPostBootCleanup'
+    }
+}

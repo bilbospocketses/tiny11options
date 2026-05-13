@@ -43,6 +43,8 @@ param(
     [string]$OutputPath,
     [switch]$NonInteractive,
     [switch]$FastBuild,
+    [bool]$InstallPostBootCleanup = $true,
+    [switch]$NoPostBootCleanup,
     [switch]$Internal
 )
 
@@ -155,6 +157,7 @@ if ($nonInteractive) {
         -OutputPath $OutputPath -UnmountSource $true `
         -Catalog $catalog -ResolvedSelections $resolved `
         -FastBuild ([bool]$FastBuild) `
+        -InstallPostBootCleanup ([bool]($InstallPostBootCleanup -and -not $NoPostBootCleanup)) `
         -ProgressCallback { param($p) Write-Output "[$($p.phase)] $($p.step) ($($p.percent)%)" }
 
     Write-Output "Build complete: $OutputPath"
@@ -256,11 +259,13 @@ $handlers = @{
             }
             try {
                 $scratch = if ($__msg.scratchDir) { $__msg.scratchDir } else { $__src }
+                $__installPostBoot = if ($null -ne $__msg.installPostBootCleanup) { [bool]$__msg.installPostBootCleanup } else { $true }
                 Invoke-Tiny11BuildPipeline `
                     -Source $__msg.source -ImageIndex $__msg.imageIndex `
                     -ScratchDir $scratch -OutputPath $__msg.outputPath `
                     -UnmountSource ([bool]$__msg.unmountSource) `
                     -FastBuild ([bool]$__msg.fastBuild) `
+                    -InstallPostBootCleanup $__installPostBoot `
                     -Catalog $__catalog -ResolvedSelections $__resolved `
                     -ProgressCallback $cb -CancellationToken $__token
                 $j = ConvertTo-Tiny11BridgeMessage -Type 'build-complete' -Payload @{ outputPath = $__msg.outputPath }
