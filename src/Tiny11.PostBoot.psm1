@@ -7,8 +7,8 @@ $script:footerBlock  = ''
 
 function Format-PSNamedParams {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][System.Collections.IDictionary] $Args)
-    $parts = foreach ($entry in $Args.GetEnumerator()) {
+    param([Parameter(Mandatory)][System.Collections.IDictionary] $Arguments)
+    $parts = foreach ($entry in $Arguments.GetEnumerator()) {
         $value = $entry.Value
         $rendered = if ($value -is [bool]) {
             if ($value) { '$true' } else { '$false' }
@@ -17,8 +17,8 @@ function Format-PSNamedParams {
         } elseif ($value -is [byte[]]) {
             $hex = ($value | ForEach-Object { '0x{0:X2}' -f $_ }) -join ','
             "([byte[]]($hex))"
-        } elseif ($value -is [string[]]) {
-            $quoted = ($value | ForEach-Object { "'" + ($_ -replace "'", "''") + "'" }) -join ','
+        } elseif ($value -is [array]) {
+            $quoted = ($value | ForEach-Object { "'" + ([string]$_ -replace "'", "''") + "'" }) -join ','
             "@($quoted)"
         } else {
             $s = [string]$value
