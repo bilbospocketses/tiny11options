@@ -111,6 +111,7 @@ public class BuildHandlers : IBridgeHandler
         _activeSource = src;
         var unmountSource = payload?["unmountSource"]?.GetValue<bool>() ?? false;
         var fastBuild = payload?["fastBuild"]?.GetValue<bool>() ?? false;
+        var installPostBootCleanup = payload?["installPostBootCleanup"]?.GetValue<bool>() ?? true;
         var coreMode = payload?["coreMode"]?.GetValue<bool>() ?? false;
         var enableNet35 = payload?["enableNet35"]?.GetValue<bool>() ?? false;
 
@@ -133,13 +134,13 @@ public class BuildHandlers : IBridgeHandler
         string psArgs;
         if (coreMode)
         {
-            psArgs = BuildCoreArgs(_resourcesDir, src, outputIso, scratchDir, imageIndex, editionName, unmountSource, enableNet35, fastBuild);
+            psArgs = BuildCoreArgs(_resourcesDir, src, outputIso, scratchDir, imageIndex, editionName, unmountSource, enableNet35, fastBuild, installPostBootCleanup);
         }
         else
         {
             var configPath = Path.Combine(_resourcesDir, $"build-config-{Guid.NewGuid():N}.json");
             await File.WriteAllTextAsync(configPath, payload?.ToJsonString() ?? "{}");
-            psArgs = BuildStandardArgs(_resourcesDir, configPath, src, outputIso, scratchDir, imageIndex, editionName, unmountSource, fastBuild);
+            psArgs = BuildStandardArgs(_resourcesDir, configPath, src, outputIso, scratchDir, imageIndex, editionName, unmountSource, fastBuild, installPostBootCleanup);
         }
 
         var psi = new ProcessStartInfo
@@ -291,7 +292,8 @@ public class BuildHandlers : IBridgeHandler
         int imageIndex,
         string editionName,
         bool unmountSource,
-        bool fastBuild)
+        bool fastBuild,
+        bool installPostBootCleanup = true)
     {
         var script = Path.Combine(resourcesDir, "tiny11maker-from-config.ps1");
         var args = new System.Text.StringBuilder("-ExecutionPolicy Bypass -NoProfile -File ");
@@ -304,6 +306,7 @@ public class BuildHandlers : IBridgeHandler
         if (!string.IsNullOrEmpty(scratchDir)) args.Append(" -ScratchDir \"").Append(scratchDir).Append('"');
         if (unmountSource) args.Append(" -UnmountSource");
         if (fastBuild) args.Append(" -FastBuild");
+        if (!installPostBootCleanup) args.Append(" -NoPostBootCleanup");
         return args.ToString();
     }
 
@@ -321,7 +324,8 @@ public class BuildHandlers : IBridgeHandler
         string editionName,
         bool unmountSource,
         bool enableNet35,
-        bool fastBuild)
+        bool fastBuild,
+        bool installPostBootCleanup = true)
     {
         var script = Path.Combine(resourcesDir, "tiny11Coremaker-from-config.ps1");
         var args = new System.Text.StringBuilder("-ExecutionPolicy Bypass -NoProfile -File ");
@@ -334,6 +338,7 @@ public class BuildHandlers : IBridgeHandler
         if (enableNet35) args.Append(" -EnableNet35");
         if (unmountSource) args.Append(" -UnmountSource");
         if (fastBuild) args.Append(" -FastBuild");
+        if (!installPostBootCleanup) args.Append(" -NoPostBootCleanup");
         return args.ToString();
     }
 

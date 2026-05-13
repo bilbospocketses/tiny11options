@@ -165,7 +165,7 @@ public class BuildHandlersTests
     private static string InvokeBuildCoreArgs(
         string resourcesDir, string src, string outputIso, string scratchDir,
         int imageIndex, string editionName, bool unmountSource, bool enableNet35,
-        bool fastBuild = false)
+        bool fastBuild = false, bool installPostBootCleanup = true)
     {
         var method = typeof(BuildHandlers).GetMethod(
             "BuildCoreArgs",
@@ -173,13 +173,14 @@ public class BuildHandlersTests
         return (string)method.Invoke(null, new object[]
         {
             resourcesDir, src, outputIso, scratchDir,
-            imageIndex, editionName, unmountSource, enableNet35, fastBuild
+            imageIndex, editionName, unmountSource, enableNet35, fastBuild, installPostBootCleanup
         })!;
     }
 
     private static string InvokeBuildStandardArgs(
         string resourcesDir, string configPath, string src, string outputIso,
-        string scratchDir, int imageIndex, string editionName, bool unmountSource, bool fastBuild)
+        string scratchDir, int imageIndex, string editionName, bool unmountSource,
+        bool fastBuild, bool installPostBootCleanup = true)
     {
         var method = typeof(BuildHandlers).GetMethod(
             "BuildStandardArgs",
@@ -187,7 +188,7 @@ public class BuildHandlersTests
         return (string)method.Invoke(null, new object[]
         {
             resourcesDir, configPath, src, outputIso,
-            scratchDir, imageIndex, editionName, unmountSource, fastBuild
+            scratchDir, imageIndex, editionName, unmountSource, fastBuild, installPostBootCleanup
         })!;
     }
 
@@ -407,5 +408,45 @@ public class BuildHandlersTests
         var result = InvokeBuildCoreArgs(resDir, @"D:\win.iso", @"C:\out.iso", "", 0, "", false, false, fastBuild: false);
 
         Assert.DoesNotContain("-FastBuild", result);
+    }
+
+    [Fact]
+    public void BuildStandardArgs_OmitsNoPostBootCleanup_WhenEnabled()
+    {
+        var resDir = @"C:\resources";
+        var result = InvokeBuildStandardArgs(resDir, @"C:\cfg.json", @"D:\win.iso", @"C:\out.iso", "", 0, "",
+            unmountSource: false, fastBuild: false, installPostBootCleanup: true);
+
+        Assert.DoesNotContain("-NoPostBootCleanup", result);
+    }
+
+    [Fact]
+    public void BuildStandardArgs_AppendsNoPostBootCleanup_WhenDisabled()
+    {
+        var resDir = @"C:\resources";
+        var result = InvokeBuildStandardArgs(resDir, @"C:\cfg.json", @"D:\win.iso", @"C:\out.iso", "", 0, "",
+            unmountSource: false, fastBuild: false, installPostBootCleanup: false);
+
+        Assert.Contains("-NoPostBootCleanup", result);
+    }
+
+    [Fact]
+    public void BuildCoreArgs_OmitsNoPostBootCleanup_WhenEnabled()
+    {
+        var resDir = @"C:\resources";
+        var result = InvokeBuildCoreArgs(resDir, @"D:\win.iso", @"C:\out.iso", "", 0, "", false, false,
+            fastBuild: false, installPostBootCleanup: true);
+
+        Assert.DoesNotContain("-NoPostBootCleanup", result);
+    }
+
+    [Fact]
+    public void BuildCoreArgs_AppendsNoPostBootCleanup_WhenDisabled()
+    {
+        var resDir = @"C:\resources";
+        var result = InvokeBuildCoreArgs(resDir, @"D:\win.iso", @"C:\out.iso", "", 0, "", false, false,
+            fastBuild: false, installPostBootCleanup: false);
+
+        Assert.Contains("-NoPostBootCleanup", result);
     }
 }
