@@ -975,6 +975,13 @@ function Install-Tiny11CorePostBootCleanup {
     # Whether to ALSO write the v1.0.1 cleanup files + extend SetupComplete with cleanup-task registration
     $writeCleanupFiles = $PostBootCleanupEnabled -and $PostBootCleanupCatalog -and $PostBootCleanupResolvedSelections
 
+    # A4 W3: surface the silent no-op. If the caller asked for cleanup but
+    # forgot the catalog/selections, the cleanup files will NOT be written and
+    # the user gets no indication why.
+    if ($PostBootCleanupEnabled -and (-not $PostBootCleanupCatalog -or -not $PostBootCleanupResolvedSelections)) {
+        Write-Warning "Install-Tiny11CorePostBootCleanup: PostBootCleanupEnabled is `$true but PostBootCleanupCatalog or PostBootCleanupResolvedSelections is missing; tiny11-cleanup.{ps1,xml} will NOT be written (the wu-enforce task is unaffected)."
+    }
+
     # 1. SetupComplete.cmd
     $cmdPath = Join-Path $scriptDir 'SetupComplete.cmd'
     $cmdContent = New-Tiny11CorePostBootCleanupScript -IncludePostBootCleanupRegistration:$writeCleanupFiles
@@ -1006,6 +1013,15 @@ function Install-Tiny11CorePostBootCleanup {
             (Join-Path $scriptDir 'tiny11-cleanup.xml'),
             $cleanupXml,
             [System.Text.Encoding]::Unicode)
+    } else {
+        # A4 W4: scrub any prior tiny11-cleanup.{ps1,xml} that an earlier
+        # cleanup-enabled build wrote. SetupComplete.cmd is unconditionally
+        # overwritten above so it doesn't need stale handling here; only the
+        # cleanup-specific artifacts do.
+        foreach ($f in 'tiny11-cleanup.ps1','tiny11-cleanup.xml') {
+            $p = Join-Path $scriptDir $f
+            if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+        }
     }
 
     Write-Verbose "Installed post-boot cleanup artifacts at $scriptDir"

@@ -1068,6 +1068,31 @@ Describe 'Install-Tiny11CorePostBootCleanup with cleanup params' {
         $setupCmd = Get-Content (Join-Path $scripts 'SetupComplete.cmd') -Raw
         ([regex]::Matches($setupCmd, 'schtasks /create /xml')).Count | Should -Be 1
     }
+
+    It 'warns when PostBootCleanupEnabled=$true but PostBootCleanupCatalog is missing (A4 W3 regression guard)' {
+        # Pre-fix: cleanup files silently NOT written when catalog/selections
+        # were omitted but Enabled stayed $true. User sees no indication.
+        Install-Tiny11CorePostBootCleanup -MountDir $script:tempMount -PostBootCleanupEnabled $true -WarningVariable warns -WarningAction SilentlyContinue
+        $warns.Count | Should -BeGreaterThan 0
+        $warns -join "`n" | Should -Match 'PostBootCleanupCatalog or PostBootCleanupResolvedSelections is missing'
+    }
+
+    It 'does NOT warn on the legitimate disabled path (PostBootCleanupEnabled=$false)' {
+        Install-Tiny11CorePostBootCleanup -MountDir $script:tempMount -PostBootCleanupEnabled $false -WarningVariable warns -WarningAction SilentlyContinue
+        $warns.Count | Should -Be 0
+    }
+
+    It 'removes prior tiny11-cleanup artifacts when called without cleanup params (A4 W4 regression guard)' {
+        # Pre-fix: a rebuild flipping from cleanup-on to cleanup-off left
+        # stale tiny11-cleanup.{ps1,xml} from the prior run in the WIM.
+        $scripts = Join-Path $script:tempMount 'Windows\Setup\Scripts'
+        New-Item -ItemType Directory -Path $scripts -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $scripts 'tiny11-cleanup.ps1') -Value 'stale ps1' -Force
+        Set-Content -LiteralPath (Join-Path $scripts 'tiny11-cleanup.xml') -Value 'stale xml' -Force
+        Install-Tiny11CorePostBootCleanup -MountDir $script:tempMount -PostBootCleanupEnabled $false
+        Test-Path (Join-Path $scripts 'tiny11-cleanup.ps1') | Should -Be $false
+        Test-Path (Join-Path $scripts 'tiny11-cleanup.xml') | Should -Be $false
+    }
 }
 
 Describe 'Invoke-Tiny11CoreBuildPipeline post-boot cleanup wiring' {

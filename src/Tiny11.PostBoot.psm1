@@ -459,9 +459,21 @@ function Install-Tiny11PostBootCleanup {
         [Parameter(Mandatory)][hashtable] $ResolvedSelections,
         [bool]                            $Enabled = $true
     )
-    if (-not $Enabled) { return }
-
     $scriptsDir = Join-Path $MountDir 'Windows\Setup\Scripts'
+    if (-not $Enabled) {
+        # A4 W4: Scrub any artifacts a prior cleanup-enabled build wrote into
+        # the same mount. Worker SetupComplete.cmd, tiny11-cleanup.ps1, and
+        # tiny11-cleanup.xml all exist ONLY for the cleanup task, so removing
+        # all three when disabled is correct. Idempotent if absent.
+        if (Test-Path -LiteralPath $scriptsDir) {
+            foreach ($f in 'SetupComplete.cmd','tiny11-cleanup.ps1','tiny11-cleanup.xml') {
+                $p = Join-Path $scriptsDir $f
+                if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+            }
+        }
+        return
+    }
+
     if (-not (Test-Path -LiteralPath $scriptsDir)) {
         New-Item -ItemType Directory -Path $scriptsDir -Force | Out-Null
     }

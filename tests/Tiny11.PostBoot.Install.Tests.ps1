@@ -78,4 +78,25 @@ Describe 'Install-Tiny11PostBootCleanup' {
         $text | Should -Match '# --- Item: Only \(only\) ---'
         $text | Should -Match "Remove-AppxByPackagePrefix -Prefix 'Only\.Pkg'"
     }
+
+    It '-Enabled:$false removes prior cleanup artifacts if present (A4 W4 regression guard)' {
+        # Pre-fix: the function bare-returned, leaving any prior-run artifacts
+        # in place. A rebuild flipping from cleanup-on to cleanup-off would
+        # ship stale SetupComplete.cmd / tiny11-cleanup.* baked into the WIM.
+        $scriptsDir = Join-Path $script:tempMount 'Windows\Setup\Scripts'
+        New-Item -ItemType Directory -Path $scriptsDir -Force | Out-Null
+        foreach ($f in 'SetupComplete.cmd','tiny11-cleanup.ps1','tiny11-cleanup.xml') {
+            Set-Content -LiteralPath (Join-Path $scriptsDir $f) -Value 'stale prior content' -Force
+        }
+        Install-Tiny11PostBootCleanup -MountDir $script:tempMount -Catalog $script:tinyCatalog -ResolvedSelections $script:tinyResolved -Enabled:$false
+        Test-Path (Join-Path $scriptsDir 'SetupComplete.cmd')   | Should -Be $false
+        Test-Path (Join-Path $scriptsDir 'tiny11-cleanup.ps1')  | Should -Be $false
+        Test-Path (Join-Path $scriptsDir 'tiny11-cleanup.xml')  | Should -Be $false
+    }
+
+    It '-Enabled:$false against a fresh mount is still a no-op (no spurious creation)' {
+        # Locks the original behavior: no scripts dir, no writes when nothing exists.
+        Install-Tiny11PostBootCleanup -MountDir $script:tempMount -Catalog $script:tinyCatalog -ResolvedSelections $script:tinyResolved -Enabled:$false
+        Test-Path (Join-Path $script:tempMount 'Windows\Setup\Scripts') | Should -Be $false
+    }
 }
