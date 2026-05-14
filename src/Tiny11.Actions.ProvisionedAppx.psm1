@@ -34,6 +34,11 @@ function Invoke-DismRemoveAppx {
 function Invoke-ProvisionedAppxAction {
     [CmdletBinding()]
     param([Parameter(Mandatory)] $Action, [Parameter(Mandatory)][string]$ScratchDir)
+    # Empty/whitespace packagePrefix would make `-like "**"` match every package
+    # and nuke the entire provisioned-appx set. Treat as catalog corruption.
+    if ([string]::IsNullOrWhiteSpace($Action.packagePrefix)) {
+        throw "provisioned-appx action requires a non-empty 'packagePrefix' (empty prefix would match all packages)"
+    }
     $packages = Get-ProvisionedAppxPackagesFromImage -ScratchDir $ScratchDir
     $matchedPackages = @($packages | Where-Object { $_ -like "*$($Action.packagePrefix)*" })
     foreach ($pkg in $matchedPackages) { Invoke-DismRemoveAppx -ScratchDir $ScratchDir -PackageName $pkg }
@@ -42,6 +47,13 @@ function Invoke-ProvisionedAppxAction {
 function Get-Tiny11ProvisionedAppxOnlineCommand {
     [CmdletBinding()]
     param([Parameter(Mandatory)] $Action)
+
+    # Same empty-prefix guard as the offline dispatcher: the generated cleanup
+    # script would otherwise emit Remove-AppxByPackagePrefix -Prefix '' which
+    # matches everything at runtime.
+    if ([string]::IsNullOrWhiteSpace($Action.packagePrefix)) {
+        throw "provisioned-appx action requires a non-empty 'packagePrefix' (empty prefix would match all packages)"
+    }
 
     ,([pscustomobject]@{
         Kind        = 'Remove-AppxByPackagePrefix'

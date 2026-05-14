@@ -52,4 +52,13 @@ Describe 'New-Tiny11PostBootTaskXml' {
         $script:doc.SelectSingleNode('//t:Actions/t:Exec/t:Command', $script:ns).InnerText | Should -Be 'powershell.exe'
         $script:doc.SelectSingleNode('//t:Actions/t:Exec/t:Arguments', $script:ns).InnerText | Should -Match 'C:\\Windows\\Setup\\Scripts\\tiny11-cleanup\.ps1'
     }
+
+    It 'RestartOnFailure retries 3 times at PT1M intervals (A5 W1 regression guard)' {
+        # If the task fails at boot (locked files, transient resource issue) it
+        # should retry rather than wait until the next trigger fires.
+        $rof = $script:doc.SelectSingleNode('//t:Settings/t:RestartOnFailure', $script:ns)
+        $rof | Should -Not -BeNullOrEmpty
+        $rof.Interval | Should -Be 'PT1M'
+        $rof.Count    | Should -Be '3'
+    }
 }

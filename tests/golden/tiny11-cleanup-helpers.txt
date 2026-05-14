@@ -1,11 +1,25 @@
 function Set-RegistryValue {
     param([string]$KeyPath, [string]$Name, [string]$Type, $Value)
     if (-not (Test-Path -LiteralPath $KeyPath)) {
-        try { New-Item -Path $KeyPath -Force -ErrorAction Stop | Out-Null }
+        # PS 5.1's New-Item has no -LiteralPath. Brackets are legal in registry
+        # key names but PS would treat them as glob patterns. Pre-escape so any
+        # `[` / `]` / `?` / `*` in the path is treated literally.
+        try { New-Item -Path ([WildcardPattern]::Escape($KeyPath)) -Force -ErrorAction Stop | Out-Null }
         catch { Write-CleanupLog "  $KeyPath key-create FAILED: $($_.Exception.Message)"; return }
     }
     $current = (Get-ItemProperty -LiteralPath $KeyPath -Name $Name -ErrorAction SilentlyContinue).$Name
-    if ($null -ne $current -and $current -eq $Value) {
+    # REG_MULTI_SZ ($current/$Value are [string[]]): PS `-eq` between arrays
+    # returns an elementwise filter, NOT a scalar bool. Compare-Object yields
+    # an empty result when arrays are semantically equal.
+    $alreadyEqual = if ($null -eq $current) {
+        $false
+    } elseif ($current -is [array] -or $Value -is [array]) {
+        $diffs = @(Compare-Object @($current) @($Value) -SyncWindow 0)
+        $diffs.Count -eq 0
+    } else {
+        $current -eq $Value
+    }
+    if ($alreadyEqual) {
         Write-CleanupLog "  $KeyPath!$Name=$Value already"
         return
     }

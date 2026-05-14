@@ -22,6 +22,16 @@ Describe "Invoke-ProvisionedAppxAction" {
         Invoke-ProvisionedAppxAction -Action @{ type='provisioned-appx'; packagePrefix='NotPresent.Anywhere' } -ScratchDir 'C:\s'
         Should -Invoke -CommandName 'Invoke-DismRemoveAppx' -ModuleName 'Tiny11.Actions.ProvisionedAppx' -Times 0
     }
+    It "throws on empty packagePrefix (A5 W4 regression guard)" {
+        # Pre-fix: `-like '**'` matches every package, would Invoke-DismRemoveAppx
+        # for the entire provisioned-appx set. Treat empty prefix as corruption.
+        { Invoke-ProvisionedAppxAction -Action @{ type='provisioned-appx'; packagePrefix='' } -ScratchDir 'C:\s' } | Should -Throw -ExpectedMessage "*non-empty 'packagePrefix'*"
+        Should -Invoke -CommandName 'Invoke-DismRemoveAppx' -ModuleName 'Tiny11.Actions.ProvisionedAppx' -Times 0
+    }
+    It "throws on whitespace-only packagePrefix (A5 W4 regression guard)" {
+        { Invoke-ProvisionedAppxAction -Action @{ type='provisioned-appx'; packagePrefix='   ' } -ScratchDir 'C:\s' } | Should -Throw -ExpectedMessage "*non-empty 'packagePrefix'*"
+        Should -Invoke -CommandName 'Invoke-DismRemoveAppx' -ModuleName 'Tiny11.Actions.ProvisionedAppx' -Times 0
+    }
 }
 
 Describe "Provisioned-appx package cache" {

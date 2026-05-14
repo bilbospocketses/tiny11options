@@ -84,6 +84,22 @@ Describe 'PostBoot helpers block' {
     It 'is pure ASCII' {
         ($script:helpers.ToCharArray() | Where-Object { [int]$_ -gt 127 }).Count | Should -Be 0
     }
+    It 'Set-RegistryValue uses Compare-Object for array idempotency (A5 W3 regression guard)' {
+        # PS `-eq` between [string[]] arrays returns an elementwise filter, NOT
+        # a scalar bool, so REG_MULTI_SZ values would always trip the CORRECTED
+        # branch and re-write on every run. Compare-Object yields an empty
+        # result when arrays are semantically equal.
+        $script:helpers | Should -Match 'Compare-Object'
+        $script:helpers | Should -Match '\$current -is \[array\] -or \$Value -is \[array\]'
+        # Make sure the legacy buggy pattern is gone:
+        $script:helpers | Should -Not -Match '\$null -ne \$current -and \$current -eq \$Value'
+    }
+    It 'Set-RegistryValue escapes wildcard chars in New-Item path (A5 W5 regression guard)' {
+        # PS 5.1's New-Item has no -LiteralPath. Brackets are legal in registry
+        # key names but PS would treat them as glob patterns. [WildcardPattern]::Escape
+        # makes the path literal without changing the calling convention.
+        $script:helpers | Should -Match 'New-Item -Path \(\[WildcardPattern\]::Escape\(\$KeyPath\)\)'
+    }
     It 'matches the golden fixture (content-equal, line-endings normalized)' {
         # Line endings differ by source: src/Tiny11.PostBoot.psm1 is checked
         # out CRLF per .gitattributes (`*.psm1 text eol=crlf`), so the runtime

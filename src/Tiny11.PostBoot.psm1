@@ -87,11 +87,25 @@ $script:helpersBlock = @'
 function Set-RegistryValue {
     param([string]$KeyPath, [string]$Name, [string]$Type, $Value)
     if (-not (Test-Path -LiteralPath $KeyPath)) {
-        try { New-Item -Path $KeyPath -Force -ErrorAction Stop | Out-Null }
+        # PS 5.1's New-Item has no -LiteralPath. Brackets are legal in registry
+        # key names but PS would treat them as glob patterns. Pre-escape so any
+        # `[` / `]` / `?` / `*` in the path is treated literally.
+        try { New-Item -Path ([WildcardPattern]::Escape($KeyPath)) -Force -ErrorAction Stop | Out-Null }
         catch { Write-CleanupLog "  $KeyPath key-create FAILED: $($_.Exception.Message)"; return }
     }
     $current = (Get-ItemProperty -LiteralPath $KeyPath -Name $Name -ErrorAction SilentlyContinue).$Name
-    if ($null -ne $current -and $current -eq $Value) {
+    # REG_MULTI_SZ ($current/$Value are [string[]]): PS `-eq` between arrays
+    # returns an elementwise filter, NOT a scalar bool. Compare-Object yields
+    # an empty result when arrays are semantically equal.
+    $alreadyEqual = if ($null -eq $current) {
+        $false
+    } elseif ($current -is [array] -or $Value -is [array]) {
+        $diffs = @(Compare-Object @($current) @($Value) -SyncWindow 0)
+        $diffs.Count -eq 0
+    } else {
+        $current -eq $Value
+    }
+    if ($alreadyEqual) {
         Write-CleanupLog "  $KeyPath!$Name=$Value already"
         return
     }
@@ -333,13 +347,23 @@ function New-Tiny11PostBootCleanupScript {
         if ($ResolvedSelections[$item.id].EffectiveState -ne 'apply') { continue }
 
         [void]$sb.AppendLine("# --- Item: $($item.displayName) ($($item.id)) ---")
+        $actionIndex = 0
         foreach ($action in $item.actions) {
-            $commands = @(Get-Tiny11ActionOnlineCommand -Action $action)
+            try {
+                $commands = @(Get-Tiny11ActionOnlineCommand -Action $action)
+            } catch {
+                # Surface the offending item + action index so the failure is
+                # diagnosable. Re-throw rather than swallowing: a missing
+                # online emitter is a real catalog/code mismatch, not something
+                # to silently skip.
+                throw "post-boot cleanup generation failed at item '$($item.id)' action index $actionIndex (type='$($action.type)'): $($_.Exception.Message)"
+            }
             foreach ($cmd in $commands) {
                 [void]$sb.AppendLine("# $($cmd.Description)")
                 $argsRendered = Format-PSNamedParams -Arguments $cmd.Args
                 [void]$sb.AppendLine("$($cmd.Kind) $argsRendered")
             }
+            $actionIndex++
         }
         [void]$sb.AppendLine('')
     }
@@ -389,6 +413,10 @@ function New-Tiny11PostBootTaskXml {
     <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
     <ExecutionTimeLimit>PT30M</ExecutionTimeLimit>
     <Priority>7</Priority>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
   </Settings>
   <Actions Context="Author">
     <Exec>
