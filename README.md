@@ -60,6 +60,26 @@ The task:
 
 **Known limitation (v1.0.1):** the cleanup script only re-applies what the catalog enumerates. The `tweak-disable-sponsored-apps` item currently covers 4 of the 11 canonical `ContentDeliveryManager` registry values; the other 7 (FeatureManagementEnabled, PreInstalledAppsEverEnabled, RotatingLockScreenEnabled, RotatingLockScreenOverlayEnabled, SlideshowEnabled, SoftLandingEnabled, SystemPaneSuggestionsEnabled) plus `HKLM\SOFTWARE\Policies\Microsoft\WindowsStore\AutoDownload=2` remain uncovered by the catalog and will be restored by CUs. The 4 values that *are* covered propagate to user profiles created after cleanup runs (the cleanup loads `C:\Users\Default\NTUSER.DAT` into a transient `HKU:\tiny11_default` mount, writes through it, and unloads -- new accounts inherit the disabled state). Catalog completeness lands in v1.0.2.
 
+### Choose carefully -- build-time selections are permanent for the life of this ISO
+
+The cleanup task carries the contract in BOTH directions:
+
+- **Items you chose to KEEP at build time will always stay.** If you kept Edge, the cleanup task literally contains no Edge-removal code -- it's not a runtime "should I skip this?" check, the relevant commands are simply not in the generated `C:\Windows\Setup\Scripts\tiny11-cleanup.ps1`. Microsoft can restage Edge through every CU it wants; the task will never touch it.
+
+- **Items you chose to REMOVE at build time will keep getting removed -- forever.** If you removed Clipchamp at build time and later change your mind and install it from the Store, the cleanup task will detect it and remove it again at the next trigger (every boot, daily at 03:00, and on every Windows Update EventID 19). There is no "pause for this user", no "ignore once", no opt-out at runtime.
+
+**Plan your selections with long-term use in mind.** The cleanup task makes your decisions stick -- that's the whole point of v1.0.1 -- but it also means you need to choose at build time as if your selections are baked into the OS, because they effectively are.
+
+**Changing your mind later means a full reinstall.** If 6 months in you decide you actually want an app you removed, the only path back is:
+
+1. Build a fresh ISO with the updated selections (or import your prior `.json` profile from Step 4 and tweak it).
+2. Reinstall Windows from the new ISO.
+3. Reinstall your applications, restore your data, redo your customizations.
+
+The cleanup task on an already-deployed system cannot be reconfigured at runtime -- its decision tree is baked into the script at build time and stays that way for the life of the ISO.
+
+**Practical tip:** if you're on the fence about an app, keep it. The marginal cost of keeping an app is ~50-100 MB on disk; the cost of being wrong is a full Windows reinstall. Errors of "I removed too much" are far more expensive than errors of "I kept too much".
+
 ## Build modes
 
 The launcher offers two build modes in Step 1. Pick the one that fits your use case:
