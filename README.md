@@ -24,7 +24,7 @@ pwsh -NoProfile -File tiny11maker.ps1
 ```
 
 Opens a 1200×900 wizard window (resizable; size is remembered between sessions in `%LOCALAPPDATA%\tiny11options\settings.json`). The theme follows your system light/dark preference on first launch, with a toggle button in the header to override (override is persisted in WebView2 localStorage):
-1. **Source** — pick your Win11 ISO + edition, scratch directory, fast-build option.
+1. **Source** — pick your Win11 ISO + edition, scratch directory, fast-build option, post-boot cleanup, and build-output logging (writes `tiny11build.log` alongside the scratch directory; on by default; "Append to existing log" is an opt-in toggle indented underneath the logging checkbox).
 2. **Customize** — browse 10 categories of removable items + tweaks; drill into any category to fine-tune; click anywhere on a row to toggle it; "Check all" / "Uncheck all" button operates on the visible filtered set; Save / Load profile JSON; cross-category search.
 3. **Build** — review the summary; output ISO path is auto-prefilled to `<scratchDir>\tiny11.iso` (override anytime); click Build. Progress streams live; cancel button works mid-build; the "Show build details" panel stays open across phase changes once expanded.
 
@@ -69,7 +69,24 @@ Documented flags include all the `-Source` / `-Edition` / `-ImageIndex` / `-Conf
 - **`-FastBuild`** — skip the post-build recovery-image compression pass (~2 GB smaller savings forfeited, ~5–10 minutes faster).
 - **`-NoPostBootCleanup`** — opt out of installing the [post-boot cleanup task](#post-boot-cleanup-task-v101). Default behavior installs the task; this switch suppresses it.
 
-Exit codes: `0` success, `1` build failure, `2` host-architecture rejection (non-x64 host — see [Architecture and language support](#architecture-and-language-support)), `10` resource-extraction failure, `11` `powershell.exe` not found on PATH.
+#### Build logging (v1.0.3+)
+
+Two launcher-level flags (consumed by `tiny11options.exe` itself, NOT forwarded to `tiny11maker.ps1`) capture the build to a file:
+
+- **`--log <path>`** — write build output (stdout + stderr) to the given file IN ADDITION to the attached console. Lowercase only. Both space-form (`--log out.log`) and equals-form (`--log=out.log`) are accepted. Relative paths resolve against the current working directory.
+- **`--append`** — when paired with `--log`, append to the existing log file rather than overwriting. Lowercase only. Using `--append` without `--log` is a parse error (exit 12).
+
+**Headless logging is opt-in** — by default, `tiny11options.exe` writes to whatever console is attached (or nothing, in piped contexts where `AttachConsole` fails). If you need a build artifact for troubleshooting, pass `--log`. The Step 1 GUI checkbox ("Log build output", on by default) does NOT carry over to headless invocations; the two paths are independent.
+
+```powershell
+.\tiny11options.exe -NonInteractive --log C:\logs\tiny11build.log `
+    -Source 'C:\path\to\Win11.iso' `
+    -Config 'config\examples\tiny11-classic.json' `
+    -Edition 'Windows 11 Pro' `
+    -OutputPath 'C:\out\tiny11.iso'
+```
+
+Exit codes: `0` success, `1` build failure, `2` host-architecture rejection (non-x64 host — see [Architecture and language support](#architecture-and-language-support)), `10` resource-extraction failure, `11` `powershell.exe` not found on PATH, `12` invalid `--log` / `--append` argument, `13` log file could not be opened.
 
 ## Post-boot cleanup task (v1.0.1+)
 

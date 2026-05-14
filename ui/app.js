@@ -78,6 +78,14 @@ const state = {
     unmountSource: true,
     fastBuild: true,
     installPostBootCleanup: true,
+    // A13 (v1.0.3): Step 1 build logging. Logging is on by default in the GUI
+    // (matches the user's stated UX: zero-friction debugging artifact); append
+    // is off by default so the log file is overwritten per build unless the
+    // user explicitly opts in to accumulation. Per-session like fastBuild --
+    // resets to defaults on every launcher restart, NOT persisted in profile
+    // JSON or settings.json.
+    logBuildOutput: true,
+    appendLog: false,
     coreMode: false,
     enableNet35: false,
     drilledCategory: null,
@@ -326,6 +334,8 @@ function renderBuildStep() {
                         unmountSource: state.unmountSource,
                         fastBuild: state.fastBuild,
                         installPostBootCleanup: state.installPostBootCleanup,
+                        logBuildOutput: state.logBuildOutput,
+                        appendLog: state.appendLog,
                         selections: state.selections,
                         coreMode: state.coreMode,
                         enableNet35: state.enableNet35,
@@ -898,6 +908,38 @@ function renderSourceStep() {
         ),
     ];
 
+    // A13 (v1.0.3): "Log build output" + indented "Append to existing log".
+    // Logging defaults ON, append defaults OFF. Append checkbox is disabled
+    // when logging is off (no point appending to a file we won't create).
+    // Log file location: <scratchDir>\tiny11build.log, or %TEMP%\tiny11build.log
+    // when scratch is left blank (the wrapper script picks its own fresh
+    // temp scratch in that case, but the log goes to %TEMP% proper so it's
+    // findable). Per-session: NOT saved to profile JSON or settings.json.
+    const logBuildRow = [
+        el('label', { class: 'checkbox-label' },
+            el('input', {
+                id: 'log-build-output', type: 'checkbox',
+                checked: state.logBuildOutput,
+                onchange: e => { state.logBuildOutput = e.target.checked; renderStep(); }
+            }),
+            'Log build output'
+        ),
+        el('label', { class: 'checkbox-label', style: 'margin-left: 1.75em;' },
+            el('input', {
+                id: 'append-log', type: 'checkbox',
+                checked: state.appendLog,
+                disabled: !state.logBuildOutput,
+                onchange: e => state.appendLog = e.target.checked
+            }),
+            'Append to existing log'
+        ),
+        el('p', { class: 'hint' },
+            'Writes the build progress to tiny11build.log alongside your scratch directory ' +
+            '(or under %TEMP% when scratch is left blank). With "Append to existing log" off, ' +
+            'each build overwrites the previous log; with it on, builds accumulate in one file.'
+        ),
+    ];
+
     // Core warning panel — shown only when coreMode is on.
     const coreWarning = state.coreMode
         ? el('div', { class: 'core-warning' },
@@ -979,6 +1021,7 @@ function renderSourceStep() {
         ),
         ...fastBuildRow,
         ...postBootRow,
+        ...logBuildRow,
         el('label', { class: 'checkbox-label' },
             el('input', {
                 id: 'core-mode', type: 'checkbox',

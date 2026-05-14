@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using Tiny11Options.Launcher.Interop;
 
 namespace Tiny11Options.Launcher.Headless;
@@ -35,6 +36,17 @@ internal static class HeadlessRunner
         ConsoleAttach.AttachToParent();
         try
         {
+            // A13 (v1.0.3): pull --log <path> and --append out of the arg array
+            // before forwarding the remainder to tiny11maker.ps1. Headless logging
+            // is opt-in -- no --log, no log file (unlike the GUI where the Step 1
+            // "Log build output" checkbox is on by default).
+            var parsed = HeadlessArgs.Extract(args);
+            if (parsed.Error != null)
+            {
+                Console.Error.WriteLine(parsed.Error);
+                return 12;
+            }
+
             string tempDir;
             try
             {
@@ -48,15 +60,50 @@ internal static class HeadlessRunner
             }
 
             var ps1Path = Path.Combine(tempDir, "tiny11maker.ps1");
-            var argLine = BuildPwshArgLine(ps1Path, args);
+            var argLine = BuildPwshArgLine(ps1Path, parsed.Remaining);
+
+            // A13: open the log writer BEFORE Process.Start so we can fail-fast
+            // with exit 13 if the path is unwritable, rather than starting a
+            // multi-minute build that has nowhere to log to. Path is resolved
+            // against Environment.CurrentDirectory before WorkingDirectory swap
+            // (Path.GetFullPath uses CurrentDirectory implicitly).
+            StreamWriter? logWriter = null;
+            if (parsed.LogPath != null)
+            {
+                string resolvedLogPath;
+                try
+                {
+                    resolvedLogPath = Path.GetFullPath(parsed.LogPath);
+                    var dir = Path.GetDirectoryName(resolvedLogPath);
+                    if (!string.IsNullOrEmpty(dir))
+                        Directory.CreateDirectory(dir);
+                    var mode = parsed.Append ? FileMode.Append : FileMode.Create;
+                    var stream = new FileStream(resolvedLogPath, mode, FileAccess.Write, FileShare.Read);
+                    logWriter = new StreamWriter(stream) { AutoFlush = true };
+                    logWriter.WriteLine($"==== tiny11options headless build started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ====");
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[tiny11options] Failed to open log file '{parsed.LogPath}': {ex.Message}");
+                    logWriter?.Dispose();
+                    TryCleanup(tempDir);
+                    return 13;
+                }
+            }
 
             var psi = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
                 Arguments = argLine,
                 UseShellExecute = false,
-                RedirectStandardOutput = false,  // inherit from attached console
-                RedirectStandardError = false,
+                // When logging is on, capture child output so we can tee to both
+                // the console (best-effort -- AttachConsole may not have wired
+                // Console.Out to a real handle in the piped case) and the log
+                // file (authoritative record). When logging is off, retain the
+                // pre-A13 inherited-handle path so attached-terminal users still
+                // see live output without our line-by-line read loop in between.
+                RedirectStandardOutput = logWriter != null,
+                RedirectStandardError = logWriter != null,
                 CreateNoWindow = true,
                 WorkingDirectory = tempDir,
             };
@@ -65,7 +112,22 @@ internal static class HeadlessRunner
             {
                 using var proc = Process.Start(psi)
                     ?? throw new InvalidOperationException("Process.Start returned null");
-                proc.WaitForExit();
+
+                if (logWriter != null)
+                {
+                    var logLock = new object();
+                    var stdoutTask = TeeStreamToLog(proc.StandardOutput, Console.Out, logWriter, logLock);
+                    var stderrTask = TeeStreamToLog(proc.StandardError, Console.Error, logWriter, logLock);
+                    proc.WaitForExit();
+                    // Drain the readers AFTER WaitForExit so any output buffered
+                    // in the pipes at exit time still lands in the log.
+                    Task.WaitAll(stdoutTask, stderrTask);
+                    logWriter.WriteLine($"==== tiny11options headless build finished (exit {proc.ExitCode}) {DateTime.Now:yyyy-MM-dd HH:mm:ss} ====");
+                }
+                else
+                {
+                    proc.WaitForExit();
+                }
                 return proc.ExitCode;
             }
             catch (System.ComponentModel.Win32Exception)
@@ -77,6 +139,7 @@ internal static class HeadlessRunner
             }
             finally
             {
+                logWriter?.Dispose();
                 TryCleanup(tempDir);
             }
         }
@@ -97,6 +160,31 @@ internal static class HeadlessRunner
             sb.Append(QuoteIfNeeded(a));
         }
         return sb.ToString();
+    }
+
+    // A13: stream a redirected child output handle line-by-line, teeing each
+    // line to both the (possibly null-routed) attached console and the build
+    // log file. The lock keeps stdout and stderr readers from interleaving
+    // partial lines in the file; the inner try/catch keeps a transient write
+    // failure on one stream from killing the whole reader.
+    private static Task TeeStreamToLog(StreamReader source, TextWriter console, StreamWriter logFile, object logLock)
+    {
+        return Task.Run(async () =>
+        {
+            try
+            {
+                string? line;
+                while ((line = await source.ReadLineAsync()) != null)
+                {
+                    try { console.WriteLine(line); } catch { /* attached console may not have a real handle */ }
+                    lock (logLock)
+                    {
+                        try { logFile.WriteLine(line); } catch { /* log writer racing disposal */ }
+                    }
+                }
+            }
+            catch { /* read loop must not crash the launcher */ }
+        });
     }
 
     private static string QuoteIfNeeded(string s)

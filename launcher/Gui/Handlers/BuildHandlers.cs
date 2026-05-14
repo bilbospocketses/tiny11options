@@ -29,6 +29,16 @@ public class BuildHandlers : IBridgeHandler
     // virtual drive until they reboot or manually dismount.
     private string _activeSource = "";
 
+    // A13 (v1.0.3): optional per-build log writer. Opened in start-build when
+    // the Step 1 "Log build output" checkbox is on (logBuildOutput=true in the
+    // payload), teed from ForwardJsonLine on every JSON marker, closed in the
+    // stderr-fallback Task's finally block (covers normal completion, errors,
+    // cancellation, and abnormal exits in one place). _logLock serializes the
+    // three writer threads: stdout reader (ForwardJsonLine), stderr-fallback,
+    // and the cancel handler on the WebView2 message-pump thread.
+    private StreamWriter? _activeLogWriter;
+    private readonly object _logLock = new();
+
     public async Task<Bridge.BridgeMessage?> HandleAsync(string type, JsonObject? payload)
     {
         if (type == "cancel-build")
@@ -114,6 +124,13 @@ public class BuildHandlers : IBridgeHandler
         var installPostBootCleanup = payload?["installPostBootCleanup"]?.GetValue<bool>() ?? true;
         var coreMode = payload?["coreMode"]?.GetValue<bool>() ?? false;
         var enableNet35 = payload?["enableNet35"]?.GetValue<bool>() ?? false;
+        // A13 (v1.0.3): Step 1 "Log build output" checkbox + indented "Append to
+        // existing log" checkbox. Default is logging ON / append OFF in the UI;
+        // we default both to false here so a payload missing the keys (older JS
+        // build, malformed message) doesn't surprise-create a log file. JS state
+        // always sends both keys.
+        var logBuildOutput = payload?["logBuildOutput"]?.GetValue<bool>() ?? false;
+        var appendLog = payload?["appendLog"]?.GetValue<bool>() ?? false;
 
         // JS-side `state.edition` is the integer ImageIndex (set in app.js:527
         // from p.editions[0].index). Treat it as ImageIndex by default; only fall
@@ -143,6 +160,49 @@ public class BuildHandlers : IBridgeHandler
             psArgs = BuildStandardArgs(_resourcesDir, configPath, src, outputIso, scratchDir, imageIndex, editionName, unmountSource, fastBuild, installPostBootCleanup);
         }
 
+        // A13: open the build log writer BEFORE Process.Start. A failure to open
+        // the log file is non-fatal -- we surface a single warning marker on the
+        // build-progress stream so the user sees it without aborting the build.
+        // Path resolves via BuildLogPathResolver (scratchDir/tiny11build.log,
+        // falling back to %TEMP%/tiny11build.log when scratchDir is blank).
+        // Defensive: dispose any leaked writer from a prior failed Process.Start
+        // before opening a fresh one (the stderr-fallback finally only closes
+        // the writer when a Process actually started).
+        CloseActiveLog(null);
+        if (logBuildOutput)
+        {
+            var logPath = BuildLogPathResolver.Resolve(scratchDir);
+            try
+            {
+                var logDir = Path.GetDirectoryName(logPath);
+                if (!string.IsNullOrEmpty(logDir))
+                    Directory.CreateDirectory(logDir);
+                var mode = appendLog ? FileMode.Append : FileMode.Create;
+                var stream = new FileStream(logPath, mode, FileAccess.Write, FileShare.Read);
+                _activeLogWriter = new StreamWriter(stream) { AutoFlush = true };
+                _activeLogWriter.WriteLine($"==== tiny11options GUI build started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ====");
+                _activeLogWriter.WriteLine($"     source={src}");
+                _activeLogWriter.WriteLine($"     output={outputIso}");
+                if (!string.IsNullOrWhiteSpace(scratchDir))
+                    _activeLogWriter.WriteLine($"     scratch={scratchDir}");
+                _activeLogWriter.WriteLine($"     mode={(coreMode ? "Core" : "Standard")}, fastBuild={fastBuild}, postBootCleanup={installPostBootCleanup}, appendLog={appendLog}");
+            }
+            catch (Exception ex)
+            {
+                _activeLogWriter = null;
+                _bridge.SendToJs(new Bridge.BridgeMessage
+                {
+                    Type = "build-progress",
+                    Payload = new JsonObject
+                    {
+                        ["phase"] = "log",
+                        ["step"] = $"[warning] Could not open build log at '{logPath}': {ex.Message} -- build will proceed without logging.",
+                        ["percent"] = 0,
+                    },
+                });
+            }
+        }
+
         var psi = new ProcessStartInfo
         {
             FileName = "powershell.exe",
@@ -154,8 +214,25 @@ public class BuildHandlers : IBridgeHandler
             WorkingDirectory = _resourcesDir,
         };
 
-        _activeBuild = Process.Start(psi);
-        if (_activeBuild is null) return Error("Failed to spawn pwsh for build");
+        try
+        {
+            _activeBuild = Process.Start(psi);
+        }
+        catch
+        {
+            // Close the log writer before re-throwing so we don't leak the file
+            // handle into the bridge dispatcher's exception path. The bridge
+            // will surface the exception to JS via its generic handler-error
+            // route; without this catch, the writer would stay open until the
+            // next start-build, blocking the file on the next attempt.
+            CloseActiveLog(null);
+            throw;
+        }
+        if (_activeBuild is null)
+        {
+            CloseActiveLog(null);
+            return Error("Failed to spawn pwsh for build");
+        }
 
         // Stream stdout line-by-line. The wrapper writes ALL bridge traffic
         // (build-progress, build-complete, build-error) to STDOUT — single forwarder
@@ -226,6 +303,12 @@ public class BuildHandlers : IBridgeHandler
                 {
                     _activeBuild = null;
                     _activeSource = "";
+                    // A13: close the log writer alongside the active-build slot.
+                    // Covers normal completion, build-error, cancel, and abnormal
+                    // exits in one place; ReferenceEquals guard above keeps us
+                    // from closing a fresh log if a new start-build raced this
+                    // fallback Task.
+                    CloseActiveLog(capturedBuild.HasExited ? capturedBuild.ExitCode : (int?)null);
                 }
             }
         });
@@ -267,17 +350,94 @@ public class BuildHandlers : IBridgeHandler
                 // _cancelRequested=true means the script raced past our Kill and
                 // actually finished -- surfacing the success is fine.
                 if (t is "build-error" && _cancelRequested) return;
+                // A13: tee a human-readable form of the marker to the build log
+                // BEFORE the SendToJs dispatch (so a SendToJs exception below
+                // doesn't silently drop the log line). Skip when no log is open.
+                var payloadForLog = node!["payload"] as JsonObject;
+                WriteToLog(BuildLogMessage(t, payloadForLog));
                 // DeepClone the payload so the new BridgeMessage owns it cleanly.
                 // Without the clone, node["payload"] is still parented under `node`
                 // and System.Text.Json throws "node already has a parent" when
                 // re-serializing inside Bridge.SendToJs. Throw inside this Task.Run
                 // reader is unobserved, which would silently drop the marker.
-                var payloadClone = node!["payload"]?.DeepClone() as JsonObject;
+                var payloadClone = node["payload"]?.DeepClone() as JsonObject;
                 try { _bridge.SendToJs(new Bridge.BridgeMessage { Type = t, Payload = payloadClone }); }
                 catch { /* SendToJs must not crash the read loop */ }
             }
         }
         catch { /* malformed line — ignore */ }
+    }
+
+    // A13: render a JSON marker as one log line. build-progress carries
+    // {phase, step, percent} plus optional mount-state fields; build-complete
+    // carries {outputPath}; build-error carries {message}. Anything else gets
+    // a generic "[type] <json>" rendering so we never silently drop content.
+    private static string BuildLogMessage(string type, JsonObject? payload)
+    {
+        if (payload is null) return $"[{type}]";
+        switch (type)
+        {
+            case "build-progress":
+                var phase = payload["phase"]?.ToString() ?? "";
+                var step = payload["step"]?.ToString() ?? "";
+                var pctNode = payload["percent"];
+                var pct = pctNode is null ? "" : $" {pctNode}%";
+                return string.IsNullOrEmpty(phase) ? step : $"[{phase}]{pct} {step}";
+            case "build-complete":
+                var outputPath = payload["outputPath"]?.ToString() ?? "(unknown)";
+                return $"[build-complete] output={outputPath}";
+            case "build-error":
+                var message = payload["message"]?.ToString() ?? payload.ToJsonString();
+                return $"[build-error] {message}";
+            default:
+                return $"[{type}] {payload.ToJsonString()}";
+        }
+    }
+
+    // A13: thread-safe write to the active build log. Silent no-op when no
+    // log is open. The lock serializes against CloseActiveLog and against
+    // the cancel-handler / stderr-fallback writers; the inner try/catch
+    // swallows transient write failures (disk full, writer racing dispose)
+    // so the read loop / cancel handler never crashes the launcher over a
+    // log-side issue.
+    private void WriteToLog(string text)
+    {
+        var writer = _activeLogWriter;
+        if (writer is null) return;
+        lock (_logLock)
+        {
+            if (_activeLogWriter is null) return;
+            try { _activeLogWriter.WriteLine(text); } catch { /* log-side never fatal */ }
+        }
+    }
+
+    // A13: write a build-end footer and dispose the writer. Called from the
+    // stderr-fallback Task's finally block (single owner of the lifecycle).
+    // Passing exitCode null indicates "ended without a known exit code"
+    // (e.g. cancelled before Process.Start succeeded).
+    private void CloseActiveLog(int? exitCode)
+    {
+        lock (_logLock)
+        {
+            var writer = _activeLogWriter;
+            if (writer is null) return;
+            try
+            {
+                string status = _cancelRequested
+                    ? "cancelled by user"
+                    : exitCode is null
+                        ? "ended (no exit code captured)"
+                        : exitCode == 0
+                            ? "completed successfully"
+                            : $"failed (exit {exitCode})";
+                writer.WriteLine($"==== tiny11options GUI build {status} {DateTime.Now:yyyy-MM-dd HH:mm:ss} ====");
+                writer.WriteLine();
+                writer.Flush();
+                writer.Dispose();
+            }
+            catch { /* dispose-side never fatal */ }
+            _activeLogWriter = null;
+        }
     }
 
     // Extracted for testability: builds the powershell.exe -Arguments string for
