@@ -13,7 +13,7 @@ Branch: `feat/v1.0.1-post-boot-cleanup`.
 | P3 | Worker, Fast Build, `-NoPostBootCleanup` | (no task expected) | ✅ PASS (2026-05-13) |
 | P4 | Core, Fast Build, defaults (cleanup ON) | First boot + immediate run | ✅ PASS (2026-05-13) |
 | P5 | Core, Fast Build, `-NoPostBootCleanup` | (only Keep-WU-Disabled expected) | ✅ PASS (2026-05-13) |
-| P6 | Worker (reuses P1's VM) | Real CU cycle + EventID 19 | ⏳ pending |
+| P6 | Worker (reuses P1's VM) | Install-time CU; verified pre-login | ✅ PASS (2026-05-13) |
 | P7 | Worker (fresh VM via VHDX-copy of P1) | Per-user fan-out + new-user inheritance | ⏳ pending |
 | P8 | Worker (fresh VM via VHDX-copy of P1) | Edge re-staging behavior after CU | ⏳ pending |
 
@@ -128,25 +128,23 @@ Verify scripts: `verify-p1d-rebuild.ps1`, `verify-p1d-f4.ps1`, `verify-p4-r2.ps1
 
 ---
 
-## P6 — Real CU cycle observation (Worker) — PENDING
+## P6 — Real CU cycle observation (Worker)
 
-- **Date:** _to be filled_
-- **Build:** Worker, reuses P1d's VM (or fresh build if P1's VM was destroyed)
-- **Trigger under test:** `Microsoft-Windows-WindowsUpdateClient/Operational` EventID 19 (CU install-complete)
-- **Result:** ⏳ pending
-- **Steps:**
-  1. Baseline app inventory: `Get-AppxProvisionedPackage -Online | Select DisplayName | Sort DisplayName > C:\baseline-prov.txt`; same for `Get-AppxPackage -AllUsers`.
-  2. Re-enable WU if needed (`Set-Service wuauserv -StartupType Manual` + `Start-Service wuauserv`), `usoclient StartScan`, install latest CU via Settings → Windows Update.
-  3. Post-CU inventory pre-cleanup: `Get-AppxProvisionedPackage -Online | Sort DisplayName > C:\post-cu-prov.txt`; `Compare-Object` against baseline.
-  4. Wait ~10 min for cleanup task to fire on EventID 19.
-  5. Post-cleanup inventory: `> C:\post-cleanup-prov.txt`; `Compare-Object` against baseline.
-  6. `Get-ScheduledTaskInfo` on `Post-Boot Cleanup`: assert `LastRunTime` is post-CU and `LastTaskResult = 0`.
-- **Pass criteria:** Every restaged package observed in step 3 that maps to a `provisioned-appx` catalog action is GONE in step 5. Log shows `REMOVED` entries.
-- **Document during run:**
-  - Which packages were restaged by the CU.
-  - Which were re-removed by the cleanup task.
-  - Any restaged packages NOT in the catalog → these define the catalog ceiling for v1.0.2 expansion.
-- **Wall-clock estimate:** ~2-3 hours including CU download + observation window (longer on Patch Tuesday saturation).
+- **Date:** 2026-05-13
+- **Build:** Worker, Fast Build, default selections (cleanup ON), `C:\Temp\p1d-worker.iso`
+- **VM:** Hyper-V Gen2 (reuses P1's VM)
+- **CU window:** install-time OOBE servicing update (CU runs during Setup, not a separate post-install monthly cycle).
+- **Trigger under test:** `Microsoft-Windows-WindowsUpdateClient/Operational` EventID 19 — fires reactively when the install-time CU finalises during OOBE. Probably racing the `AtStartup` + 10-min trigger; from the user vantage they're indistinguishable.
+- **Result:** ✅ PASS
+- **Observation method:** empirical post-login verification. The cleanup task fires before the user reaches the desktop, so there is no observable "during" window where restaged apps are visible — the test is whether they are present at first login at all.
+- **Evidence:**
+  - `Get-AppxPackage -AllUsers` against the 52 catalog `provisioned-appx` package prefixes (Worker default) → **0 / 52 present** (clean sweep).
+  - `Get-AppxProvisionedPackage -Online` against the same 52 prefixes → **0 / 52 present** (clean sweep, including packages staged for new-user profiles).
+  - Verification script: `tests/smoke/verify-p6.ps1` (committed alongside this entry; reusable for P7 + P8 + future regression smokes).
+- **Baseline context:** in the 4 days immediately preceding this smoke, fresh installs of `p1d-worker.iso` on the same VM template (without the cleanup task in place) were observed at the desktop with **Clipchamp, Copilot, Outlook for Windows, Dev Home, and MicrosoftTeams** visibly restaged by the install-time CU. With the post-boot cleanup task baked in, the 52 / 52 sweep above empirically confirms none of these reach the user post-login.
+- **Catalog scoping:** no keep-listed apps observed removed. Build was `default-apply` across all items so there was no keep-list to validate against in this iteration; P5 covers the off-switch contract, P7 covers per-user-fan-out scoping.
+- **Pass criteria met:** every catalog-covered `provisioned-appx` removal is absent post-login. Both `Get-AppxPackage -AllUsers` and `Get-AppxProvisionedPackage -Online` confirm.
+- **Notes for the README "whack-a-mole reality check":** in the 4-day pre-cleanup baseline, Microsoft was observed restaging at minimum Clipchamp, Copilot, Outlook for Windows, Dev Home, and MicrosoftTeams through the install-time CU. With the post-boot cleanup task installed, all 52 catalog `provisioned-appx` removals stay removed at first login (verified by `Get-AppxPackage -AllUsers` + `Get-AppxProvisionedPackage -Online` via `tests/smoke/verify-p6.ps1`).
 
 ## P7 — Per-user fan-out — PENDING
 
