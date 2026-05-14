@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.1] - 2026-05-12
+## [1.0.1] - 2026-05-14
 
 ### Added (post-boot cleanup scheduled task -- primary feature)
 
@@ -55,8 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Test counts
 
-- Pester 283 -> 383 (+100 tests including extensions) at primary-feature ship. Note: 7 Hives tests showed as flaky in full-suite runs at primary-feature ship due to a module-scope `-Force` reload issue -- structurally healed by B2 in the Batch 1 fixes below (`-Global` added to Actions.Registry's Hives import, the cascade no longer demotes Hives, suite went 383/7 -> 390/0). Running total through Batch 1 + smoke fixes + Batch 2: 404/0 (see per-block totals in the Fixed sections).
-- xUnit 78 -> 82 (+4 BuildHandlers cases: 2 BuildStandardArgs + 2 BuildCoreArgs payload-handling).
+- Pester 283 -> 383 (+100 tests including extensions) at primary-feature ship. Note: 7 Hives tests showed as flaky in full-suite runs at primary-feature ship due to a module-scope `-Force` reload issue -- structurally healed by B2 in the Batch 1 fixes below (`-Global` added to Actions.Registry's Hives import, the cascade no longer demotes Hives, suite went 383/7 -> 390/0). Running total through Batch 1 + smoke fixes + Batch 2: 404/0. **Final at v1.0.1 ship: 409/0** (+5 regression-prevention tests from the 2026-05-14 P8 scheduled-task fix: 3 emitter-shape guards in `Tiny11.Actions.ScheduledTask.Online.Tests.ps1`, 1 helper-presence guard in `Tiny11.PostBoot.Helpers.Golden.Tests.ps1`, 1 top-level-leaf emitter test).
+- xUnit 78 -> 82 (+4 BuildHandlers cases: 2 BuildStandardArgs + 2 BuildCoreArgs payload-handling). Running total through Batch 2: 85/0 (+1 InlineData for PostBoot.psm1 + 2 drift Facts from B9). **Final at v1.0.1 ship: 85/0** (no xUnit changes from the P8 fix -- pure PowerShell action-type emitter).
 
 #### Audit-verified test count chain
 
@@ -69,11 +69,36 @@ The xUnit chain in this CHANGELOG was empirically reconciled on 2026-05-13 by ru
 | `c25e7c2` | follow-up sweep merge | **78** (+6) -- not +8 |
 | `1519dce` | pre-Batch-1 (v1.0.1 primary feature done) | 82 (+4) |
 | `39960c5` | post-Batch-1 audit fixes | 82 (no xUnit change) |
-| `96934be` | post-smoke-fixes (current feat HEAD) | 82 (no xUnit change) |
+| `96934be` | post-smoke-fixes | 82 (no xUnit change) |
+| `d4d847d` | post-Batch-2 ship | 85 (+3 from B9 drift coverage) |
+| `2f5d7db` | P6 PASS smoke entry | 85 (no xUnit change) |
+| `7b875b0` | P7 PASS smoke entry | 85 (no xUnit change) |
+| `c90423e` | scheduled-task fix (P8 finding) | 85 (no xUnit change; +5 Pester regression-prevention tests instead) |
+| `57117a6` | P8 + P9 PASS smoke entries | 85 (no xUnit change) |
+| `324f609` | verify-script parameterization | 85 (no xUnit change) |
 
-The off-by-2 originated at the c25e7c2 follow-up sweep entry, which claimed "+8" but only +6 [Fact]s landed in the diff. That single error propagated as a wrong "80" baseline through every later v1.0.1 entry. The chain above is now correct. Batch 2 (below) adds +3 on top of the 82 baseline -> 85.
+The off-by-2 originated at the c25e7c2 follow-up sweep entry, which claimed "+8" but only +6 [Fact]s landed in the diff. That single error propagated as a wrong "80" baseline through every later v1.0.1 entry. The chain above is now correct. The xUnit total at v1.0.1 ship is **85**.
 
-### Fixed (2026-05-13 evening -- pre-tag Batch 2 BLOCKERs from the 2026-05-13 audit)
+### Fixed (2026-05-14 -- P8 smoke surfaced scheduled-task removal gap; post-fix re-run validates fix end-to-end)
+
+- **`scheduled-task` action type online removal was XML-only, leaving the Task Scheduler registry cache intact** (commit `c90423e`). `Get-Tiny11ScheduledTaskOnlineCommand` previously emitted `Remove-PathIfPresent` against `$env:SystemRoot\System32\Tasks\<relPath>`, deleting only the task definition XML file. The Task Scheduler service has three storage layers:
+  - XML at `C:\Windows\System32\Tasks\<path>\<task>`
+  - Registry index at `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree\<path>\<task>`
+  - Registry data at `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tasks\{GUID}`
+
+  P8 smoke (2026-05-13 on the P1d Worker build) caught `Get-ScheduledTask` returning `Consolidator` + `UsbCeip` (CEIP folder) and `QueueReporting` (WER folder) as `Ready` state despite their XML files being absent from disk. `Date` field empty on `Get-ScheduledTask` output for these tasks -- Microsoft's servicing pipeline re-registered them via the registry-only path (no XML written), bypassing the XML-deletion-only enforcement. Other catalog scheduled-task removals (Compatibility Appraiser, ProgramDataUpdater, Chkdsk\Proxy) weren't re-registered by Windows and stayed gone, so the bug was specific to whichever tasks Microsoft's telemetry/error-reporting subsystems actively re-stage. **Fix:** two new helpers in `src/Tiny11.PostBoot.psm1` `$script:helpersBlock` -- `Unregister-ScheduledTaskIfPresent -TaskPath -TaskName` (leaf) and `Unregister-ScheduledTaskFolder -TaskPathPrefix` (recurse). Both call `Unregister-ScheduledTask -Confirm:$false` which atomically clears the XML AND both registry-cache layers. `Get-Tiny11ScheduledTaskOnlineCommand` rewritten to branch on `$Action.recurse` and emit the appropriate helper with parent-folder + leaf split for non-recurse, trailing-slash prefix for recurse. Golden helpers fixture regenerated (+45 lines for the two new functions). +5 regression-prevention Pester tests across `Tiny11.Actions.ScheduledTask.Online.Tests.ps1` (3 new asserting `Remove-PathIfPresent` no longer emitted; new top-level-leaf test) and `Tiny11.PostBoot.Helpers.Golden.Tests.ps1` (1 new asserting the helpers call `Unregister-ScheduledTask -Confirm:$false`). P8 smoke (2026-05-14, on the rebuilt P9 keep-list ISO): 5 of 5 catalog scheduled-task removals genuinely absent in `Get-ScheduledTask` -- including the two that previously persisted via registry-cache.
+- **`verify-p9-static.ps1` WIM index selection** (commit `324f609`). Original "highest index" heuristic picked `Windows 11 Pro N for Workstations` (idx 11 on Win11 25H2) instead of the build-targeted edition. Only the build-targeted index carries the modified `tiny11-cleanup.ps1`; other indices are untouched. New logic: `-ImageIndex` (if non-zero) wins, else match `-ImageEdition` (default `'Windows 11 Pro'`) against `ImageName`. Surfaced during the 2026-05-14 P9 static-arm run.
+- **`verify-p9-static.ps1` Edge filesystem patterns too broad** (commit `324f609`). Bare `Microsoft\\Edge` matched `HKLM\SOFTWARE\Policies\Microsoft\Edge` from `tweak-disable-copilot` (the Edge Copilot sidebar policy, legitimately APPLY on keep-Edge builds). Tightened to `Program Files \(x86\)\\Microsoft\\Edge\b` with `\b` word boundary so `EdgeUpdate` / `EdgeCore` are matched separately and the legitimate Policies path no longer false-positives.
+- **`verify-p8.ps1` parameterized for keep-list builds** (commit `324f609`). Added `-KeptPaths` + `-KeptScheduledTaskItems` so the action-type coverage smoke runs cleanly on keep-list builds (P9-style) where some catalog items were flipped to skip. Items in `-KeptPaths` get a `KEEP` status when PRESENT (inverted assertion). Default-apply runs (no parameters) keep the original strict scoping.
+
+### Smoke matrix complete (P1-P9 all PASS as of 2026-05-14)
+
+- **P6 PASS** (commit `2f5d7db`, 2026-05-13) -- install-time CU; 52/52 catalog `provisioned-appx` items absent post-login on a fresh `p1d-worker.iso` install. Both `Get-AppxPackage -AllUsers` and `Get-AppxProvisionedPackage -Online` clean. Headline result: the cleanup task fires before the user reaches the desktop on install-time CU paths (most likely the OnEvent EventID 19 trigger, possibly racing AtStartup+10min). Negative-evidence baseline: 4 days of pre-cleanup observation showed Clipchamp, Copilot, Outlook for Windows, Dev Home, MicrosoftTeams visibly restaged by the install-time CU; with the task installed, none reach the user post-login. Verification: `tests/smoke/verify-p6.ps1`.
+- **P7 PASS** (commit `7b875b0`, 2026-05-13) -- per-user fan-out + new-user inheritance. User2 created via `New-LocalUser`, signed in once, signed out. Three independent hive checks all returned `AdvertisingInfo!Enabled=0`: User1 (logged-in OOBE user via `Registry::HKEY_USERS\$user1Sid\...`), User2 offline NTUSER.DAT (loaded via `reg load HKU\TempUser2`), Default user template (loaded via `reg load HKU\TempDefault`). Bonus regression check: `Select-String '_Classes' tiny11-cleanup.log` returned 0 -- confirms the anchored `^S-1-5-21-\d+-\d+-\d+-\d+$` regex still excludes `_Classes` SIDs in the live SYSTEM-context run.
+- **P8 PASS** (this version, 2026-05-14) -- non-appx action-type coverage on rebuilt P9 VM. Validates the THREE action types beyond `provisioned-appx` that P6 did not cover: `filesystem`, `filesystem + takeown-and-remove`, `registry` (HKLM spot-checks), `scheduled-task removal`. Surfaced the scheduled-task fix above; post-fix re-run shows 5/5 catalog scheduled-task removals absent. Verification: `tests/smoke/verify-p8.ps1`.
+- **P9 PASS** (this version, 2026-05-14) -- keep-list contract validation end-to-end via static + runtime arms. Built `p9-worker-keeplist.iso` with Edge + Clipchamp + Edge System32 WebView + Edge uninstall registry keys all flipped to skip. Static arm (`tests/smoke/verify-p9-static.ps1`): mounted ISO, extracted generated `tiny11-cleanup.ps1` from `install.wim` Index 6 (Windows 11 Pro), greped. 6 forbidden patterns (kept-item paths/prefixes) -- all 0 matches. 5 control patterns -- all 2+ matches. Bonus: `Unregister-ScheduledTask` × 10 matches confirms the scheduled-task fix baked into the ISO. Runtime arm (`tests/smoke/verify-p9.ps1`): 1 kept appx PRESENT in both installed + provisioned, 4 kept filesystem paths PRESENT, 2 kept registry keys PRESENT, 51 of 52 non-kept catalog appx ABSENT in both checks.
+
+
 
 Audit report: `docs/superpowers/audits/2026-05-13-v1.0.1-pre-smoke-audit.md`. P1-P5 smoke completed PASS earlier today; this batch clears the audit's pre-tag BLOCKERs before P6/P7/P8 (real-CU-cycle observation tests on Hyper-V VMs).
 
