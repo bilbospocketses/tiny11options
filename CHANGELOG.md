@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (docs)
+
+- **Audit-verified Pester test count chain for v1.0.1.** Empirical reconciliation via `Invoke-Pester` in a worktree at each v1.0.1 landing commit (5017e66 through 324f609; 12 commits). v1.0.1 actually shipped at **408 passed / 1 failed** (not the previously-reported 409/0; the prior figure was `$result.TotalCount` masquerading as PassedCount). The persistent failure is `tests/Tiny11.PostBoot.Helpers.Golden.Tests.ps1` "matches the golden fixture (byte-equal)", caused by CRLF-vs-LF mismatch between `src/Tiny11.PostBoot.psm1` (CRLF per `.gitattributes`) and `tests/golden/tiny11-cleanup-helpers.txt` (LF, no override). Present since 1519dce. Heals via the A6 W2 line-ending normalization fix immediately below in this branch. The full audit table is embedded in the `[1.0.1]` `### Test counts > Audit-verified Pester test count chain` block.
+
 ## [1.0.1] - 2026-05-14
 
 ### Added (post-boot cleanup scheduled task -- primary feature)
@@ -55,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Test counts
 
-- Pester 283 -> 383 (+100 tests including extensions) at primary-feature ship. Note: 7 Hives tests showed as flaky in full-suite runs at primary-feature ship due to a module-scope `-Force` reload issue -- structurally healed by B2 in the Batch 1 fixes below (`-Global` added to Actions.Registry's Hives import, the cascade no longer demotes Hives, suite went 383/7 -> 390/0). Running total through Batch 1 + smoke fixes + Batch 2: 404/0. **Final at v1.0.1 ship: 409/0** (+5 regression-prevention tests from the 2026-05-14 P8 scheduled-task fix: 3 emitter-shape guards in `Tiny11.Actions.ScheduledTask.Online.Tests.ps1`, 1 helper-presence guard in `Tiny11.PostBoot.Helpers.Golden.Tests.ps1`, 1 top-level-leaf emitter test).
+- Pester 283 -> 382 passed / 8 failed at primary-feature ship. Of the 8 failures, 7 were Hives cascade-demotion flakies (structurally healed by B2 in the Batch 1 fixes below: `-Global` added to Actions.Registry's Hives import). The 8th failure was a persistent golden-fixture byte-equal mismatch in `Tiny11.PostBoot.Helpers.Golden.Tests.ps1` (CRLF-vs-LF; root cause `.gitattributes` forces `*.psm1` to CRLF but the golden fixture has no override and is LF) -- present at 1519dce and through every later v1.0.1 commit. **Empirical final at v1.0.1 ship: 408 passed / 1 failed** (the persistent golden-fixture failure). The running totals previously cited in this narrative ("383/7 -> 390/0", "404/0", "409/0") were arithmetic on TotalCount; the audit-verified passed/failed split is below. The persistent failure heals on the v1.0.2 branch via the A6 W2 line-ending normalization fix. The v1.0.1 Pester additions: +5 regression-prevention tests from the 2026-05-14 P8 scheduled-task fix (3 emitter-shape guards in `Tiny11.Actions.ScheduledTask.Online.Tests.ps1`, 1 helper-presence guard in `Tiny11.PostBoot.Helpers.Golden.Tests.ps1`, 1 top-level-leaf emitter test).
 - xUnit 78 -> 82 (+4 BuildHandlers cases: 2 BuildStandardArgs + 2 BuildCoreArgs payload-handling). Running total through Batch 2: 85/0 (+1 InlineData for PostBoot.psm1 + 2 drift Facts from B9). **Final at v1.0.1 ship: 85/0** (no xUnit changes from the P8 fix -- pure PowerShell action-type emitter).
 
 #### Audit-verified test count chain
@@ -78,6 +82,29 @@ The xUnit chain in this CHANGELOG was empirically reconciled on 2026-05-13 by ru
 | `324f609` | verify-script parameterization | 85 (no xUnit change) |
 
 The off-by-2 originated at the c25e7c2 follow-up sweep entry, which claimed "+8" but only +6 [Fact]s landed in the diff. That single error propagated as a wrong "80" baseline through every later v1.0.1 entry. The chain above is now correct. The xUnit total at v1.0.1 ship is **85**.
+
+The Pester chain in this CHANGELOG was empirically reconciled on 2026-05-14 (v1.0.2 cycle) by running `Invoke-Pester` against the full `tests/` tree in a temporary worktree at each landing commit. Authoritative counts:
+
+| Commit | Description | Passed | Failed | Total |
+|--------|-------------|--------|--------|-------|
+| `5017e66` (v1.0.0 tag) | release | 275 | 0 | 275 |
+| `819f663` | regression-prevention tests merge | 281 (+6) | 0 | 281 |
+| `c25e7c2` | follow-up sweep merge | 283 (+2) | 0 | 283 |
+| `1519dce` | pre-Batch-1 (v1.0.1 primary feature done) | **382** (+99) | **8** | 390 |
+| `39960c5` | post-Batch-1 audit fixes (B2 heals 7 of 8 flakies) | **392** (+10) | **1** | 393 |
+| `96934be` | post-smoke-fixes | **399** (+7) | **1** | 400 |
+| `d4d847d` | post-Batch-2 ship | **403** (+4) | **1** | 404 |
+| `2f5d7db` | P6 PASS smoke entry | 403 | 1 | 404 |
+| `7b875b0` | P7 PASS smoke entry | 403 | 1 | 404 |
+| `c90423e` | scheduled-task fix (P8 finding) | **408** (+5) | **1** | 409 |
+| `57117a6` | P8 + P9 PASS smoke entries | 408 | 1 | 409 |
+| `324f609` | verify-script parameterization (v1.0.1 final) | **408** | **1** | 409 |
+
+Two reconciliations against the pre-audit narrative:
+
+1. **B2 healed 7 of 8 flakies, not all 8.** The pre-audit narrative claimed `383/7 -> 390/0` after the B2 structural fix; empirical was `382/8 -> 392/1`. B2 healed the Hives cascade-demotion flakies (-Global added to Actions.Registry's Hives import) but did not address an unrelated golden-fixture test that has been failing since 1519dce.
+
+2. **A persistent 1-failure ran through every later v1.0.1 commit.** The test is `tests/Tiny11.PostBoot.Helpers.Golden.Tests.ps1` "matches the golden fixture (byte-equal)". Cause: `src/Tiny11.PostBoot.psm1` is checked out with CRLF line endings per `.gitattributes` (`*.psm1 text eol=crlf`), while the golden fixture `tests/golden/tiny11-cleanup-helpers.txt` has no eol override and is LF. The byte-equal comparison via `[System.IO.File]::ReadAllText` therefore fails. v1.0.1 shipped at **408 passed / 1 failed**, not the previously-reported `409/0` (the prior figure was TotalCount masquerading as PassedCount). The persistent failure heals on the v1.0.2 branch via the A6 W2 line-ending normalization fix.
 
 ### Fixed (2026-05-14 -- P8 smoke surfaced scheduled-task removal gap; post-fix re-run validates fix end-to-end)
 
