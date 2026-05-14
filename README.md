@@ -152,12 +152,46 @@ A profile JSON has shape `{ "version": 1, "selections": { "<item-id>": "apply"|"
 ## System requirements
 
 - Windows 11 host (10 may work for scripted builds; GUI requires WebView2 Runtime, which is preinstalled on Win11)
+- **Host architecture: x64.** The bundled `tiny11options.exe` launcher is published `win-x64` only and rejects non-x64 hosts at startup (see [Architecture and language support](#architecture-and-language-support) below).
 - PowerShell 7 (`pwsh.exe`) on PATH for the GUI; PowerShell 5.1 (`powershell.exe`) is sufficient for scripted mode
 - Microsoft Edge WebView2 Runtime (preinstalled on Win11; on Win10, install from https://developer.microsoft.com/microsoft-edge/webview2/)
 - ~10 GB free in the scratch directory
 - A Windows 11 ISO (Microsoft media-creation-tool, direct ISO download, or VL/MSDN multi-edition).
 
 The build process self-elevates via UAC; no need to launch as admin manually.
+
+## Architecture and language support
+
+### Source ISO architecture (the BUILD INPUT)
+
+**Both x64 (amd64) and arm64 source ISOs are supported.** Microsoft distributes Windows 11 arm64 ISOs at https://www.microsoft.com/en-us/software-download/windows11arm64 (separate page from the x64 download — the standard Media Creation Tool cannot create arm64 installation media).
+
+Core mode auto-detects the source architecture via `dism /Get-WimInfo` and selects the right WinSxS keep-list (29 entries for amd64, 28 for arm64). Standard (Worker) mode is architecture-neutral — the catalog actions operate on language- and arch-agnostic paths (appx package families, registry paths, filesystem locations) so it just works on either source.
+
+### Host architecture (what RUNS the build)
+
+**The bundled `tiny11options.exe` launcher is win-x64 only.** On Windows-on-ARM64 hosts (Surface Pro X / 9 / 11 SQ3 / X Elite, Copilot+ PCs with Snapdragon X Elite/Plus), the launcher rejects the host at startup with a clear message rather than running under PRISM emulation and surfacing as mysterious WebView2 / pwsh / Velopack failures three minutes into a build.
+
+**Workaround for arm64 hosts**: invoke the PowerShell entry-point directly. The build pipeline itself is fully arm64-compatible.
+
+```powershell
+# From cmd.exe or Windows PowerShell 5.1 (NOT from pwsh — see "Known caveat" below)
+pwsh -NoProfile -File tiny11maker.ps1 `
+    -Source 'C:\path\to\Win11_arm64.iso' `
+    -Edition 'Windows 11 Pro' `
+    -OutputPath 'C:\out\tiny11-arm64.iso' `
+    -NonInteractive
+```
+
+Native arm64 launcher support is tracked as a deferred follow-up for when arm64 user demand materializes (~5% of the Win11 installed base today, growing).
+
+### Source ISO language
+
+**All Windows 11 primary Language Packs are supported, including Serbian Latin.** Core mode auto-detects the source ISO's UI language via `dism /Get-Intl`, parses the BCP-47 locale tag (`en-US`, `de-DE`, `ja-JP`, `zh-CN`, `zh-TW`, `sr-Latn-RS`, etc.), and interpolates it into 4 of the 12 system-package removal patterns: `Microsoft-Windows-LanguageFeatures-{Handwriting,OCR,Speech,TextToSpeech}-{lang}-Package`. Worker mode doesn't touch LanguageFeatures-* packages so language detection isn't relevant there.
+
+If detection fails (marker line absent, malformed), the language code defaults to `en-US` and the four LanguageFeatures-* removals no-op on non-English images. The detection logic is covered by ~45 Pester regression tests against every Language Pack tag Windows ships, plus defensive coverage for longer BCP-47 forms that Microsoft uses in LIPs today and might promote to primary Language Packs in future releases.
+
+> **Note on Windows Defender language**: regardless of source ISO language, post-trim Windows Defender may surface in English on some images even when the rest of the UI is localized. This is a side-effect of the LanguageFeatures-* removal stripping Defender's localized resource fallback chain, not a detection bug. It's been observed on upstream tiny11builder (e.g. issue #507 on a zh-CN source) and the same constraint applies here. Workaround: keep `LanguageFeatures-*` packages by removing the relevant Core mode patterns from the build — but be aware the savings from that removal are non-trivial.
 
 ## Known caveat — pwsh-from-pwsh invocation
 
@@ -181,7 +215,7 @@ One blocked:
 pwsh -NoProfile -File tests/Run-Tests.ps1
 ```
 
-429 Pester tests (catalog parsing + schema validation, selection model + reconcile/lock logic, registry hive helpers, four action handlers including the post-boot online emitter shapes, action dispatcher, ISO mounting + edition enumeration, autounattend templating + drift detection, worker / Core dispatch, bridge protocol, WebView2 SDK detection, post-boot generator + helpers golden + Format-PSNamedParams + task XML + SetupComplete + Install + the v1.0.2 audit-bundle regression guards across A3 / A4 / A5 / A6 / A7 / A11 + boot.wim pipelineSucceeded wrap + Core Hives -Global) and 85 xUnit launcher tests (BuildHandlers / CleanupHandlers / EmbeddedResources drift / payload contracts).
+474 Pester tests (catalog parsing + schema validation, selection model + reconcile/lock logic, registry hive helpers, four action handlers including the post-boot online emitter shapes, action dispatcher, ISO mounting + edition enumeration, autounattend templating + drift detection, worker / Core dispatch, bridge protocol, WebView2 SDK detection, post-boot generator + helpers golden + Format-PSNamedParams + task XML + SetupComplete + Install + the v1.0.2 audit-bundle regression guards across A3 / A4 / A5 / A6 / A7 / A11 + boot.wim pipelineSucceeded wrap + Core Hives -Global + the v1.0.3 BCP-47 language regex coverage across every Windows 11 Language Pack tag including Serbian Latin) and 93 xUnit launcher tests (BuildHandlers / CleanupHandlers / EmbeddedResources drift / payload contracts + v1.0.3 ArchitectureGate rejection coverage for arm64 / arm / x86 hosts).
 
 Note on the v1.0.1 "409 / 0" headline: the 2026-05-14 empirical audit reconciled this against `Invoke-Pester` runs in a worktree at each landing commit and revealed v1.0.1 actually shipped at **408 passed / 1 failed** (the prior figure reported `TotalCount` rather than `PassedCount`). The persistent failure was a CRLF-vs-LF byte-equal mismatch in the helpers golden fixture and healed in the v1.0.2 cycle by the A6 W2 line-ending-normalize fix. The full audit-verified chain is embedded in `CHANGELOG.md` `[1.0.1] > Test counts > Audit-verified Pester test count chain`.
 
