@@ -81,39 +81,69 @@ function Invoke-Tiny11BuildPipeline {
         # mount dir is <scratch>\scratchdir (not \mount), copied source is <scratch>\tiny11 (not \source).
         & $progress @{ phase='mount-state'; step="install.wim mounted at $scratchImg"; percent=16; mountActive=$true; mountDir=$scratchImg; sourceDir=$tinyDir }
 
-        & $progress @{ phase='autounattend-render'; step='Rendering autounattend.xml'; percent=18 }
-        $tplLocal = Join-Path (Split-Path $Catalog.Path) '..\autounattend.template.xml' | Resolve-Path | Select-Object -ExpandProperty Path
-        $tplResult = Get-Tiny11AutounattendTemplate -LocalPath $tplLocal
-        $bindings = Get-Tiny11AutounattendBindings -ResolvedSelections $ResolvedSelections -ImageIndex $ImageIndex
-        $renderedAutounattend = Render-Tiny11Autounattend -Template $tplResult.Content -Bindings $bindings
+        # B6/B7: commit-on-success / discard-on-failure wrapper for the install.wim mount
+        # window. Mirrors Core's $pipelineSucceeded pattern (Tiny11.Core.psm1). If any
+        # step between Mount-WindowsImage and Install-Tiny11PostBootCleanup throws
+        # (B7's phase context comes from the most-recent `& $progress` marker), the
+        # finally branch unmounts with -Discard so we never commit a partially-mutated
+        # install.wim. Pre-fix, an Install throw left the WIM mounted with no
+        # Dismount-WindowsImage call in any outer finally -- the outer scratch-dir
+        # cleanup ran first and the abandoned mount survived until reboot.
+        $installPipelineSucceeded = $false
+        try {
+            & $progress @{ phase='autounattend-render'; step='Rendering autounattend.xml'; percent=18 }
+            $tplLocal = Join-Path (Split-Path $Catalog.Path) '..\autounattend.template.xml' | Resolve-Path | Select-Object -ExpandProperty Path
+            $tplResult = Get-Tiny11AutounattendTemplate -LocalPath $tplLocal
+            $bindings = Get-Tiny11AutounattendBindings -ResolvedSelections $ResolvedSelections -ImageIndex $ImageIndex
+            $renderedAutounattend = Render-Tiny11Autounattend -Template $tplResult.Content -Bindings $bindings
 
-        & $progress @{ phase='autounattend-sysprep'; step='Injecting autounattend.xml into install.wim Sysprep'; percent=19 }
-        $sysprepDir = Join-Path $scratchImg 'Windows\System32\Sysprep'
-        New-Item -ItemType Directory -Force -Path $sysprepDir | Out-Null
-        Set-Content -Path (Join-Path $sysprepDir 'autounattend.xml') -Value $renderedAutounattend -Encoding UTF8
+            & $progress @{ phase='autounattend-sysprep'; step='Injecting autounattend.xml into install.wim Sysprep'; percent=19 }
+            $sysprepDir = Join-Path $scratchImg 'Windows\System32\Sysprep'
+            New-Item -ItemType Directory -Force -Path $sysprepDir | Out-Null
+            Set-Content -Path (Join-Path $sysprepDir 'autounattend.xml') -Value $renderedAutounattend -Encoding UTF8
 
-        & $progress @{ phase='hives'; step='Loading offline registry hives'; percent=20 }
-        Mount-Tiny11AllHives -ScratchDir $scratchImg
+            & $progress @{ phase='hives'; step='Loading offline registry hives'; percent=20 }
+            Mount-Tiny11AllHives -ScratchDir $scratchImg
 
-        Invoke-Tiny11ApplyActions -Catalog $Catalog -ResolvedSelections $ResolvedSelections -ScratchDir $scratchImg -ProgressCallback $ProgressCallback
-        CheckCancel
+            Invoke-Tiny11ApplyActions -Catalog $Catalog -ResolvedSelections $ResolvedSelections -ScratchDir $scratchImg -ProgressCallback $ProgressCallback
+            CheckCancel
 
-        & $progress @{ phase='hives-unload'; step='Unloading hives'; percent=70 }
-        Dismount-Tiny11AllHives
+            & $progress @{ phase='hives-unload'; step='Unloading hives'; percent=70 }
+            Dismount-Tiny11AllHives
 
-        if ($FastBuild) {
-            & $progress @{ phase='cleanup-image-skip'; step='Skipping /Cleanup-Image (FastBuild)'; percent=75 }
-        } else {
-            & $progress @{ phase='cleanup-image'; step='dism /Cleanup-Image /StartComponentCleanup /ResetBase'; percent=75 }
-            & 'dism.exe' "/Image:$scratchImg" '/Cleanup-Image' '/StartComponentCleanup' '/ResetBase' | Out-Null
+            if ($FastBuild) {
+                & $progress @{ phase='cleanup-image-skip'; step='Skipping /Cleanup-Image (FastBuild)'; percent=75 }
+            } else {
+                & $progress @{ phase='cleanup-image'; step='dism /Cleanup-Image /StartComponentCleanup /ResetBase'; percent=75 }
+                & 'dism.exe' "/Image:$scratchImg" '/Cleanup-Image' '/StartComponentCleanup' '/ResetBase' | Out-Null
+            }
+
+            & $progress @{ phase='inject-postboot-cleanup'; step='Installing post-boot cleanup task'; percent=78 }
+            Install-Tiny11PostBootCleanup -MountDir $scratchImg -Catalog $Catalog -ResolvedSelections $ResolvedSelections -Enabled:$InstallPostBootCleanup
+
+            $installPipelineSucceeded = $true
+        }
+        finally {
+            $dismountVerb = if ($installPipelineSucceeded) { 'save' } else { 'discard' }
+            & $progress @{ phase='wim-save'; step="Dismounting install.wim ($dismountVerb)"; percent=80 }
+            try {
+                if ($installPipelineSucceeded) {
+                    Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
+                } else {
+                    Dismount-WindowsImage -Path $scratchImg -Discard | Out-Null
+                }
+            } catch {
+                # Finally-context: only re-throw if pipeline succeeded (no in-flight exception to replace).
+                # On the failure path we Write-Warning so the original cause is preserved.
+                if ($installPipelineSucceeded) { throw }
+                Write-Warning "Dismount-WindowsImage -Discard (install.wim) failed during cleanup: $($_.Exception.Message)"
+            }
+            & $progress @{ phase='mount-state'; step="install.wim unmounted ($dismountVerb)"; percent=81; mountActive=$false }
         }
 
-        & $progress @{ phase='inject-postboot-cleanup'; step='Installing post-boot cleanup task'; percent=78 }
-        Install-Tiny11PostBootCleanup -MountDir $scratchImg -Catalog $Catalog -ResolvedSelections $ResolvedSelections -Enabled:$InstallPostBootCleanup
-
-        & $progress @{ phase='wim-save'; step='Dismounting install.wim (save)'; percent=80 }
-        Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
-        & $progress @{ phase='mount-state'; step='install.wim unmounted'; percent=81; mountActive=$false }
+        if (-not $installPipelineSucceeded) {
+            throw 'Worker build pipeline failed mid-flight (see preceding error). install.wim unmounted with /Discard.'
+        }
 
         if ($FastBuild) {
             & $progress @{ phase='export-skip'; step='Skipping /Export-Image recovery compression (FastBuild)'; percent=85 }

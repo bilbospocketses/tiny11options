@@ -51,3 +51,31 @@ Describe 'Invoke-Tiny11BuildPipeline post-boot cleanup integration' {
         $cmd.Parameters['InstallPostBootCleanup'].ParameterType.Name | Should -Be 'Boolean'
     }
 }
+
+Describe 'Invoke-Tiny11BuildPipeline install.wim commit/discard symmetry (B6/B7 regression guard)' {
+    BeforeAll {
+        $script:workerSource = Get-Content (Join-Path $PSScriptRoot '..' 'src' 'Tiny11.Worker.psm1') -Raw
+    }
+    It 'has an $installPipelineSucceeded flag mirroring Core' {
+        # B6/B7: Worker pre-fix called Install-Tiny11PostBootCleanup BEFORE
+        # Dismount-WindowsImage with no try/finally guarding the unmount. An
+        # Install throw left the WIM mount abandoned. Core has the
+        # $pipelineSucceeded pattern at Core.psm1:1165; Worker must too.
+        $script:workerSource | Should -Match '\$installPipelineSucceeded = \$false'
+        $script:workerSource | Should -Match '\$installPipelineSucceeded = \$true'
+    }
+    It 'has Dismount-WindowsImage in a finally branch with both -Save and -Discard arms' {
+        # The unmount must live in a finally so it runs even when the inner
+        # try throws, and it must choose between -Save (success) and -Discard
+        # (failure) based on the flag.
+        $script:workerSource | Should -Match 'Dismount-WindowsImage -Path \$scratchImg -Save'
+        $script:workerSource | Should -Match 'Dismount-WindowsImage -Path \$scratchImg -Discard'
+        $script:workerSource | Should -Match '(?ms)finally\s*\{[\s\S]*?Dismount-WindowsImage -Path \$scratchImg -Discard'
+    }
+    It 'rethrows with a mid-flight diagnostic when the inner pipeline fails' {
+        # After the finally branch, a clean re-throw with a recognisable
+        # message lets the launcher distinguish "build failed mid-pipeline"
+        # from "build failed during teardown".
+        $script:workerSource | Should -Match "throw 'Worker build pipeline failed mid-flight"
+    }
+}
