@@ -1116,6 +1116,15 @@ Describe 'Invoke-Tiny11CoreBuildPipeline post-boot cleanup wiring' {
         $cmd.Parameters.Keys | Should -Contain 'InstallPostBootCleanup'
         $cmd.Parameters['InstallPostBootCleanup'].ParameterType.Name | Should -Be 'Boolean'
     }
+    It 'mid-function Hives import uses -Global (v1.0.2 carry-over #5 regression guard)' {
+        # B2-class structural smell: any -Force Hives reload without -Global
+        # risks demoting the module from session-global scope. Inside a
+        # function body the demotion lands at function scope rather than
+        # module scope (smaller blast radius than B2's module-load case),
+        # but the structural smell is identical and the fix is one flag.
+        $source = Get-Content (Join-Path $PSScriptRoot '..' 'src' 'Tiny11.Core.psm1') -Raw
+        $source | Should -Match "Import-Module \(Join-Path \`$PSScriptRoot 'Tiny11\.Hives\.psm1'\) -Force -Global"
+    }
     It 'has PostBootCleanupCatalog + PostBootCleanupResolvedSelections parameters' {
         $cmd = Get-Command Invoke-Tiny11CoreBuildPipeline
         $cmd.Parameters.Keys | Should -Contain 'PostBootCleanupCatalog'

@@ -1124,7 +1124,14 @@ function Invoke-Tiny11CoreBuildPipeline {
     )
 
     Import-Module (Join-Path $PSScriptRoot 'Tiny11.Iso.psm1')   -Force
-    Import-Module (Join-Path $PSScriptRoot 'Tiny11.Hives.psm1') -Force
+    # -Global: any -Force Hives reload risks demoting the module from
+    # session-global to local scope per the B2 cascade-demotion model.
+    # Inside a function body the demotion lands at function scope rather
+    # than module scope, so blast radius is smaller than the original B2
+    # case -- but the structural smell is identical and the fix is one
+    # flag. See src/Tiny11.Actions.Registry.psm1's leading Hives import
+    # for the same rule at module-load time.
+    Import-Module (Join-Path $PSScriptRoot 'Tiny11.Hives.psm1') -Force -Global
 
     Write-CoreLog '==== Invoke-Tiny11CoreBuildPipeline start ===='
     Write-CoreLog "Pipeline params: Source=$Source ImageIndex=$ImageIndex ScratchDir=$ScratchDir OutputIso=$OutputIso EnableNet35=$EnableNet35 UnmountSource=$UnmountSource FastBuild=$FastBuild"
