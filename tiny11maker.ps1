@@ -30,6 +30,14 @@
 .PARAMETER NonInteractive
     Suppresses the GUI. Implied if both -Source and -Config are passed.
 
+.PARAMETER FastBuild
+    Skips the install.wim recompression pass at the end. Faster build, larger output ISO.
+
+.PARAMETER NoPostBootCleanup
+    Disables the post-boot cleanup scheduled task in the resulting image. Default is to install
+    the task. Once the ISO is built, build-time choices are baked in for the life of the ISO -- a
+    later mind-change requires a full reinstall.
+
 .PARAMETER Internal
     For testing -- when set, the script defines functions and exits without running the orchestrator.
 #>
@@ -43,7 +51,6 @@ param(
     [string]$OutputPath,
     [switch]$NonInteractive,
     [switch]$FastBuild,
-    [bool]$InstallPostBootCleanup = $true,
     [switch]$NoPostBootCleanup,
     [switch]$Internal
 )
@@ -157,7 +164,7 @@ if ($nonInteractive) {
         -OutputPath $OutputPath -UnmountSource $true `
         -Catalog $catalog -ResolvedSelections $resolved `
         -FastBuild ([bool]$FastBuild) `
-        -InstallPostBootCleanup ([bool]($InstallPostBootCleanup -and -not $NoPostBootCleanup)) `
+        -InstallPostBootCleanup (-not $NoPostBootCleanup.IsPresent) `
         -ProgressCallback { param($p) Write-Output "[$($p.phase)] $($p.step) ($($p.percent)%)" }
 
     Write-Output "Build complete: $OutputPath"

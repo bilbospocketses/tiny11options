@@ -22,7 +22,6 @@ param(
     [string]$ScratchDir,
     [switch]$FastBuild,
     [switch]$UnmountSource,
-    [bool]$InstallPostBootCleanup = $true,
     [switch]$NoPostBootCleanup
 )
 
@@ -117,7 +116,7 @@ try {
         -Catalog $catalog `
         -ResolvedSelections $resolvedSelections `
         -FastBuild $FastBuild.IsPresent `
-        -InstallPostBootCleanup ([bool]($InstallPostBootCleanup -and -not $NoPostBootCleanup)) `
+        -InstallPostBootCleanup (-not $NoPostBootCleanup.IsPresent) `
         -ProgressCallback {
             param($p)
             # Forward the entire payload -- Worker pipeline emits mount-state

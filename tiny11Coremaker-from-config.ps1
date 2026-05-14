@@ -25,7 +25,6 @@ param(
     [switch]$EnableNet35,
     [switch]$UnmountSource,
     [switch]$FastBuild,
-    [bool]$InstallPostBootCleanup = $true,
     [switch]$NoPostBootCleanup
 )
 
@@ -114,7 +113,7 @@ try {
         -EnableNet35 $EnableNet35.IsPresent `
         -UnmountSource $UnmountSource.IsPresent `
         -FastBuild $FastBuild.IsPresent `
-        -InstallPostBootCleanup ([bool]($InstallPostBootCleanup -and -not $NoPostBootCleanup)) `
+        -InstallPostBootCleanup (-not $NoPostBootCleanup.IsPresent) `
         -PostBootCleanupCatalog $catalog `
         -PostBootCleanupResolvedSelections $resolved `
         -ProgressCallback {

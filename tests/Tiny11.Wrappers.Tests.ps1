@@ -39,57 +39,67 @@ Describe "Wrapper-script payload-splat regression guard" {
     }
 }
 
-Describe 'tiny11Coremaker-from-config.ps1 -InstallPostBootCleanup switches' {
+Describe 'tiny11Coremaker-from-config.ps1 -NoPostBootCleanup switch (A3 W1+W2 post-fix shape)' {
     BeforeAll { $script:wrapperPath = Join-Path $PSScriptRoot '..' 'tiny11Coremaker-from-config.ps1' }
-    It 'defines both switches' {
+    It 'defines [switch]$NoPostBootCleanup as the sole cleanup-toggle param' {
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:wrapperPath, [ref]$null, [ref]$null)
         $params = ($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
-        $params | Should -Contain 'InstallPostBootCleanup'
         $params | Should -Contain 'NoPostBootCleanup'
+        # A3 W1: the [bool]$InstallPostBootCleanup wrapper param is gone --
+        # asymmetric with the other [switch]-everywhere params and prone to
+        # the relaunch-serialization fragility called out in the audit.
+        $params | Should -Not -Contain 'InstallPostBootCleanup'
     }
-    It 'threads InstallPostBootCleanup to the pipeline' {
+    It 'derives the pipeline -InstallPostBootCleanup bool from -not $NoPostBootCleanup' {
         $source = Get-Content $script:wrapperPath -Raw
-        $source | Should -Match '-InstallPostBootCleanup'
+        # The pipeline function still takes -InstallPostBootCleanup [bool];
+        # the wrapper now derives the bool from the single switch.
+        $source | Should -Match '-InstallPostBootCleanup \(-not \$NoPostBootCleanup\.IsPresent\)'
         $source | Should -Match '-PostBootCleanupCatalog'
         $source | Should -Match '-PostBootCleanupResolvedSelections'
+        # Make sure the legacy and-not expression is gone:
+        $source | Should -Not -Match '\$InstallPostBootCleanup\s+-and\s+-not\s+\$NoPostBootCleanup'
     }
 }
 
-Describe 'tiny11maker-from-config.ps1 -InstallPostBootCleanup switches' {
+Describe 'tiny11maker-from-config.ps1 -NoPostBootCleanup switch (A3 W1+W2 post-fix shape)' {
     BeforeAll { $script:wrapperPath = Join-Path $PSScriptRoot '..' 'tiny11maker-from-config.ps1' }
 
-    It 'defines both switches' {
+    It 'defines [switch]$NoPostBootCleanup as the sole cleanup-toggle param' {
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:wrapperPath, [ref]$null, [ref]$null)
         $params = ($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
-        $params | Should -Contain 'InstallPostBootCleanup'
         $params | Should -Contain 'NoPostBootCleanup'
+        $params | Should -Not -Contain 'InstallPostBootCleanup'
     }
 
-    It 'threads InstallPostBootCleanup through to Invoke-Tiny11BuildPipeline' {
+    It 'derives the pipeline -InstallPostBootCleanup bool from -not $NoPostBootCleanup' {
         $source = Get-Content $script:wrapperPath -Raw
-        $source | Should -Match '-InstallPostBootCleanup'
-        $source | Should -Match '\$InstallPostBootCleanup\s+-and\s+-not\s+\$NoPostBootCleanup'
+        $source | Should -Match '-InstallPostBootCleanup \(-not \$NoPostBootCleanup\.IsPresent\)'
+        $source | Should -Not -Match '\$InstallPostBootCleanup\s+-and\s+-not\s+\$NoPostBootCleanup'
     }
 }
 
-Describe 'tiny11maker.ps1 -InstallPostBootCleanup switches' {
+Describe 'tiny11maker.ps1 -NoPostBootCleanup switch (A3 W1+W2+W3 post-fix shape)' {
     BeforeAll { $script:wrapperPath = Join-Path $PSScriptRoot '..' 'tiny11maker.ps1' }
 
-    It 'defines -InstallPostBootCleanup and -NoPostBootCleanup switches' {
+    It 'defines [switch]$NoPostBootCleanup as the sole cleanup-toggle param' {
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:wrapperPath, [ref]$null, [ref]$null)
         $params = ($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
-        $params | Should -Contain 'InstallPostBootCleanup'
         $params | Should -Contain 'NoPostBootCleanup'
+        $params | Should -Not -Contain 'InstallPostBootCleanup'
     }
 
-    It 'passes InstallPostBootCleanup through to Invoke-Tiny11BuildPipeline' {
+    It 'derives the pipeline -InstallPostBootCleanup bool from -not $NoPostBootCleanup' {
         $source = Get-Content $script:wrapperPath -Raw
-        $source | Should -Match '-InstallPostBootCleanup'
+        $source | Should -Match '-InstallPostBootCleanup \(-not \$NoPostBootCleanup\.IsPresent\)'
+        $source | Should -Not -Match '\$InstallPostBootCleanup\s+-and\s+-not\s+\$NoPostBootCleanup'
     }
 
-    It 'NoPostBootCleanup overrides InstallPostBootCleanup via and -not pattern' {
+    It 'help block documents .PARAMETER NoPostBootCleanup (A3 W3)' {
+        # Pre-fix the help block had no .PARAMETER stanza for FastBuild,
+        # InstallPostBootCleanup, or NoPostBootCleanup. Get-Help would not
+        # show the cleanup opt-out mechanism. Post-A3 we document the switch.
         $source = Get-Content $script:wrapperPath -Raw
-        $source | Should -Match 'NoPostBootCleanup'
-        $source | Should -Match '\$InstallPostBootCleanup\s+-and\s+-not\s+\$NoPostBootCleanup'
+        $source | Should -Match '(?ms)\.PARAMETER NoPostBootCleanup\s*\r?\n.+post-boot cleanup'
     }
 }
