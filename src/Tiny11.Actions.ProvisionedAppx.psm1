@@ -9,6 +9,7 @@ function Clear-Tiny11AppxPackageCache {
 }
 
 function Get-ProvisionedAppxPackagesFromImage {
+    [CmdletBinding()]
     param([Parameter(Mandatory)][string]$ScratchDir)
     if ($script:packageCache.ContainsKey($ScratchDir)) {
         return $script:packageCache[$ScratchDir]
@@ -23,6 +24,7 @@ function Get-ProvisionedAppxPackagesFromImage {
 }
 
 function Invoke-DismRemoveAppx {
+    [CmdletBinding()]
     param([Parameter(Mandatory)][string]$ScratchDir, [Parameter(Mandatory)][string]$PackageName)
     & 'dism.exe' '/English' "/image:$ScratchDir" '/Remove-ProvisionedAppxPackage' "/PackageName:$PackageName" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "dism /Remove-ProvisionedAppxPackage failed for $PackageName (exit $LASTEXITCODE)" }

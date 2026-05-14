@@ -489,8 +489,10 @@ function Install-Tiny11PostBootCleanup {
         [System.Text.Encoding]::Unicode)
 }
 
+# Format-PSNamedParams is intentionally NOT exported -- it is an internal
+# rendering helper used only by New-Tiny11PostBootCleanupScript. Tests reach
+# it via & (Get-Module Tiny11.PostBoot) { ... } for direct coverage.
 Export-ModuleMember -Function `
-    Format-PSNamedParams, `
     New-Tiny11PostBootCleanupScript, `
     New-Tiny11PostBootTaskXml, `
     New-Tiny11PostBootSetupCompleteScript, `

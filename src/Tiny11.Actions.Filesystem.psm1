@@ -1,6 +1,7 @@
 Set-StrictMode -Version Latest
 
 function Invoke-Takeown {
+    [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [bool]$Recurse)
     $takeownArgs = @('/f', $Path)
     if ($Recurse) { $takeownArgs += '/r'; $takeownArgs += '/d'; $takeownArgs += 'Y' }
@@ -8,6 +9,7 @@ function Invoke-Takeown {
 }
 
 function Invoke-Icacls {
+    [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$AdminGroup)
     & 'icacls.exe' $Path '/grant' "$AdminGroup`:(F)" '/T' '/C' | Out-Null
 }
