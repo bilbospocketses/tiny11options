@@ -12,9 +12,21 @@ Describe 'PostBoot helpers block' {
         foreach ($fn in 'Set-RegistryValue','Set-RegistryValueForAllUsers',
                         'Remove-RegistryKey','Remove-RegistryKeyForAllUsers',
                         'Remove-PathIfPresent','Remove-PathWithOwnership',
-                        'Remove-AppxByPackagePrefix') {
+                        'Remove-AppxByPackagePrefix',
+                        'Unregister-ScheduledTaskIfPresent','Unregister-ScheduledTaskFolder') {
             $script:helpers | Should -Match "function $fn"
         }
+    }
+    It 'Unregister-ScheduledTask helpers call Unregister-ScheduledTask -Confirm:$false (P8 regression guard)' {
+        # P8 finding: the previous scheduled-task emitter deleted only the XML
+        # file at C:\Windows\System32\Tasks\..., leaving the Task Scheduler
+        # service's registry cache intact. Tasks Microsoft servicing
+        # re-registers via registry-only paths (CEIP Consolidator/UsbCeip, WER
+        # QueueReporting observed on 2026-05-13 P1d smoke) stayed Ready. The
+        # new helpers MUST call Unregister-ScheduledTask which clears both XML
+        # and registry-cache entries.
+        $script:helpers | Should -Match 'Unregister-ScheduledTask -TaskPath \$TaskPath -TaskName \$TaskName -Confirm:\$false'
+        $script:helpers | Should -Match 'Unregister-ScheduledTask -TaskPath \$t\.TaskPath -TaskName \$t\.TaskName -Confirm:\$false'
     }
     It 'Set-RegistryValueForAllUsers iterates HKU SIDs + the loaded default-user hive mount (NOT .DEFAULT)' {
         # Regression guard for B4: .DEFAULT is the LOCAL_SERVICE/NETWORK_SERVICE

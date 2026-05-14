@@ -27,9 +27,14 @@ Describe 'Get-Tiny11ActionOnlineCommand (dispatcher)' {
         $cmds[0].Kind | Should -Be 'Remove-PathIfPresent'
     }
     It 'routes scheduled-task action' {
-        $action = [pscustomobject]@{ type='scheduled-task'; op='remove'; path='X'; recurse=$false }
+        # Post-P8-finding: dispatcher routes to Unregister-ScheduledTaskIfPresent
+        # for leaf removals and Unregister-ScheduledTaskFolder for recurse=true.
+        # Previously emitted Remove-PathIfPresent (XML-only deletion), which left
+        # Task Scheduler registry-cache entries intact and tasks re-registered by
+        # Windows servicing (CEIP, WER QueueReporting) stayed Ready.
+        $action = [pscustomobject]@{ type='scheduled-task'; op='remove'; path='X\Y'; recurse=$false }
         $cmds = @(Get-Tiny11ActionOnlineCommand -Action $action)
-        $cmds[0].Kind | Should -Be 'Remove-PathIfPresent'
+        $cmds[0].Kind | Should -Be 'Unregister-ScheduledTaskIfPresent'
     }
     It 'routes provisioned-appx action' {
         $action = [pscustomobject]@{ type='provisioned-appx'; packagePrefix='X.Y' }

@@ -132,3 +132,48 @@ function Remove-AppxByPackagePrefix {
         }
     }
 }
+
+function Unregister-ScheduledTaskIfPresent {
+    param([string]$TaskPath, [string]$TaskName)
+    # Probe via Get-ScheduledTask. Catches the CimException ("No matching
+    # MSFT_ScheduledTask objects found ...") that fires when the task is absent
+    # at both the XML and registry-cache layers. Absence is a clean no-op.
+    try {
+        $null = Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction Stop
+    } catch {
+        Write-CleanupLog "  task $TaskPath$TaskName absent (no-op)"
+        return
+    }
+    # P8 finding: deleting only the C:\Windows\System32\Tasks\... XML file leaves
+    # the Task Scheduler service's registry cache at
+    # HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\{Tasks,Tree}
+    # untouched -- the task is still Ready and will fire. Unregister-ScheduledTask
+    # clears BOTH the XML and the registry cache atomically.
+    try {
+        Unregister-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -Confirm:$false -ErrorAction Stop
+        Write-CleanupLog "  task $TaskPath$TaskName UNREGISTERED"
+    } catch {
+        Write-CleanupLog "  task $TaskPath$TaskName unregister FAILED: $($_.Exception.Message)"
+    }
+}
+
+function Unregister-ScheduledTaskFolder {
+    param([string]$TaskPathPrefix)
+    # Folder-recurse removal: unregister every task at or under the prefix.
+    # The Get-ScheduledTask -TaskPath '...\*' form returns nothing (no exception)
+    # for empty/absent folders, so SilentlyContinue + array-count check is the
+    # right idiom -- no try/catch around the probe.
+    $tasks = @(Get-ScheduledTask -TaskPath "${TaskPathPrefix}*" -ErrorAction SilentlyContinue)
+    if ($tasks.Count -eq 0) {
+        Write-CleanupLog "  task folder $TaskPathPrefix empty (no-op)"
+        return
+    }
+    foreach ($t in $tasks) {
+        try {
+            Unregister-ScheduledTask -TaskPath $t.TaskPath -TaskName $t.TaskName -Confirm:$false -ErrorAction Stop
+            Write-CleanupLog "  task $($t.TaskPath)$($t.TaskName) UNREGISTERED (folder recurse)"
+        } catch {
+            Write-CleanupLog "  task $($t.TaskPath)$($t.TaskName) unregister FAILED: $($_.Exception.Message)"
+        }
+    }
+}
