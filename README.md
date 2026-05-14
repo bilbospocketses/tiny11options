@@ -75,6 +75,7 @@ The cleanup task carries the contract in BOTH directions:
 1. Build a fresh ISO with the updated selections (or import your prior `.json` profile from Step 4 and tweak it).
 2. Reinstall Windows from the new ISO.
 3. Reinstall your applications, restore your data, redo your customizations.
+4. You *could* delete the prebuilt task in Task Scheduler, but this would allow all of the other apps that you don;t want back in as well. 
 
 The cleanup task on an already-deployed system cannot be reconfigured at runtime -- its decision tree is baked into the script at build time and stays that way for the life of the ISO.
 
