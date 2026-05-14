@@ -975,10 +975,16 @@ function Install-Tiny11CorePostBootCleanup {
     # Whether to ALSO write the v1.0.1 cleanup files + extend SetupComplete with cleanup-task registration
     $writeCleanupFiles = $PostBootCleanupEnabled -and $PostBootCleanupCatalog -and $PostBootCleanupResolvedSelections
 
-    # A4 W3: surface the silent no-op. If the caller asked for cleanup but
-    # forgot the catalog/selections, the cleanup files will NOT be written and
-    # the user gets no indication why.
-    if ($PostBootCleanupEnabled -and (-not $PostBootCleanupCatalog -or -not $PostBootCleanupResolvedSelections)) {
+    # A4 W3: surface the silent no-op. Gate on the caller opting in to
+    # cleanup-aware mode (by passing ANY cleanup-related param) so the
+    # legacy `Install-Tiny11CorePostBootCleanup -MountDir X` call site
+    # (wu-enforce-only, default $PostBootCleanupEnabled=$true) stays quiet.
+    # Only warn when the caller signals cleanup intent but the data is
+    # incomplete -- the real footgun the audit flagged.
+    $cleanupAware = $PSBoundParameters.ContainsKey('PostBootCleanupEnabled') -or
+                    $PSBoundParameters.ContainsKey('PostBootCleanupCatalog') -or
+                    $PSBoundParameters.ContainsKey('PostBootCleanupResolvedSelections')
+    if ($cleanupAware -and $PostBootCleanupEnabled -and (-not $PostBootCleanupCatalog -or -not $PostBootCleanupResolvedSelections)) {
         Write-Warning "Install-Tiny11CorePostBootCleanup: PostBootCleanupEnabled is `$true but PostBootCleanupCatalog or PostBootCleanupResolvedSelections is missing; tiny11-cleanup.{ps1,xml} will NOT be written (the wu-enforce task is unaffected)."
     }
 

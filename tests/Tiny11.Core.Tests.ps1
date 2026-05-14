@@ -1082,6 +1082,17 @@ Describe 'Install-Tiny11CorePostBootCleanup with cleanup params' {
         $warns.Count | Should -Be 0
     }
 
+    It 'does NOT warn on the legacy wu-enforce-only call site (no cleanup params passed)' {
+        # Pre-fix the A4 W3 warning fired on every legacy
+        # `Install-Tiny11CorePostBootCleanup -MountDir X` call because the
+        # default $PostBootCleanupEnabled=$true triggered the condition. The
+        # gate now requires the caller to OPT IN to cleanup-aware mode by
+        # passing at least one cleanup-related param. wu-enforce-only callers
+        # stay quiet.
+        Install-Tiny11CorePostBootCleanup -MountDir $script:tempMount -WarningVariable warns -WarningAction SilentlyContinue
+        $warns.Count | Should -Be 0
+    }
+
     It 'removes prior tiny11-cleanup artifacts when called without cleanup params (A4 W4 regression guard)' {
         # Pre-fix: a rebuild flipping from cleanup-on to cleanup-off left
         # stale tiny11-cleanup.{ps1,xml} from the prior run in the WIM.
