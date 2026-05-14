@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **(L1) `Get-Tiny11CoreLanguageCodeFromDismIntl` extracts BCP-47 locale tags wider than the legacy 5-char xx-XX form** (commit `e0b4e33`). Pre-L1 the Phase 3 language detection regex `[a-zA-Z]{2}-[a-zA-Z]{2}` silently fell back to `en-US` for Serbian Latin source ISOs (`sr-Latn-RS` current, `sr-Latn-CS` deprecated alias in older 23H2-era images) -- the `LanguageFeatures-*-en-US-Package` removals then no-op'd and the actual Serbian Latin LanguageFeatures-* packs survived the Core trim. New regex `[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*` covers every Windows 11 primary Language Pack tag plus defensive coverage for longer LIP-style tags (`az-Latn-AZ`, `bs-Latn-BA`, `uz-Latn-UZ`, `fil-PH`, `chr-CHER-US`, `quc-Latn-GT`, `ca-ES-valencia`, `pa-Arab-PK`, `sd-Arab-PK`) in case Microsoft promotes any LIP to a primary Language Pack in a future release. Factored out of the inline pipeline body into a testable helper exported from `Tiny11.Core.psm1`. +45 regression-guard Pester tests in `tests/Tiny11.Core.LanguageDetect.Tests.ps1`.
+
+### Added
+
+- **(A2) `Interop/ArchitectureGate.cs` rejects non-x64 hosts at launcher startup** (commit `f44c7fc`). `tiny11options.exe` is published `win-x64` only; on Windows-on-ARM64 hosts (Surface Pro X / 9 / 11 SQ3 / X Elite, Copilot+ PCs with Snapdragon X Elite/Plus) Windows 11 24H2's PRISM emulator would otherwise launch the exe under x64 emulation and surface as mysterious WebView2 / pwsh / Velopack failures three minutes into a build. The gate runs BEFORE `VelopackApp.Build().Run()` so no Velopack-side init fires in the rejection case; reads `RuntimeInformation.OSArchitecture` (NATIVE OS arch, not the emulated process arch) so a PRISM-emulated x64 process on real arm64 hardware still gets rejected. Headless mode writes to STDERR; GUI mode shows a MessageBox; exit code 2 distinguishes arch-rejection from genuine failure (exit 1). Rejection message names the host architecture, points at the legacy `pwsh -NoProfile -File tiny11maker.ps1` entry-point (which IS arch-neutral and works on arm64), warns away from pwsh-from-pwsh (the 25H2 product-key-validation issue), and explicitly acknowledges that the build pipeline DOES support arm64 source ISOs -- the rejection is launcher-only, not pipeline-wide. +8 regression-guard xUnit tests in `Tests/ArchitectureGateTests.cs`.
+
+### Changed
+
+- **(A1) README "Architecture and language support" section** (commit `7062b88`). New section between "System requirements" and "Known caveat" documenting the three layers: (a) source ISO architecture -- both x64 and arm64 are supported, Core mode auto-detects, Worker mode is arch-neutral by catalog design; (b) host architecture -- bundled launcher is win-x64 only and gates non-x64 hosts at startup per A2, workaround is `pwsh -File tiny11maker.ps1` directly; (c) source ISO language -- all Windows 11 primary Language Packs supported including Serbian Latin per L1, plus a note about the Windows Defender localization side-effect (upstream issue #507 class -- not a detection bug, a `LanguageFeatures-*` removal side-effect). System requirements bullet list gains a host-arch entry pointing at the new section. Test-count narrative refreshed (429/85 -> 474/93) with the new coverage areas called out.
+
+### Test counts
+
+- Pester: **429 / 0** -> **474 / 0** (+45 BCP-47 language-detection regression guards from L1).
+- xUnit: **85 / 0** -> **93 / 0** (+8 ArchitectureGate rejection coverage tests from A2).
+
 ## [1.0.2] - 2026-05-14
 
 ### Fixed
