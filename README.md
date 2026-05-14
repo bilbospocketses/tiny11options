@@ -1,8 +1,8 @@
 # tiny11options
 
-A catalog-driven Windows 11 image trimmer with an interactive WebView2 + WPF wizard. Build your own customized Win11 ISO by picking what to keep and what to remove from a curated list of ~74 items across 10 categories.
+> **Built on the shoulders of [ntdevlabs / NTDEV](https://github.com/ntdevlabs) and the upstream [tiny11builder](https://github.com/ntdevlabs/tiny11builder) project.** Enormous credit to the upstream maintainer for the years of deep image-trimming work that this fork stands on — the DISM orchestration, the `install.wim` + `boot.wim` mount/commit choreography, the autounattend integration, the scratch-mount-deploy pipeline. tiny11options exists only because that foundation was built first. If you find this fork useful, please go give the original a star and consider donating to them for this incredible project!
 
-This is a hard fork of [ntdevlabs/tiny11builder](https://github.com/ntdevlabs/tiny11builder). It is standalone — no upstream contributions are planned.
+A catalog-driven Windows 11 image trimmer with an interactive WebView2 + WPF wizard. Build your own customized Win11 ISO by picking what to keep and what to remove from a curated list of ~74 items across 10 categories.
 
 ## What's different from upstream
 
@@ -44,6 +44,32 @@ pwsh -NoProfile -File tiny11maker.ps1 `
 `-ImageIndex` is the edition index inside `install.wim` (typically 6 for Pro on consumer ISOs). Mutually exclusive with `-Edition`; use whichever you prefer.
 `-Config` is one of the example profiles or your own.
 `-NonInteractive` suppresses the GUI; implied when both `-Source` and `-Config` are present.
+
+### Headless via `tiny11options.exe`
+
+The same scripted invocation also works through the bundled launcher (`tiny11options.exe`) — useful when you'd rather not require `pwsh` on the path or distribute the script tree. `tiny11options.exe -NonInteractive ...` forwards every remaining argument verbatim to `tiny11maker.ps1` (the launcher itself does not parse flags); internally the launcher invokes Windows PowerShell 5.1.
+
+```powershell
+.\tiny11options.exe -NonInteractive `
+    -Source 'C:\path\to\Win11.iso' `
+    -Config 'config\examples\tiny11-classic.json' `
+    -Edition 'Windows 11 Pro' `
+    -OutputPath 'C:\out\tiny11.iso' `
+    -NoPostBootCleanup
+```
+
+The authoritative reference for available flags is `tiny11maker.ps1` itself:
+
+```powershell
+Get-Help .\tiny11maker.ps1 -Detailed
+```
+
+Documented flags include all the `-Source` / `-Edition` / `-ImageIndex` / `-Config` / `-OutputPath` / `-NonInteractive` listed under [Scripted](#scripted) above, plus:
+
+- **`-FastBuild`** — skip the post-build recovery-image compression pass (~2 GB smaller savings forfeited, ~5–10 minutes faster).
+- **`-NoPostBootCleanup`** — opt out of installing the [post-boot cleanup task](#post-boot-cleanup-task-v101). Default behavior installs the task; this switch suppresses it.
+
+Exit codes: `0` success, `1` build failure, `2` host-architecture rejection (non-x64 host — see [Architecture and language support](#architecture-and-language-support)), `10` resource-extraction failure, `11` `powershell.exe` not found on PATH.
 
 ## Post-boot cleanup task (v1.0.1+)
 
