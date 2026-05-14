@@ -181,7 +181,9 @@ One blocked:
 pwsh -NoProfile -File tests/Run-Tests.ps1
 ```
 
-409 Pester tests (catalog parsing + schema validation, selection model + reconcile/lock logic, registry hive helpers, four action handlers including the post-boot online emitter shapes, action dispatcher, ISO mounting + edition enumeration, autounattend templating + drift detection, worker / Core dispatch, bridge protocol, WebView2 SDK detection, post-boot generator + helpers golden + Format-PSNamedParams + task XML + SetupComplete + Install) and 85 xUnit launcher tests (BuildHandlers / CleanupHandlers / EmbeddedResources drift / payload contracts).
+429 Pester tests (catalog parsing + schema validation, selection model + reconcile/lock logic, registry hive helpers, four action handlers including the post-boot online emitter shapes, action dispatcher, ISO mounting + edition enumeration, autounattend templating + drift detection, worker / Core dispatch, bridge protocol, WebView2 SDK detection, post-boot generator + helpers golden + Format-PSNamedParams + task XML + SetupComplete + Install + the v1.0.2 audit-bundle regression guards across A3 / A4 / A5 / A6 / A7 / A11 + boot.wim pipelineSucceeded wrap + Core Hives -Global) and 85 xUnit launcher tests (BuildHandlers / CleanupHandlers / EmbeddedResources drift / payload contracts).
+
+Note on the v1.0.1 "409 / 0" headline: the 2026-05-14 empirical audit reconciled this against `Invoke-Pester` runs in a worktree at each landing commit and revealed v1.0.1 actually shipped at **408 passed / 1 failed** (the prior figure reported `TotalCount` rather than `PassedCount`). The persistent failure was a CRLF-vs-LF byte-equal mismatch in the helpers golden fixture and healed in the v1.0.2 cycle by the A6 W2 line-ending-normalize fix. The full audit-verified chain is embedded in `CHANGELOG.md` `[1.0.1] > Test counts > Audit-verified Pester test count chain`.
 
 Build path and ISO install are smoke-tested via the documented matrix at `docs/superpowers/smoke/2026-05-12-post-boot-cleanup-smoke.md` (P1-P9 all PASS at v1.0.1). End-to-end automated build-pipeline + GUI tests beyond this manual matrix remain a v1.0.2-or-later follow-up.
 
