@@ -1,6 +1,6 @@
 Set-StrictMode -Version Latest
 
-$ValidActionTypes = @('provisioned-appx','filesystem','registry','scheduled-task')
+$ValidActionTypes = @('provisioned-appx','filesystem','registry','registry-pattern-zero','scheduled-task')
 $ValidHives       = @('COMPONENTS','DEFAULT','NTUSER','SOFTWARE','SYSTEM')
 
 function Get-Tiny11Catalog {

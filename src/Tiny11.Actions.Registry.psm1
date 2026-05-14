@@ -99,4 +99,78 @@ function Get-Tiny11RegistryOnlineCommand {
     }
 }
 
-Export-ModuleMember -Function Invoke-RegistryAction, Get-Tiny11RegistryOnlineCommand
+# A11-I3 (v1.0.3): pattern-driven enumeration for catalog action type
+# `registry-pattern-zero`. Replaces the maintenance burden of hardcoding every
+# `SubscribedContent-NNNNNNEnabled` ID Microsoft pushes via CUs -- one catalog
+# entry now covers the whole family at offline-build time AND in the post-boot
+# cleanup script.
+#
+# Action shape: { type='registry-pattern-zero', hive='NTUSER',
+#                 key='Software\Microsoft\...\ContentDeliveryManager',
+#                 namePattern='SubscribedContent-*Enabled',
+#                 valueType='REG_DWORD' }
+#
+# Restrictions: NTUSER hive only (the use case is per-user CDM-style values
+# that fan out across loaded SIDs + the default-user hive). Value type must be
+# REG_DWORD or REG_QWORD (the action always writes the literal `0`; non-numeric
+# value types would need an explicit "value to set" parameter we don't have).
+function Invoke-RegistryPatternZeroAction {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Action, [Parameter(Mandatory)][string]$ScratchDir)
+
+    if ($Action.hive -ne 'NTUSER') {
+        throw "registry-pattern-zero only supports NTUSER hive (got: $($Action.hive))"
+    }
+    if ($Action.valueType -notin @('REG_DWORD', 'REG_QWORD')) {
+        throw "registry-pattern-zero only supports REG_DWORD / REG_QWORD value types (got: $($Action.valueType))"
+    }
+    if ([string]::IsNullOrWhiteSpace($Action.namePattern)) {
+        throw "registry-pattern-zero requires a non-empty namePattern"
+    }
+
+    $mountKey = Get-Tiny11HiveMountKey -Hive $Action.hive       # native reg.exe form: HKLM\zNTUSER
+    $psPath   = "HKLM:\z$($Action.hive)\$($Action.key)"          # PSDrive form: HKLM:\zNTUSER\<key>
+
+    if (-not (Test-Path -LiteralPath $psPath)) {
+        # Source ISO doesn't have this key populated -- legitimate no-op for
+        # source ISOs that ship without the CDM key (rare but valid).
+        return
+    }
+
+    $names = @(Get-ItemProperty -LiteralPath $psPath -ErrorAction SilentlyContinue |
+               Get-Member -MemberType NoteProperty -ErrorAction SilentlyContinue |
+               Where-Object Name -like $Action.namePattern |
+               Select-Object -ExpandProperty Name)
+
+    foreach ($name in $names) {
+        Invoke-RegCommand 'add' "$mountKey\$($Action.key)" '/v' $name '/t' $Action.valueType '/d' '0' '/f' | Out-Null
+    }
+}
+
+function Get-Tiny11RegistryPatternZeroOnlineCommand {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Action)
+
+    if ($Action.hive -ne 'NTUSER') {
+        throw "registry-pattern-zero only supports NTUSER hive (got: $($Action.hive))"
+    }
+    if ($Action.valueType -notin @('REG_DWORD', 'REG_QWORD')) {
+        throw "registry-pattern-zero only supports REG_DWORD / REG_QWORD value types (got: $($Action.valueType))"
+    }
+    if ([string]::IsNullOrWhiteSpace($Action.namePattern)) {
+        throw "registry-pattern-zero requires a non-empty namePattern"
+    }
+
+    $type = switch ($Action.valueType) {
+        'REG_DWORD' { 'DWord' }
+        'REG_QWORD' { 'QWord' }
+    }
+
+    ,([pscustomobject]@{
+        Kind = 'Set-RegistryValuePatternToZeroForAllUsers'
+        Args = [ordered]@{ RelativeKeyPath = $Action.key; NamePattern = $Action.namePattern; Type = $type }
+        Description = "Zero HKU:*\$($Action.key)!<$($Action.namePattern)> (per-user, all loaded SIDs + tiny11_default; pattern-driven enumeration at runtime)"
+    })
+}
+
+Export-ModuleMember -Function Invoke-RegistryAction, Get-Tiny11RegistryOnlineCommand, Invoke-RegistryPatternZeroAction, Get-Tiny11RegistryPatternZeroOnlineCommand

@@ -191,3 +191,33 @@ function Unregister-ScheduledTaskFolder {
         }
     }
 }
+
+function Set-RegistryValuePatternToZeroForAllUsers {
+    # A11-I3 (v1.0.3): pattern-driven zero-write across loaded user hives + the
+    # default-user hive. Replaces the maintenance burden of hardcoding every
+    # SubscribedContent-NNNNNNEnabled ID Microsoft pushes through CUs -- one
+    # call enumerates whatever currently exists and zeros each match.
+    param([string]$RelativeKeyPath, [string]$NamePattern, [string]$Type)
+    $sids = @(Get-ChildItem 'HKU:\' -ErrorAction SilentlyContinue |
+              Where-Object { $_.PSChildName -match '^S-1-5-21-\d+-\d+-\d+-\d+$' } |
+              Select-Object -ExpandProperty PSChildName)
+    if (Test-Path -LiteralPath 'HKU:\tiny11_default') { $sids += 'tiny11_default' }
+    foreach ($sid in $sids) {
+        $userKey = "HKU:\$sid\$RelativeKeyPath"
+        if (-not (Test-Path -LiteralPath $userKey)) {
+            Write-CleanupLog "  $userKey absent (pattern-zero no-op for sid=$sid)"
+            continue
+        }
+        $names = @(Get-ItemProperty -LiteralPath $userKey -ErrorAction SilentlyContinue |
+                   Get-Member -MemberType NoteProperty -ErrorAction SilentlyContinue |
+                   Where-Object Name -like $NamePattern |
+                   Select-Object -ExpandProperty Name)
+        if ($names.Count -eq 0) {
+            Write-CleanupLog "  $userKey has no values matching '$NamePattern' (pattern-zero no-op for sid=$sid)"
+            continue
+        }
+        foreach ($name in $names) {
+            Set-RegistryValue -KeyPath $userKey -Name $name -Type $Type -Value 0
+        }
+    }
+}
