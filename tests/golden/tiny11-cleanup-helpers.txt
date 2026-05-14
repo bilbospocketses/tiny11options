@@ -99,6 +99,11 @@ function Remove-PathWithOwnership {
 
 function Remove-AppxByPackagePrefix {
     param([string]$Prefix)
+    # B8: explicit Appx module load -- defensive against debloated images and
+    # SYSTEM-context PS 5.1 sessions (which is what the scheduled task gets)
+    # where module auto-discovery may not find Appx and the cmdlets below would
+    # throw "not recognized". Idempotent: subsequent calls are no-ops.
+    Import-Module Appx -ErrorAction SilentlyContinue
     $provMatches = @(Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
                     Where-Object DisplayName -like "$Prefix*")
     if ($provMatches.Count -eq 0) {

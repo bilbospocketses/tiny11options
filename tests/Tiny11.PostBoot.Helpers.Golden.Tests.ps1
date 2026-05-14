@@ -58,6 +58,17 @@ Describe 'PostBoot helpers block' {
         $script:helpers | Should -Match 'Get-AppxPackage -AllUsers'
         $script:helpers | Should -Match 'Remove-AppxPackage -AllUsers'
     }
+    It 'Remove-AppxByPackagePrefix explicitly imports the Appx module (B8 regression guard)' {
+        # B8: SYSTEM-context PS 5.1 sessions (the scheduled-task context) may
+        # not auto-discover the Appx module on debloated images, causing every
+        # Get/Remove-AppxPackage call to throw "not recognized". An explicit
+        # idempotent Import-Module Appx -ErrorAction SilentlyContinue at the
+        # top of the function makes the dependency explicit and survives even
+        # the worst auto-discovery regression.
+        $fnPattern = '(?ms)function Remove-AppxByPackagePrefix.*?(?=\nfunction |\z)'
+        $fnBody = ($script:helpers | Select-String -Pattern $fnPattern -AllMatches).Matches[0].Value
+        $fnBody | Should -Match 'Import-Module Appx -ErrorAction SilentlyContinue'
+    }
     It 'is pure ASCII' {
         ($script:helpers.ToCharArray() | Where-Object { [int]$_ -gt 127 }).Count | Should -Be 0
     }
