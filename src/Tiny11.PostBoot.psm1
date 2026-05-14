@@ -374,6 +374,14 @@ function New-Tiny11PostBootCleanupScript {
 
 function New-Tiny11PostBootTaskXml {
     [CmdletBinding()] param()
+    # A11 W2 (decided 2026-05-14, v1.0.2 cycle): keep the top-level
+    # `\tiny11options\Post-Boot Cleanup` URI. The audit raised the
+    # alternative of `\Microsoft\tiny11options\Post-Boot Cleanup` for
+    # enterprise convention; we opt for the top-level vendor-tree form
+    # to advertise this task as owned by tiny11options (not a Microsoft-
+    # provided task). The schtasks /tn arg in SetupComplete.cmd
+    # (New-Tiny11PostBootSetupCompleteScript below) matches this URI
+    # minus the leading backslash. Both must stay in lockstep.
     @'
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">

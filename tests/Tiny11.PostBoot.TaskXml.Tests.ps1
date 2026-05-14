@@ -13,8 +13,20 @@ BeforeAll {
 Describe 'New-Tiny11PostBootTaskXml' {
     It 'parses as XML' { $script:doc | Should -Not -BeNullOrEmpty }
 
-    It 'task URI is \tiny11options\Post-Boot Cleanup' {
+    It 'task URI is \tiny11options\Post-Boot Cleanup (A11 W2 explicit decision)' {
+        # The audit raised \Microsoft\tiny11options\... as an alternative. We
+        # deliberately kept the top-level vendor-tree form. If you want to
+        # change it, update New-Tiny11PostBootTaskXml AND the schtasks /tn
+        # arg in New-Tiny11PostBootSetupCompleteScript -- they must match.
         $script:doc.SelectSingleNode('//t:URI', $script:ns).InnerText | Should -Be '\tiny11options\Post-Boot Cleanup'
+    }
+    It 'URI and schtasks /tn arg in SetupComplete.cmd stay in lockstep (A11 W2 regression guard)' {
+        # The Worker SetupComplete.cmd registers the task via schtasks /create
+        # /xml ... /tn "<path>". The /tn arg must match the XML <URI> exactly,
+        # minus the leading backslash. If either drifts, the task XML embeds
+        # one path while schtasks registers under another.
+        $setupCmdSrc = New-Tiny11PostBootSetupCompleteScript
+        $setupCmdSrc | Should -Match 'schtasks /create /xml [^\r\n]*?/tn "tiny11options\\Post-Boot Cleanup"'
     }
 
     It 'has exactly 3 triggers: BootTrigger, CalendarTrigger, EventTrigger' {
