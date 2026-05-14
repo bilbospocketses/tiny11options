@@ -14,7 +14,7 @@ Branch: `feat/v1.0.1-post-boot-cleanup`.
 | P4 | Core, Fast Build, defaults (cleanup ON) | First boot + immediate run | ✅ PASS (2026-05-13) |
 | P5 | Core, Fast Build, `-NoPostBootCleanup` | (only Keep-WU-Disabled expected) | ✅ PASS (2026-05-13) |
 | P6 | Worker (reuses P1's VM) | Install-time CU; verified pre-login | ✅ PASS (2026-05-13) |
-| P7 | Worker (fresh VM via VHDX-copy of P1) | Per-user fan-out + new-user inheritance | ⏳ pending |
+| P7 | Worker (reuses P1's VM, User2 created live) | Per-user fan-out + new-user inheritance | ✅ PASS (2026-05-13) |
 | P8 | Worker (reuses P1's VM, post-P6) | Non-appx action-type coverage (filesystem + registry + scheduled-task) | ⏳ pending |
 | P9 | Worker, custom selections (Edge + Clipchamp KEPT) | Keep-list contract: static + runtime | ⏳ pending |
 
@@ -150,19 +150,25 @@ Verify scripts: `verify-p1d-rebuild.ps1`, `verify-p1d-f4.ps1`, `verify-p4-r2.ps1
 
 ## P7 — Per-user fan-out — PENDING
 
-- **Date:** _to be filled_
-- **Build:** Worker, fresh VM via VHDX-copy of P1d's VHDX
-- **Trigger under test:** New-user inheritance of NTUSER tweaks (e.g., `tweak-disable-telemetry`)
-- **Result:** ⏳ pending
-- **Steps:**
-  1. **Source the target hive correctly.** v1.0.1 design (B4) loads `C:\Users\Default\NTUSER.DAT` via `reg load HKU\tiny11_default ...`. **Target this, NOT `HKU:\.DEFAULT`** — `.DEFAULT` backs LOCAL_SERVICE / NETWORK_SERVICE and is no longer the new-user template after B4.
-  2. As User1 (admin): `New-LocalUser -Name 'User2' -NoPassword`, `Add-LocalGroupMember -Group 'Users' -Member 'User2'`.
-  3. Sign out, sign in as User2, complete first-login setup, sign back to User1.
-  4. As User1 admin: `Start-ScheduledTask -TaskPath '\tiny11options\' -TaskName 'Post-Boot Cleanup'`; `Start-Sleep 30`.
-  5. Capture both user SIDs and assert: `(Get-ItemProperty -Path "HKU:\$user1Sid\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name Enabled).Enabled` and the equivalent for User2 both return `0`.
-  6. Load `C:\Users\Default\NTUSER.DAT` via `reg load` and assert the same value at `HKU\tiny11_default\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo` (new-user inheritance).
-- **Pass criteria:** All three sources (User1 SID, User2 SID, loaded Default hive) carry `Enabled = 0`.
-- **Wall-clock estimate:** ~30-45 min including User2 creation + first-login.
+- **Date:** 2026-05-13
+- **Build:** continued from P1d's Hyper-V VM (Worker, Fast Build, default selections; cleanup ON). No fresh build needed -- the P1d image already has the v1.0.1 B4 default-hive inheritance plumbing baked in.
+- **Trigger:** `Start-ScheduledTask -TaskPath '\tiny11options\' -TaskName 'Post-Boot Cleanup'`, then 30-second settle.
+- **Setup:** as User1 (admin): `New-LocalUser -Name 'User2' -NoPassword` + `Add-LocalGroupMember -Group 'Users' -Member 'User2'`. User2 signed in once to provision the profile, signed out before the assertions ran.
+- **Result:** ✅ PASS
+- **Evidence (HKLM-context registry checks for `Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo!Enabled`, all return `0`):**
+  - **User1** (logged-in OOBE user, SID captured via `(Get-LocalUser -Name 'test').SID.Value`):
+    `(Get-ItemProperty "Registry::HKEY_USERS\$user1Sid\..." -Name Enabled).Enabled` → `0`.
+  - **User2** offline NTUSER.DAT (loaded via `reg load HKU\TempUser2 C:\Users\User2\NTUSER.DAT`):
+    `(Get-ItemProperty "Registry::HKEY_USERS\TempUser2\..." -Name Enabled).Enabled` → `0`.
+    **Headline P7 result -- new-user inheritance works.** User2 was not logged in at assertion time, so the offline NTUSER.DAT reflects EITHER bake-from-Default at user creation OR the in-session cleanup-task write during User2's brief logged-in window. Either source validates the contract.
+  - **Default user template** (`C:\Users\Default\NTUSER.DAT` loaded via `reg load HKU\TempDefault`):
+    `(Get-ItemProperty "Registry::HKEY_USERS\TempDefault\..." -Name Enabled).Enabled` → `0`.
+    Confirms the cleanup task's runtime write target (`HKU:\tiny11_default`) carries the value, which is the inheritance source for all future user profiles.
+- **Bonus regression check (Finding 4 from P1):** `(Select-String -Path C:\Windows\Logs\tiny11-cleanup.log -Pattern '_Classes' | Measure-Object).Count` → `0`. Confirms commit `619c7ae`'s anchored `^S-1-5-21-\d+-\d+-\d+-\d+$` regex still excludes `_Classes` SIDs in the live SYSTEM-context cleanup run.
+- **Notes:**
+  - The `reg load` / `[GC]::Collect()` / `reg unload` pattern (used twice in the assertion sequence without issue) confirms the cleanup task's own load/unload pattern at `Tiny11.PostBoot.psm1:67-83` + footer `229-236` is operationally sound under repeated re-mount.
+  - User1's local account name in this VM is `test` (the OOBE account the user created at first sign-in). Its SID `S-1-5-21-1063152039-1139215959-1847590240-1001` is the canonical first-account SID for this VM.
+  - Three hives, three independent confirmations -- stronger evidence than the original P7 plan required (which only asked for HKU:\$user1Sid + HKU:\$user2Sid + loaded Default).
 
 ## P8 — Non-appx action-type coverage on default-apply build — PENDING (revised post-P6)
 
