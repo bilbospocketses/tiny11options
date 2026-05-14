@@ -79,6 +79,35 @@ function Get-Tiny11CoreAppxPrefixes {
     )
 }
 
+# Extract the BCP-47 locale tag from `dism /Get-Intl` output.
+#
+# The "Default system UI language" line ships the image's primary UI locale as a
+# BCP-47 tag. Most Windows 11 Language Packs use the 5-char xx-XX form (en-US,
+# de-DE, ja-JP, zh-CN, zh-TW, ...) but Serbian Latin ships as `sr-Latn-RS` (and
+# the deprecated-but-still-seen-in-older-images `sr-Latn-CS`). The regex below
+# is general enough to also cover hypothetical longer tags (`ca-ES-valencia`,
+# `chr-CHER-US`, `fil-PH`, `es-419`) so a future Windows release that promotes
+# a LIP to a primary Language Pack doesn't silently fall back to en-US.
+#
+# Pre-L1 (v1.0.2 and earlier) the regex was `([a-zA-Z]{2}-[a-zA-Z]{2})` -- it
+# matched only 5-char xx-XX codes and silently fell through to en-US for
+# Serbian Latin, dropping the LanguageFeatures-*-sr-Latn-RS-Package removals.
+# That's the gap this helper closes.
+#
+# Returns the captured tag (e.g. 'sr-Latn-RS') or 'en-US' as the safe default
+# when the marker is absent / malformed (matches the prior fallback behaviour).
+function Get-Tiny11CoreLanguageCodeFromDismIntl {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$DismIntlOutput)
+    # BCP-47-ish: language (2-3 letters) + optional subtag chain (-XX or -XXXX etc.)
+    # of 2-8 alphanumerics each. Covers script subtag (Latn, Cyrl, Arab, CHER),
+    # region (US, RS, 419), and variant (valencia) forms.
+    if ($DismIntlOutput -match 'Default system UI language\s*:\s*([a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*)') {
+        return $Matches[1]
+    }
+    return 'en-US'
+}
+
 # DISM /Remove-Package patterns for Core's aggressive system-package removal.
 # 12 entries; 4 are language-code-templated (LanguageFeatures-* family).
 # Ported from upstream tiny11Coremaker.ps1 lines 135-149.
@@ -1193,12 +1222,11 @@ function Invoke-Tiny11CoreBuildPipeline {
 
     $pipelineSucceeded = $false
     try {
-        # Phase 3: detect language code from mounted image (used by system-package patterns)
+        # Phase 3: detect language code from mounted image (used by system-package patterns).
+        # See Get-Tiny11CoreLanguageCodeFromDismIntl for the BCP-47-aware regex and
+        # the rationale for accepting longer tags than the legacy 5-char xx-XX form.
         $intl = Invoke-CoreDism -Arguments @('/English', "/Image:$mountDir", '/Get-Intl')
-        $languageCode = 'en-US'
-        if ($intl.Output -match 'Default system UI language : ([a-zA-Z]{2}-[a-zA-Z]{2})') {
-            $languageCode = $Matches[1]
-        }
+        $languageCode = Get-Tiny11CoreLanguageCodeFromDismIntl -DismIntlOutput $intl.Output
 
         # Phase 3b: detect architecture (upstream lines 92-105)
         $imageInfo = Invoke-CoreDism -Arguments @('/English', '/Get-WimInfo', "/wimFile:$installWim", "/index:$ImageIndex")
@@ -1525,6 +1553,7 @@ Export-ModuleMember -Function `
     Set-Tiny11CoreLogPath, `
     Write-CoreLog, `
     Get-Tiny11CoreAppxPrefixes, `
+    Get-Tiny11CoreLanguageCodeFromDismIntl, `
     Get-Tiny11CoreSystemPackagePatterns, `
     Get-Tiny11CoreFilesystemTargets, `
     Get-Tiny11CoreScheduledTaskTargets, `
