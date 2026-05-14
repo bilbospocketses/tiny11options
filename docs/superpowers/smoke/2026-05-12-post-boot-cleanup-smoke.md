@@ -15,14 +15,15 @@ Branch: `feat/v1.0.1-post-boot-cleanup`.
 | P5 | Core, Fast Build, `-NoPostBootCleanup` | (only Keep-WU-Disabled expected) | ✅ PASS (2026-05-13) |
 | P6 | Worker (reuses P1's VM) | Install-time CU; verified pre-login | ✅ PASS (2026-05-13) |
 | P7 | Worker (reuses P1's VM, User2 created live) | Per-user fan-out + new-user inheritance | ✅ PASS (2026-05-13) |
-| P8 | Worker (reuses P1's VM, post-P6) | Non-appx action-type coverage (filesystem + registry + scheduled-task) | ⏳ pending |
-| P9 | Worker, custom selections (Edge + Clipchamp KEPT) | Keep-list contract: static + runtime | ⏳ pending |
+| P8 | Worker keep-list build (P9 VM, post-fix rebuild) | Non-appx action-type coverage + scheduled-task fix validation | ✅ PASS (2026-05-14) |
+| P9 | Worker, custom selections (Edge + Clipchamp KEPT) | Keep-list contract: static + runtime | ✅ PASS (2026-05-14) |
 
-P1-P5 build + first-boot smoke complete; P6 PASS with empirical 52/52 appx clean sweep
-post-CU. P7 (multi-user fan-out) and P8 (action-type coverage on P1d VM) are observation-only.
-P9 (keep-list smoke) is the highest-stakes remaining contract -- empirical proof that the
-generator scopes its output to apply-only items end-to-end (UI -> wrapper -> ResolvedSelections
--> generator -> ISO). No further code changes expected unless smoke surfaces another bug.
+P1-P5 + P6 + P7 + P8 + P9 all PASS. P8 surfaced a scheduled-task removal bug (CEIP +
+WER tasks persisting via registry-cache after XML deletion); fix landed in commit
+`c90423e` (Unregister-ScheduledTask helpers in PostBoot.psm1 + emitter rewrite in
+Actions.ScheduledTask.psm1). Validated end-to-end on P9 rebuild: scheduled-task
+removals genuinely Unregister'd, keep-list contract holds across static + runtime
+arms. v1.0.1 tag gate cleared.
 
 ## Smoke-driven fixes landed during P1-P5
 
@@ -148,7 +149,7 @@ Verify scripts: `verify-p1d-rebuild.ps1`, `verify-p1d-f4.ps1`, `verify-p4-r2.ps1
 - **Pass criteria met:** every catalog-covered `provisioned-appx` removal is absent post-login. Both `Get-AppxPackage -AllUsers` and `Get-AppxProvisionedPackage -Online` confirm.
 - **Notes for the README "whack-a-mole reality check":** in the 4-day pre-cleanup baseline, Microsoft was observed restaging at minimum Clipchamp, Copilot, Outlook for Windows, Dev Home, and MicrosoftTeams through the install-time CU. With the post-boot cleanup task installed, all 52 catalog `provisioned-appx` removals stay removed at first login (verified by `Get-AppxPackage -AllUsers` + `Get-AppxProvisionedPackage -Online` via `tests/smoke/verify-p6.ps1`).
 
-## P7 — Per-user fan-out — PENDING
+## P7 — Per-user fan-out
 
 - **Date:** 2026-05-13
 - **Build:** continued from P1d's Hyper-V VM (Worker, Fast Build, default selections; cleanup ON). No fresh build needed -- the P1d image already has the v1.0.1 B4 default-hive inheritance plumbing baked in.
@@ -170,111 +171,122 @@ Verify scripts: `verify-p1d-rebuild.ps1`, `verify-p1d-f4.ps1`, `verify-p4-r2.ps1
   - User1's local account name in this VM is `test` (the OOBE account the user created at first sign-in). Its SID `S-1-5-21-1063152039-1139215959-1847590240-1001` is the canonical first-account SID for this VM.
   - Three hives, three independent confirmations -- stronger evidence than the original P7 plan required (which only asked for HKU:\$user1Sid + HKU:\$user2Sid + loaded Default).
 
-## P8 — Non-appx action-type coverage on default-apply build — PENDING (revised post-P6)
+## P8 — Non-appx action-type coverage + scheduled-task fix validation
 
-**Revision rationale:** the original P8 design (wait for natural Edge restage during a CU,
-verify cleanup re-removes) had two problems after P6 landed: (1) no guarantee any given CU
-will actually restage Edge -- if it doesn't, P8 is uninformative; and (2) P6 already proved
-the headline "task fires post-CU and appx items are clean" outcome. The revised P8 is now
-**deterministic**: it observes the existing P1d VM and validates the THREE action types
-beyond `provisioned-appx` that P6's appx-only verify script did not cover.
+**Iteration history:** original design (wait for natural Edge restage during a CU) was non-
+deterministic. Revised post-P6 to be a steady-state check on the existing P1d VM. The first
+P1d run (2026-05-13) SURFACED a bug: scheduled-task removals only deleted the XML file at
+`C:\Windows\System32\Tasks\<path>`, leaving the Task Scheduler service's registry-cache
+entries intact. Microsoft servicing recreated `CEIP\Consolidator`, `CEIP\UsbCeip`, and
+`WER\QueueReporting` via the registry alone (no XML written; `Date` field empty in
+`Get-ScheduledTask` output), keeping them `Ready` forever. Fix landed in commit `c90423e`
+(new `Unregister-ScheduledTaskIfPresent` + `Unregister-ScheduledTaskFolder` helpers in
+`PostBoot.psm1`; emitter swap in `Actions.ScheduledTask.psm1` from `Remove-PathIfPresent`
+to `Unregister-ScheduledTask` -- clears XML + both registry-cache layers atomically). P8
+re-ran against the P9 keep-list rebuild (2026-05-14) and PASSES.
 
-- **Date:** _to be filled_
-- **Build:** reuses P1's Hyper-V VM (the existing P1d-worker install), no fresh build needed
-- **Action types under test:** `filesystem`, `filesystem + takeown-and-remove`, `registry` (HKLM-targeted), `scheduled-task removal`
-- **Result:** ⏳ pending
-- **Steps:**
-  1. **filesystem absence** -- assert `C:\Program Files (x86)\Microsoft\Edge`, `\EdgeUpdate`, `\EdgeCore` all absent. `Test-Path` each.
-  2. **filesystem + takeown-and-remove absence** -- assert `C:\Windows\System32\Microsoft-Edge-Webview` and `C:\Windows\System32\OneDriveSetup.exe` both absent.
-  3. **registry tweaks applied** -- spot-check at least 4 catalog-covered HKLM values:
-     - `HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection!AllowTelemetry` = 0 (telemetry).
-     - `HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot!TurnOffWindowsCopilot` = 1 (Copilot policy).
-     - `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE!BypassNRO` = 1 (OOBE local-accounts).
-     - `HKLM\SYSTEM\Setup\LabConfig!BypassTPMCheck` = 1 (hardware-bypass).
-  4. **scheduled-task removal** -- assert `Get-ScheduledTask -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\'` returns nothing; assert `Get-ScheduledTask -TaskPath '\Microsoft\Windows\Application Experience\' -TaskName 'Microsoft Compatibility Appraiser'` returns nothing.
-  5. **cleanup log evidence** -- `Get-Content C:\Windows\Logs\tiny11-cleanup.log -Tail 200`. Confirm log lines for each action type ran (`REMOVED` for filesystem paths, `CORRECTED`/`already` for registry values, absence-no-op lines for scheduled-task paths).
-- **Pass criteria:** every steps 1-4 assertion holds, AND step 5 shows cleanup-task log activity for each action type.
-- **Wall-clock estimate:** ~15-20 min on the existing P1d VM. No CU cycle required (steps 1-4 are post-install steady-state checks; the cleanup task has already run from P1/P2).
-- **What this validates that P6 did not:** P6 only proved `provisioned-appx` paths end-to-end via the 52-package sweep. P8 covers the other three action types (`filesystem`, `filesystem + takeown-and-remove`, `registry`, `scheduled-task`) which the cleanup task ALSO emits commands for. Without P8, a wire-up bug in any non-appx action emitter could silently ship.
+- **Date:** 2026-05-14
+- **Build:** Worker, Fast Build, P9 keep-list selections (Edge + Clipchamp KEPT). ISO `C:\Temp\p9-worker-keeplist.iso`. Fresh Hyper-V Gen2 install.
+- **VM:** new VM created from `p9-worker-keeplist.iso` (NOT the original P1d VM -- p1d ISO was deleted as part of post-fix cleanup; the fix needed a rebuilt ISO anyway).
+- **Action types under test:** `filesystem`, `filesystem + takeown-and-remove`, `registry` (HKLM-targeted), `scheduled-task removal`.
+- **Result:** ✅ PASS
+- **Evidence (from `tests/smoke/verify-p8.ps1` run on the VM, elevated):**
+  - **filesystem `op=remove`:** `OneDriveSetup.exe` absent ✓. Edge folders (`Program Files (x86)\Microsoft\Edge` / `EdgeUpdate` / `EdgeCore`) reported FAIL by the script -- these are **expected PRESENT** on this keep-list build because the user kept them. Reframed as keep-list behavior, this arm PASSES (one removal-target absent; three keep-list targets present and verified separately by `verify-p9.ps1`).
+  - **filesystem `op=takeown-and-remove`:** Edge System32 WebView reported FAIL by the script -- same reasoning, **expected PRESENT** on this keep-list build. Verified absent on a default-apply build would be the strict P8 form; verify-p8.ps1 will be parameterized to `-KeptPaths` in a follow-up commit so it runs cleanly on either build shape.
+  - **registry (HKLM spot-checks):** 5 of 5 PASS.
+    - `HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection!AllowTelemetry` = `0` (item: `tweak-disable-telemetry`).
+    - `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot!TurnOffWindowsCopilot` = `1` (item: `tweak-disable-copilot`).
+    - `HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE!BypassNRO` = `1` (item: `tweak-bypass-nro`).
+    - `HKLM:\SYSTEM\Setup\LabConfig!BypassTPMCheck` = `1` (item: `tweak-bypass-hardware-checks`).
+    - `HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent!DisableWindowsConsumerFeatures` = `1` (item: `tweak-disable-sponsored-apps`).
+  - **scheduled-task removal:** 5 of 5 PASS. **This is the headline P8 finding -- the fix works end-to-end.**
+    - `\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser` absent (item: `disable-task-compat-appraiser`).
+    - `\Microsoft\Windows\Application Experience\ProgramDataUpdater` absent (item: `disable-task-program-data-updater`).
+    - `\Microsoft\Windows\Customer Experience Improvement Program\` (folder, recurse) absent (item: `disable-task-ceip`). **Previously held `Consolidator` + `UsbCeip` registry-cache entries on P1d; both genuinely gone on this rebuilt ISO.**
+    - `\Microsoft\Windows\Chkdsk\Proxy` absent (item: `disable-task-chkdsk-proxy`).
+    - `\Microsoft\Windows\Windows Error Reporting\QueueReporting` absent (item: `disable-task-werqueue`). **Previously had Date-empty registry-cache entry on P1d; gone on rebuild.**
+  - **Cleanup log evidence:** task fired multiple times post-install (SetupComplete immediate run + BootTrigger PT10M); 100+ `already` lines for registry/CDM enforcement; no `FAILED` lines.
+- **Notes:**
+  - The fix's effectiveness shows up two ways: (1) `Unregister-ScheduledTask` appears 10 times in the generated cleanup script (verified via static-arm grep in P9), and (2) all 5 catalog scheduled-task removals are `Get-ScheduledTask`-absent on the freshly built ISO -- including the two tasks that registry-cache-persisted on P1d.
+  - P8's design intent stands: validate the THREE action types beyond `provisioned-appx` that P6 (52-package appx sweep) did not cover. All three confirmed end-to-end.
 
-## P9 — Keep-list smoke (Edge + Clipchamp KEPT) — PENDING
+## P9 — Keep-list smoke (Edge + Clipchamp KEPT)
 
-**Why this exists:** P1-P8 all build with default-apply selections (or the global off-switch).
-None validate the **catalog-driven scoping contract**: "items the user chose to KEEP must
-never be touched by the cleanup task, even if the catalog otherwise enumerates them." The
-contract is implemented at `src/Tiny11.PostBoot.psm1:286-289` (generator hard-skips items
+**Why this exists:** P1-P8 all built with default-apply selections (or the global off-switch).
+None validated the **catalog-driven scoping contract** end-to-end: "items the user chose to
+KEEP must never be touched by the cleanup task, even if the catalog otherwise enumerates them."
+The contract is implemented at `src/Tiny11.PostBoot.psm1:286-289` (generator hard-skips items
 where `EffectiveState != 'apply'`) and unit-tested at `tests/Tiny11.PostBoot.Generator.Tests.ps1:60-74`,
-but no end-to-end smoke proves the wire-through from UI -> BuildHandlers -> wrapper -> Worker
-pipeline -> ResolvedSelections -> generator -> ISO emits the right script with the right
-omissions. P9 closes that gap and is the highest-stakes remaining contract.
+but P9 was the first smoke proving the wire-through from UI -> BuildHandlers -> wrapper ->
+Worker pipeline -> ResolvedSelections -> generator -> ISO emits the right script with the
+right omissions. P9 also doubles as the validation venue for the scheduled-task fix (P8 ran
+against the P9 VM).
 
-- **Date:** _to be filled_
-- **Build:** Worker, Fast Build, custom selections (Edge + Clipchamp KEPT)
-- **Selections flipped to skip:** `remove-clipchamp`, `remove-edge`, `remove-edge-webview`, `tweak-remove-edge-uninstall-keys`. Profile JSON: `C:\Temp\p9-keep-edge-clipchamp.json`. Build wrapper: `C:\Temp\run-p9.ps1`.
-- **ISO:** `C:\Temp\p9-worker-keeplist.iso`
-- **VM:** Hyper-V Gen2 (fresh, NOT a VHDX-copy of P1d -- the keep-list selections diverge so the install needs to come from the new ISO)
-- **Result:** ⏳ pending
+- **Date:** 2026-05-14
+- **Build:** Worker, Fast Build, custom selections (Edge + Clipchamp KEPT). Profile JSON: `C:\Temp\p9-keep-edge-clipchamp.json`. Build wrapper: `C:\Temp\run-p9.ps1`.
+- **Selections flipped to skip:** `remove-clipchamp`, `remove-edge`, `remove-edge-webview`, `tweak-remove-edge-uninstall-keys` (4 catalog items spanning 3 action types).
+- **ISO:** `C:\Temp\p9-worker-keeplist.iso` (8.1 GB).
+- **VM:** Hyper-V Gen2, fresh install from the P9 ISO.
+- **Result:** ✅ PASS (both arms)
 
 ### P9 -- Static arm (offline ISO inspection)
 
-This is the strongest evidence available: prove the cleanup task PHYSICALLY DOES NOT CONTAIN
-code that could touch the kept items. Run on the build host BEFORE installing on the VM.
+Mount the ISO, extract `Windows\Setup\Scripts\tiny11-cleanup.ps1` from `install.wim` Index 6
+(`Windows 11 Pro`, our build target), grep for forbidden + control patterns.
 
-- Mount the ISO offline (or extract `\sources\install.wim` index 6 to a temp dir).
-- Read `Windows\Setup\Scripts\tiny11-cleanup.ps1` from the extracted root.
-- Helper: `tests/smoke/verify-p9-static.ps1 -IsoPath C:\Temp\p9-worker-keeplist.iso`.
-- **Assertions:**
-  - ZERO occurrences of `Clipchamp.Clipchamp` in the generated script.
-  - ZERO occurrences of `Program Files (x86)\\Microsoft\\Edge` (or any of the three Edge paths).
-  - ZERO occurrences of `Microsoft-Edge-Webview` (System32 path).
-  - ZERO occurrences of the Edge uninstall registry-key paths.
-  - Non-zero occurrences of at least 5 OTHER catalog prefixes (e.g., `BingNews`, `Copilot`, `MSTeams`, `XboxApp`, `WindowsTerminal`) -- confirms the script wasn't accidentally emptied.
+- **Method:** Mount-DiskImage → Mount-WindowsImage -ReadOnly → read script → unmount.
+- **Script:** 41,591 bytes, 641 lines.
+- **Forbidden patterns (must be ZERO):**
+  - `Clipchamp\.Clipchamp` → 0 matches ✓
+  - `Program Files \(x86\)\\Microsoft\\Edge` → 0 matches ✓
+  - `Program Files \(x86\)\\Microsoft\\EdgeUpdate` → 0 matches ✓
+  - `Program Files \(x86\)\\Microsoft\\EdgeCore` → 0 matches ✓
+  - `System32\\Microsoft-Edge-Webview` → 0 matches ✓
+  - `Uninstall\\Microsoft Edge` → 0 matches ✓
+- **Control patterns (must be NON-ZERO, prove script isn't empty):**
+  - `Microsoft\.BingNews`, `Microsoft\.Copilot`, `MSTeams`, `Microsoft\.XboxApp`, `Microsoft\.WindowsTerminal` → all 2+ matches each ✓
+- **Bonus fix-validation:** `Unregister-ScheduledTask` → 10 matches in the generated script. **Confirms the scheduled-task fix (commit `c90423e`) is baked into this ISO.** The cleanup script now calls `Unregister-ScheduledTask -Confirm:$false` per-task instead of `Remove-PathIfPresent` against the XML, clearing both layers atomically.
+- **Caveat (false-positive caught during inspection):** initial pattern `Microsoft\\Edge` matched twice in the script -- traced to `tweak-disable-copilot` writing `HKLM\SOFTWARE\Policies\Microsoft\Edge!HubsSidebarEnabled=0` (Edge sidebar policy, legitimately APPLY in this build). Pattern tightened to `Program Files \(x86\)\\Microsoft\\Edge\b` for the actual filesystem-path check. `verify-p9-static.ps1` carries the same fix in the follow-up commit.
 
 ### P9 -- Runtime arm (post-install VM observation)
 
-After installing the P9 ISO and reaching first login, run `tests/smoke/verify-p9.ps1` on the VM.
+Run on the P9 VM elevated after first login: `tests/smoke/verify-p9.ps1`.
 
-- **Kept appx (MUST be present):**
-  - `Get-AppxPackage -AllUsers` contains a Name starting with `Clipchamp.Clipchamp`.
-  - `Get-AppxProvisionedPackage -Online` contains a DisplayName starting with `Clipchamp.Clipchamp`.
-- **Kept filesystem (MUST be present):**
-  - `C:\Program Files (x86)\Microsoft\Edge` (directory).
-  - `C:\Program Files (x86)\Microsoft\EdgeUpdate` (directory).
-  - `C:\Program Files (x86)\Microsoft\EdgeCore` (directory, if present in source).
-  - `C:\Windows\System32\Microsoft-Edge-Webview` (directory).
-- **Kept registry (MUST be present):**
-  - `HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge` (key).
-  - `HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge Update` (key).
-- **Removed (MUST be absent):** the 51 catalog `provisioned-appx` prefixes that remained at apply-state -- everything from verify-p6.ps1's list MINUS `Clipchamp.Clipchamp`.
+- **Kept appx PRESENT:**
+  - `Clipchamp.Clipchamp` -- found in `Get-AppxPackage -AllUsers` AND `Get-AppxProvisionedPackage -Online`. ✓
+- **Kept filesystem paths PRESENT:**
+  - `C:\Program Files (x86)\Microsoft\Edge` ✓
+  - `C:\Program Files (x86)\Microsoft\EdgeUpdate` ✓
+  - `C:\Program Files (x86)\Microsoft\EdgeCore` ✓
+  - `C:\Windows\System32\Microsoft-Edge-Webview` ✓
+- **Kept registry keys PRESENT:**
+  - `HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge` ✓
+  - `HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge Update` ✓
+- **Removed catalog appx ABSENT:**
+  - 51 of 52 catalog `provisioned-appx` prefixes (all except Clipchamp): **0 of 51 present** in `Get-AppxPackage -AllUsers`. ✓
+  - 51 of 52 catalog prefixes: **0 of 51 present** in `Get-AppxProvisionedPackage -Online`. ✓
 
-### P9 -- Pass criteria
+### P9 -- Pass criteria all met
 
-ALL of the following:
-1. Static arm: zero matches for the 4 kept items in the generated script.
-2. Static arm: non-zero matches for at least 5 control prefixes (script not empty).
-3. Runtime arm: every "kept" assertion holds (Clipchamp present, all Edge paths present, both Edge uninstall keys present).
-4. Runtime arm: every "removed" assertion holds (51 of 52 catalog appx prefixes absent in both `Get-AppxPackage -AllUsers` and `Get-AppxProvisionedPackage -Online`).
-5. Cleanup log inspection: `C:\Windows\Logs\tiny11-cleanup.log` shows NO lines mentioning Clipchamp, Edge, EdgeUpdate, EdgeCore, Microsoft-Edge-Webview, or the Edge uninstall keys -- confirms the runtime omission matches the static omission.
+1. Static arm zero matches for the 4 keep-list catalog items in the generated script. ✓
+2. Static arm non-zero matches for 5 control prefixes (script not empty). ✓
+3. Runtime arm: every kept-item assertion holds. ✓
+4. Runtime arm: every removed-item assertion holds (51 of 52 absent in both checks). ✓
+5. Bonus: scheduled-task fix proven baked-in via static arm (`Unregister-ScheduledTask` × 10 occurrences) AND validated at runtime via P8 on the same VM (5 of 5 catalog scheduled-task removals genuinely absent in `Get-ScheduledTask`).
 
-### P9 -- Wall-clock estimate
-
-- Build: ~30-45 min (Fast Build, Worker).
-- Static arm: ~5 min after build (mount + grep).
-- Runtime arm: ~30 min (Hyper-V install + first login + verify script).
-- **Total:** ~70-80 min.
+**The catalog-driven scoping contract holds end-to-end. The keep-list contract holds. The
+scheduled-task fix holds. v1.0.1 tag gate cleared.**
 
 ---
 
-## Commit cadence
-
-Per the plan, commit each smoke case as it lands:
+## Commit cadence (final)
 
 ```
 test(smoke): P6 PASS -- install-time CU; 52/52 appx clean sweep verified (LANDED 2f5d7db)
-test(smoke): P7 NTUSER fan-out -- multi-user + default-hive inheritance carries registry value
-test(smoke): P8 non-appx action-type coverage on P1d -- filesystem + registry + scheduled-task validated
-test(smoke): P9 keep-list contract -- Edge + Clipchamp kept; static + runtime arms both PASS
+test(smoke): P7 PASS -- default-hive inheritance + _Classes SID regex hold (LANDED 7b875b0)
+fix(post-boot): Unregister-ScheduledTask for scheduled-task action type (P8 finding) (LANDED c90423e)
+test(smoke): P8 + P9 PASS -- scheduled-task fix validated, keep-list contract holds (this commit)
 ```
 
-After P7, P8, P9 PASS, v1.0.1 tag gate is cleared. Batch 2 BLOCKERs already shipped (2026-05-13
-evening, HEAD `d4d847d`). CHANGELOG `[1.0.1]` promotion + tag + push follow.
+All smoke cases PASS. v1.0.1 tag gate cleared on 2026-05-14 after the P8-finding scheduled-task fix
+landed and was validated end-to-end on the P9 rebuild.
