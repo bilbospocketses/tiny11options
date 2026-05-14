@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-05-14
+
 ### Fixed
 
 - **(A6 W2 + W4) Pester golden-fixture comparison normalizes CRLF -> LF before byte-equal compare; `tests/Run-Tests.ps1` `#Requires` tightened to `ModuleVersion='5.3.1'; MaximumVersion='5.99.99'`** (commit `26a7198`). Heals the persistent v1.0.1 1-failure (`tests/Tiny11.PostBoot.Helpers.Golden.Tests.ps1` "matches the golden fixture"). Pester floor of 5.3.1 sidesteps BeforeAll behavior changes that landed earlier in 5.x; ceiling caps below as-yet-untested Pester 6.x. Tested against 5.7.1.
