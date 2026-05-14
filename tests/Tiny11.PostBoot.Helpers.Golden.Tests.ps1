@@ -84,11 +84,19 @@ Describe 'PostBoot helpers block' {
     It 'is pure ASCII' {
         ($script:helpers.ToCharArray() | Where-Object { [int]$_ -gt 127 }).Count | Should -Be 0
     }
-    It 'matches the golden fixture (byte-equal)' {
+    It 'matches the golden fixture (content-equal, line-endings normalized)' {
+        # Line endings differ by source: src/Tiny11.PostBoot.psm1 is checked
+        # out CRLF per .gitattributes (`*.psm1 text eol=crlf`), so the runtime
+        # $script:helpersBlock contains CRLF. The golden fixture is a .txt
+        # file under the default `* text=auto eol=lf` rule, so it is LF on
+        # disk. We compare content modulo line endings; both sides normalized
+        # to LF. The persistent v1.0.1 failure surfaced 2026-05-14 in the
+        # v1.0.2 cycle audit was this exact byte-equal mismatch.
         $goldenPath = Join-Path $PSScriptRoot 'golden' 'tiny11-cleanup-helpers.txt'
         Test-Path $goldenPath | Should -Be $true
-        $golden = [System.IO.File]::ReadAllText($goldenPath)
-        $script:helpers | Should -Be $golden
+        $golden = [System.IO.File]::ReadAllText($goldenPath).Replace("`r`n", "`n")
+        $actual = $script:helpers.Replace("`r`n", "`n")
+        $actual | Should -Be $golden
     }
 }
 
