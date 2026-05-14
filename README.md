@@ -180,9 +180,9 @@ One blocked:
 pwsh -NoProfile -File tests/Run-Tests.ps1
 ```
 
-82 Pester tests covering catalog parsing + schema validation, selection model + reconcile/lock logic, registry hive helpers, four action handlers (registry / provisioned-appx / filesystem / scheduled-task), action dispatcher, ISO mounting + edition enumeration, source-is-consumer heuristic + edition-name resolution, autounattend templating + 3-tier acquisition + drift detection, worker dispatch, bridge protocol, WebView2 SDK detection.
+409 Pester tests (catalog parsing + schema validation, selection model + reconcile/lock logic, registry hive helpers, four action handlers including the post-boot online emitter shapes, action dispatcher, ISO mounting + edition enumeration, autounattend templating + drift detection, worker / Core dispatch, bridge protocol, WebView2 SDK detection, post-boot generator + helpers golden + Format-PSNamedParams + task XML + SetupComplete + Install) and 85 xUnit launcher tests (BuildHandlers / CleanupHandlers / EmbeddedResources drift / payload contracts).
 
-GUI behavior and ISO build are verified manually; no headless GUI tests or end-to-end build tests in v0.2.0.
+Build path and ISO install are smoke-tested via the documented matrix at `docs/superpowers/smoke/2026-05-12-post-boot-cleanup-smoke.md` (P1-P9 all PASS at v1.0.1). End-to-end automated build-pipeline + GUI tests beyond this manual matrix remain a v1.0.2-or-later follow-up.
 
 ## VM testing recommendations
 
