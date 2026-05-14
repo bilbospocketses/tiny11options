@@ -159,14 +159,42 @@ function Invoke-Tiny11BuildPipeline {
         Set-ItemProperty -Path $bootWim -Name IsReadOnly -Value $false
         Mount-WindowsImage -ImagePath $bootWim -Index 2 -Path $scratchImg | Out-Null
         & $progress @{ phase='mount-state'; step="boot.wim mounted at $scratchImg"; percent=89; mountActive=$true; mountDir=$scratchImg; sourceDir=$tinyDir }
-        Mount-Tiny11AllHives -ScratchDir $scratchImg
-        $hwItems = $Catalog.Items | Where-Object { $_.category -eq 'hardware-bypass' -and $ResolvedSelections[$_.id].EffectiveState -eq 'apply' }
-        foreach ($item in $hwItems) {
-            foreach ($action in $item.actions) { Invoke-Tiny11Action -Action $action -ScratchDir $scratchImg }
+        # B6-class structural sibling for boot.wim. Before this wrap, a throw
+        # inside Mount-Tiny11AllHives / Invoke-Tiny11Action / Dismount-Tiny11AllHives
+        # left boot.wim mounted with no Dismount-WindowsImage call -- identical
+        # failure mode to the install.wim B6 fix on the block above. Smaller
+        # blast radius (boot.wim is only touched by hardware-bypass catalog
+        # items) but worth closing for structural consistency. Hive cleanup
+        # follows the install.wim convention: best-effort on the success path,
+        # left for next-run recovery on the failure path.
+        $bootPipelineSucceeded = $false
+        try {
+            Mount-Tiny11AllHives -ScratchDir $scratchImg
+            $hwItems = $Catalog.Items | Where-Object { $_.category -eq 'hardware-bypass' -and $ResolvedSelections[$_.id].EffectiveState -eq 'apply' }
+            foreach ($item in $hwItems) {
+                foreach ($action in $item.actions) { Invoke-Tiny11Action -Action $action -ScratchDir $scratchImg }
+            }
+            Dismount-Tiny11AllHives
+            $bootPipelineSucceeded = $true
         }
-        Dismount-Tiny11AllHives
-        Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
-        & $progress @{ phase='mount-state'; step='boot.wim unmounted'; percent=91; mountActive=$false }
+        finally {
+            $dismountVerb = if ($bootPipelineSucceeded) { 'save' } else { 'discard' }
+            & $progress @{ phase='bootwim-save'; step="Dismounting boot.wim ($dismountVerb)"; percent=90 }
+            try {
+                if ($bootPipelineSucceeded) {
+                    Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
+                } else {
+                    Dismount-WindowsImage -Path $scratchImg -Discard | Out-Null
+                }
+            } catch {
+                if ($bootPipelineSucceeded) { throw }
+                Write-Warning "Dismount-WindowsImage -Discard (boot.wim) failed during cleanup: $($_.Exception.Message)"
+            }
+            & $progress @{ phase='mount-state'; step="boot.wim unmounted ($dismountVerb)"; percent=91; mountActive=$false }
+        }
+        if (-not $bootPipelineSucceeded) {
+            throw 'Worker boot.wim pipeline failed mid-flight (see preceding error). boot.wim unmounted with /Discard.'
+        }
 
         & $progress @{ phase='autounattend-iso'; step='Writing autounattend.xml to ISO root'; percent=92 }
         Set-Content -Path "$tinyDir\autounattend.xml" -Value $renderedAutounattend -Encoding UTF8

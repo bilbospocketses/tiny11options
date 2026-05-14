@@ -79,3 +79,25 @@ Describe 'Invoke-Tiny11BuildPipeline install.wim commit/discard symmetry (B6/B7 
         $script:workerSource | Should -Match "throw 'Worker build pipeline failed mid-flight"
     }
 }
+
+Describe 'Invoke-Tiny11BuildPipeline boot.wim commit/discard symmetry (v1.0.2 carry-over #4 regression guard)' {
+    # Structural sibling to the B6/B7 install.wim fix. The boot.wim block was
+    # not in the original Batch 1/2 audit scope but has identical failure
+    # semantics: a throw between Mount-WindowsImage(boot.wim) and
+    # Dismount-WindowsImage left boot.wim mounted with no recovery path.
+    BeforeAll {
+        $script:workerSource = Get-Content (Join-Path $PSScriptRoot '..' 'src' 'Tiny11.Worker.psm1') -Raw
+    }
+    It 'has a $bootPipelineSucceeded flag mirroring the install.wim block' {
+        $script:workerSource | Should -Match '\$bootPipelineSucceeded = \$false'
+        $script:workerSource | Should -Match '\$bootPipelineSucceeded = \$true'
+    }
+    It 'has boot.wim Dismount-WindowsImage in a finally with both -Save and -Discard arms' {
+        # Both arms must exist, gated by the flag. Match the install.wim block's structure.
+        $script:workerSource | Should -Match '(?ms)if \(\$bootPipelineSucceeded\) \{\s*Dismount-WindowsImage -Path \$scratchImg -Save'
+        $script:workerSource | Should -Match '(?ms)\} else \{\s*Dismount-WindowsImage -Path \$scratchImg -Discard'
+    }
+    It 'rethrows with a boot.wim mid-flight diagnostic when the inner pipeline fails' {
+        $script:workerSource | Should -Match "throw 'Worker boot\.wim pipeline failed mid-flight"
+    }
+}
