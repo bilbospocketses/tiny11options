@@ -29,12 +29,25 @@ param(
     [Parameter(ParameterSetName = 'FromExtracted', Mandatory)]
     [string] $CleanupScriptPath,
 
+    # Edition selection -- which install.wim image to mount. Defaults to the
+    # standard build target. Override via -ImageEdition (e.g., 'Windows 11 Pro N')
+    # or -ImageIndex if the source ISO carries different editions.
+    [string] $ImageEdition = 'Windows 11 Pro',
+
+    [int] $ImageIndex = 0,
+
     [string[]] $ForbiddenPatterns = @(
+        # Filesystem paths from catalog `remove-edge` and `remove-edge-webview`.
+        # Use 'Program Files (x86)\Microsoft\Edge\b' (word boundary) rather than
+        # the bare 'Microsoft\Edge' to avoid false-positives on legitimate uses
+        # like `HKLM\SOFTWARE\Policies\Microsoft\Edge!HubsSidebarEnabled` -- the
+        # Copilot Edge sidebar policy from `tweak-disable-copilot` which is
+        # APPLY in keep-Edge builds.
         'Clipchamp\.Clipchamp',
-        'Microsoft\\Edge',
-        'Microsoft\\EdgeUpdate',
-        'Microsoft\\EdgeCore',
-        'Microsoft-Edge-Webview',
+        'Program Files \(x86\)\\Microsoft\\Edge\b',
+        'Program Files \(x86\)\\Microsoft\\EdgeUpdate\b',
+        'Program Files \(x86\)\\Microsoft\\EdgeCore\b',
+        'System32\\Microsoft-Edge-Webview',
         'Uninstall\\Microsoft Edge'
     ),
 
@@ -73,10 +86,27 @@ function Get-CleanupScriptFromIso {
             throw "install.wim not found at $installWim"
         }
 
-        # 3. Pick the highest-index image (Pro is usually 6; we mount whichever has the largest index).
+        # 3. Pick the image to mount. -ImageIndex (if non-zero) wins; otherwise
+        # match -ImageEdition by ImageName. Previous "highest index" heuristic
+        # picked 'Windows 11 Pro N for Workstations' (idx 11) on a stock Win11
+        # 25H2 ISO, where only the BUILD-TARGETED edition (typically Pro, idx 6)
+        # carries the modified tiny11-cleanup.ps1 -- other indices are untouched.
         $images = Get-WindowsImage -ImagePath $installWim
-        $targetIdx = ($images | Sort-Object ImageIndex -Descending | Select-Object -First 1).ImageIndex
-        Write-Host "  install.wim contains $($images.Count) image(s); using index $targetIdx ($((($images | Where-Object ImageIndex -eq $targetIdx).ImageName)))"
+        if ($ImageIndex -gt 0) {
+            $targetIdx = $ImageIndex
+            $matchedName = ($images | Where-Object ImageIndex -eq $targetIdx).ImageName
+            if (-not $matchedName) {
+                throw "ImageIndex $ImageIndex not present in install.wim. Available:`n$($images | ForEach-Object { '  ' + $_.ImageIndex + ': ' + $_.ImageName } | Out-String)"
+            }
+        } else {
+            $matched = $images | Where-Object ImageName -eq $ImageEdition
+            if (-not $matched) {
+                throw "No image with ImageName='$ImageEdition' in install.wim. Available:`n$($images | ForEach-Object { '  ' + $_.ImageIndex + ': ' + $_.ImageName } | Out-String)Pass -ImageEdition or -ImageIndex to override."
+            }
+            $targetIdx = $matched.ImageIndex
+            $matchedName = $matched.ImageName
+        }
+        Write-Host "  install.wim contains $($images.Count) image(s); using index $targetIdx ($matchedName)"
 
         # 4. Mount install.wim ReadOnly to a temp dir.
         $wimMount = Join-Path $env:TEMP "verify-p9-wim-$([guid]::NewGuid().ToString('N').Substring(0,8))"

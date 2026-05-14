@@ -22,7 +22,20 @@
 #   1 -- at least one assertion failed (with per-arm detail above).
 
 [CmdletBinding()]
-param()
+param(
+    # Paths to SKIP filesystem absence checks for. Use on keep-list builds
+    # (P9-style) where some catalog filesystem items were flipped to skip.
+    # Example: -KeptPaths @('C:\Program Files (x86)\Microsoft\Edge',
+    #                       'C:\Program Files (x86)\Microsoft\EdgeUpdate',
+    #                       'C:\Program Files (x86)\Microsoft\EdgeCore',
+    #                       'C:\Windows\System32\Microsoft-Edge-Webview')
+    [string[]] $KeptPaths = @(),
+
+    # Catalog item ids to SKIP scheduled-task absence checks for. None of the
+    # current default-apply scheduled-task items are typical keep-list targets,
+    # but the parameter is here for symmetry / future use.
+    [string[]] $KeptScheduledTaskItems = @()
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -41,9 +54,21 @@ $filesystemPaths = @(
 Write-Host ''
 Write-Host 'P8 non-appx action-type coverage'
 Write-Host '================================='
+if ($KeptPaths.Count -gt 0) {
+    Write-Host "Keep-list mode: $($KeptPaths.Count) path(s) excluded from absence checks (kept-by-user)"
+}
 Write-Host ''
-Write-Host "[1/4] filesystem (op=remove) -- $($filesystemPaths.Count) paths must be ABSENT ..."
+Write-Host "[1/4] filesystem (op=remove) -- $($filesystemPaths.Count) paths checked ..."
 foreach ($p in $filesystemPaths) {
+    if ($KeptPaths -contains $p) {
+        if (Test-Path -LiteralPath $p) {
+            Write-Host "      KEEP $p PRESENT (kept-by-user, expected)" -ForegroundColor Cyan
+        } else {
+            Write-Host "      FAIL $p MISSING (kept-by-user but absent -- cleanup or build incorrectly removed it)" -ForegroundColor Red
+            $failures.Add("kept filesystem path '$p' should be present but is absent")
+        }
+        continue
+    }
     if (Test-Path -LiteralPath $p) {
         Write-Host "      FAIL $p PRESENT (cleanup task did not remove)" -ForegroundColor Red
         $failures.Add("filesystem path '$p' should be absent but is present")
@@ -60,8 +85,17 @@ $takeownPaths = @(
 )
 
 Write-Host ''
-Write-Host "[2/4] filesystem (op=takeown-and-remove) -- $($takeownPaths.Count) path(s) must be ABSENT ..."
+Write-Host "[2/4] filesystem (op=takeown-and-remove) -- $($takeownPaths.Count) path(s) checked ..."
 foreach ($p in $takeownPaths) {
+    if ($KeptPaths -contains $p) {
+        if (Test-Path -LiteralPath $p) {
+            Write-Host "      KEEP $p PRESENT (kept-by-user, expected)" -ForegroundColor Cyan
+        } else {
+            Write-Host "      FAIL $p MISSING (kept-by-user but absent)" -ForegroundColor Red
+            $failures.Add("kept takeown path '$p' should be present but is absent")
+        }
+        continue
+    }
     if (Test-Path -LiteralPath $p) {
         Write-Host "      FAIL $p PRESENT (cleanup task did not takeown+remove)" -ForegroundColor Red
         $failures.Add("takeown path '$p' should be absent but is present")
@@ -117,8 +151,13 @@ $scheduledTaskChecks = @(
 )
 
 Write-Host ''
-Write-Host "[4/4] scheduled-task -- $($scheduledTaskChecks.Count) catalog removals must be ABSENT ..."
+Write-Host "[4/4] scheduled-task -- $($scheduledTaskChecks.Count) catalog removals checked ..."
 foreach ($t in $scheduledTaskChecks) {
+    if ($KeptScheduledTaskItems -contains $t.Item) {
+        $label = if ($t.Name) { "$($t.Path)$($t.Name)" } else { "$($t.Path) (folder)" }
+        Write-Host "      KEEP $label (kept-by-user, expected)" -ForegroundColor Cyan
+        continue
+    }
     # -ErrorAction SilentlyContinue + @() array wrap works uniformly for both
     # the leaf-task and folder-recurse forms: Get-ScheduledTask emits a
     # CimException to the error stream when the task/path is absent, but
