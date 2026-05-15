@@ -1430,6 +1430,9 @@ function Invoke-Tiny11CoreBuildPipeline {
         # Tradeoff: image ships at the offline size (~1-2 GB heavier than upstream-against-23H2)
         # and shrinks at first user boot.
         & $ProgressCallback @{ phase='inject-postboot-cleanup'; step='Installing SetupComplete.cmd for first-boot /Cleanup-Image'; percent=84 }
+        # Callee keeps the PostBootCleanup-prefixed param names -- Install-Tiny11CorePostBootCleanup
+        # is specifically the cleanup-install function so the names are accurate to its scope.
+        # Only Invoke-Tiny11CoreBuildPipeline's signature was renamed in v1.0.8 audit A7.
         Install-Tiny11CorePostBootCleanup -MountDir $mountDir `
             -PostBootCleanupCatalog $Catalog `
             -PostBootCleanupResolvedSelections $ResolvedSelections `
