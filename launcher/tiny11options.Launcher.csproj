@@ -2,10 +2,10 @@
 
   <PropertyGroup>
     <!-- Version: keep in sync with app.manifest's assemblyIdentity version.
-         Auto-populates AssemblyVersion (1.0.4.0) and FileVersion (1.0.4.0).
+         Auto-populates AssemblyVersion (1.0.5.0) and FileVersion (1.0.5.0).
          Velopack reads this for its NuGet package version; without it, MSBuild
          falls back to 1.0.0.0 and v1.0.0 installs see no auto-update offer. -->
-    <Version>1.0.4</Version>
+    <Version>1.0.5</Version>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
@@ -20,8 +20,10 @@
          WPF window title-bar (auto-resolved at runtime when Window.Icon is not
          explicitly set), and Velopack's Setup.exe + shortcut metadata (vpk
          pack reads the exe icon by default; no explicit icon flag needed).
-         The .ico carries six frames (16/32/48/64/128/256 px @ 32bpp), covering
-         every Windows shell rendering tier including the high-DPI 256 px form. -->
+         The .ico carries nine frames (16/24/32/48/64/72/96/128/256 px), with
+         the 256 px frame PNG-compressed per Windows shell convention so the
+         file stays small enough for embedding. Covers every Windows shell
+         rendering tier from small notification icons through high-DPI 256 px. -->
     <ApplicationIcon>Resources\tiny11options.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>

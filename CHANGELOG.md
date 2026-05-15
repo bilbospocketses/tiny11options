@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-05-15
+
+### Changed
+
+- **App icon + README header image refreshed.** New artwork swapped in at `launcher/Resources/tiny11options.ico` and `launcher/Resources/tiny11options.png`. The `.ico` now carries nine frames (16/24/32/48/64/72/96/128/256 px) — up from six in v1.0.4 — with the 256 px frame PNG-compressed per the Windows shell convention so the file stays small enough for embedding. Source PNG bumped from 290 KB to 1.5 MB (1024×1024 RGBA, interlaced). Embedded icon is re-consumed at the same surfaces it was before (Explorer file thumbnail, WPF window title-bar, taskbar, Velopack Setup.exe, Start-menu shortcut, README header) — no code paths changed; the swap rides on the existing `<ApplicationIcon>` wiring shipped in v1.0.4. csproj inline comment refreshed to describe the new nine-frame layout. Asset-only release: zero behavioural change, zero new tests, Pester + xUnit unchanged at 485/0 and 105/0.
+
 ## [1.0.4] - 2026-05-15
 
 ### Added
