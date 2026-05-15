@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **(release.yml) `releases.win.json` Velopack manifest is now uploaded to the GitHub Release** alongside the legacy `RELEASES` text file. The asset-upload glob in the "Create GitHub Release" step previously hardcoded an allowlist of `*.nupkg`, `*Setup.exe`, and the literal `RELEASES` filename only -- which silently filtered out the modern JSON manifest that `vpk pack 0.0.1298` writes to `dist/releases/` (default channel = `win` -> `releases.win.json`). The Velopack runtime library 0.0.1298 baked into v1.0.0..v1.0.3 only reads `releases.<channel>.json` for update detection (verified via `velopack.log` stack trace pointing at `Velopack.Sources.GithubSource.GetAssetUrlFromName` complaining "Could not find asset called 'releases.win.json'"), so every release we've ever shipped has been undetectable by the auto-update client. Adding `dist/releases/releases.*.json` to the asset glob is the one-line load-bearing fix. **Auto-update behavior contract going forward:** v1.0.2 clients (and any older Velopack-installed clients) will see v1.0.4 as the first update offer once this lands; v1.0.3 stays available via direct Setup.exe download but is skipped from the auto-update path because its release lacks the JSON manifest. Inline comment added to release.yml documenting the gotcha so the glob is harder to silently re-narrow in future.
+
 ## [1.0.3] - 2026-05-15
 
 ### Fixed

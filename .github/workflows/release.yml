@@ -148,7 +148,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
+          # Asset glob NOTE: `releases.*.json` is the modern Velopack manifest
+          # (default channel = win -> `releases.win.json`) that the runtime
+          # library 0.0.1298's GithubSource.GetAssetUrlFromName explicitly
+          # queries when checking for updates. The legacy plain-text `RELEASES`
+          # file is also produced by vpk pack and is uploaded for any older
+          # client that might still parse it, but the runtime baked into
+          # v1.0.0..v1.0.3 looks at releases.win.json ONLY. v1.0.0..v1.0.3
+          # builds shipped without releases.win.json (the glob below was
+          # missing the entry until v1.0.4), so v1.0.2 clients never saw any
+          # auto-update offer despite v1.0.3 being live. Adding releases.*.json
+          # to the upload glob is the load-bearing fix; the rest is unchanged.
           gh release create "${{ github.ref_name }}" `
-            (Get-ChildItem dist/releases/*.nupkg, dist/releases/*Setup.exe, dist/releases/RELEASES | ForEach-Object FullName) `
+            (Get-ChildItem dist/releases/*.nupkg, dist/releases/*Setup.exe, dist/releases/RELEASES, dist/releases/releases.*.json | ForEach-Object FullName) `
             --notes-file "${{ steps.notes.outputs.notes-path }}" `
             --target main
