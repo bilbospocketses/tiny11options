@@ -34,58 +34,34 @@ Opens a 1200×900 wizard window (resizable; size is remembered between sessions 
 
 ### Scripted
 
-`tiny11maker.ps1` self-detects the `pwsh → pwsh` invocation pattern and refuses to run from a `pwsh` (PowerShell 7+) terminal — the resulting ISOs would silently fail Win11 25H2 Setup product-key validation (see [Known caveat](#known-caveat--pwsh-from-pwsh-invocation) below). Run from one of the two supported parent shells.
-
-**From `cmd.exe`** (Command Prompt):
+This form copy-pastes safely into ANY Windows terminal — `cmd.exe` (Command Prompt), `powershell.exe` (Windows PowerShell 5.1), or `pwsh.exe` (PowerShell 7+). The `cmd /c` prefix routes through `cmd.exe` first, dodging `tiny11maker.ps1`'s pwsh-from-pwsh gate regardless of where you started:
 
 ```bat
-pwsh -NoProfile -File tiny11maker.ps1 ^
-    -Source "C:\path\to\Win11.iso" ^
-    -Config "config\examples\tiny11-classic.json" ^
-    -Edition "Windows 11 Pro" ^
-    -OutputPath "C:\out\tiny11.iso" ^
-    -NonInteractive
+cmd /c pwsh -NoProfile -File tiny11maker.ps1 -Source "C:\path\to\Win11.iso" -Config "config\examples\tiny11-classic.json" -Edition "Windows 11 Pro" -OutputPath "C:\out\tiny11.iso" -NonInteractive
 ```
 
-**From Windows PowerShell 5.1** (`powershell.exe`):
+Mechanism: `cmd /c` spawns `cmd.exe` → `cmd.exe` spawns `pwsh.exe` → the script's parent-process check sees `cmd`, not `pwsh`, and lets the build proceed. See [Known caveat — pwsh-from-pwsh invocation](#known-caveat--pwsh-from-pwsh-invocation) below for why the gate exists.
 
-```powershell
-pwsh -NoProfile -File tiny11maker.ps1 `
-    -Source 'C:\path\to\Win11.iso' `
-    -Config 'config\examples\tiny11-classic.json' `
-    -Edition 'Windows 11 Pro' `
-    -OutputPath 'C:\out\tiny11.iso' `
-    -NonInteractive
-```
-
-**Do NOT run from a `pwsh` (PowerShell 7+) terminal** — the script rejects this at startup with exit code 1 and the workaround message below:
+**Why this is the recommended form:** if you don't already know which shell you're in (most users don't, and there's no obvious way to tell at a glance), the bare `pwsh -NoProfile -File tiny11maker.ps1 ...` invocation will fail unpredictably — it works from `cmd.exe` or `powershell.exe` but is rejected from `pwsh` (PowerShell 7+):
 
 ```diff
-- pwsh -NoProfile -File tiny11maker.ps1 `
--     -Source 'C:\path\to\Win11.iso' `
--     -Config 'config\examples\tiny11-classic.json' `
--     -NonInteractive
+- # bare pwsh -File ... pasted into a pwsh terminal (PowerShell 7+):
+- pwsh -NoProfile -File tiny11maker.ps1 -Source "C:\path\to\Win11.iso" -NonInteractive
 -
 - # Write-Error: pwsh-from-pwsh invocation is not supported. This combination produces
 - # ISOs that fail Setup product-key validation on Windows 11 25H2 (mechanism unknown;
 - # build output is content-identical to working invocations).
 - # Workarounds:
-- #   1. Run from cmd.exe:               cmd /c pwsh -ExecutionPolicy Bypass -NoProfile -File tiny11maker.ps1 [args]
-- #   2. Run from Windows PowerShell:    powershell -ExecutionPolicy Bypass -NoProfile -File tiny11maker.ps1 [args]
-- #   3. Run via tiny11maker.ps1 directly from a cmd.exe or PowerShell 5.1 console.
+- #   1. Prefix with `cmd /c` (works from any terminal -- the form shown at the top of this section).
+- #   2. Run from cmd.exe directly.
+- #   3. Run from Windows PowerShell 5.1 (powershell.exe).
+- #   4. Use tiny11options.exe -NonInteractive (bundled launcher, immune to this constraint).
 - # exit 1
 ```
 
-If your only available terminal is `pwsh`, prefix with `cmd /c` to spawn `cmd.exe` as the parent (the gate inspects the parent process name, so `cmd → pwsh → script` reads as `cmd → script` for the purpose of the check):
+The `cmd /c` form at the top of this section is the belt; the script's own runtime gate is the suspenders — paste the recommended form anywhere and it just works.
 
-```powershell
-cmd /c pwsh -ExecutionPolicy Bypass -NoProfile -File tiny11maker.ps1 `
-    -Source 'C:\path\to\Win11.iso' `
-    -Config 'config\examples\tiny11-classic.json' `
-    -NonInteractive
-```
-
-Or just use [`tiny11options.exe`](#headless-via-tiny11optionsexe) below — the bundled launcher invokes Windows PowerShell 5.1 internally and is unaffected by this constraint.
+Or use [`tiny11options.exe -NonInteractive ...`](#headless-via-tiny11optionsexe) below — the bundled launcher is a Win32 binary that invokes Windows PowerShell 5.1 internally, so it's also invocation-agnostic without needing the `cmd /c` wrapper.
 
 `-Source` accepts an `.iso` path or a drive letter (`E:`, `E:\`, just `E`).
 `-Edition` resolves an edition name (case-insensitive exact match) to the right `ImageIndex` by enumerating the source. Cleaner than `-ImageIndex` because the index varies between ISOs.
