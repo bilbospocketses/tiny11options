@@ -25,7 +25,7 @@ Cmd 'RotatingLockScreenOverlayEnabled' { reg query 'HKCU\Software\Microsoft\Wind
 Cmd 'SlideshowEnabled' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v SlideshowEnabled }
 Cmd 'WindowsStore AutoDownload' { reg query 'HKLM\Software\Policies\Microsoft\WindowsStore' /v AutoDownload }
 
-Section 'Test 2: BingNews removed at build (provisioned-appx action path)' 'Expected: empty / no rows'
+Section 'Test 2: BingNews state on a -NoPostBootCleanup install' 'Expected: PRESENT (Windows re-stages provisioned-appx; cleanup task is the actual enforcement; -NoPostBootCleanup means no enforcement, so re-staged BingNews stays)'
 Cmd 'Get-AppxProvisionedPackage BingNews' { Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like 'Microsoft.BingNews*' | Format-List DisplayName, PackageName }
 
 Section 'Test 3: Edge removed at build (filesystem action path)' 'Expected: False'
