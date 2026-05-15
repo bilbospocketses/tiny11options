@@ -471,13 +471,25 @@ function Start-CoreProcess {
     # text as the Exception.Message before the caller can compose a contextual error.
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
+    # v1.0.8 audit WARNING ps-modules A8: initialize $exit to a sentinel so
+    # under StrictMode the post-try access never hits an unset variable. Wrap
+    # the native invocation in an inner try/catch -- if & $FileName itself
+    # throws (e.g. FileName doesn't exist), rethrow with context naming the
+    # file so the caller sees a useful error instead of bare native text.
+    $exit = -1
+    $output = $null
     try {
-        $output = & $FileName @Arguments 2>&1
-        $exit = $LASTEXITCODE
+        try {
+            $output = & $FileName @Arguments 2>&1
+            $exit = $LASTEXITCODE
+        }
+        catch {
+            throw "Start-CoreProcess: invocation of '$FileName' failed before exit-code was captured: $($_.Exception.Message)"
+        }
     } finally {
         $ErrorActionPreference = $prevEAP
     }
-    $outStr = $output -join "`n"
+    $outStr = if ($null -ne $output) { $output -join "`n" } else { '' }
     Write-CoreLog "EXIT: $exit"
     if ($outStr.Trim()) { Write-CoreLog ("OUTPUT:`n" + $outStr) }
     [pscustomobject]@{
