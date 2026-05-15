@@ -298,6 +298,13 @@ public class BuildHandlers : IBridgeHandler
                 // stale source path. If a new start-build raced this Task and
                 // already replaced _activeBuild, ReferenceEquals keeps us from
                 // nulling the fresh reference; only clear the slots we owned.
+                // v1.0.8 audit WARNING launcher B1: cache HasExited/ExitCode to
+                // locals BEFORE Dispose -- Process docs warn that accessing
+                // these properties on a disposed Process is contract-undefined
+                // (InvalidOperationException risk). HasExited itself can throw
+                // if the process never started, so wrap in its own try/catch.
+                int? cachedExitCode = null;
+                try { if (capturedBuild.HasExited) { cachedExitCode = capturedBuild.ExitCode; } } catch { /* HasExited can throw if process never started */ }
                 try { capturedBuild.Dispose(); } catch { /* dispose must not throw out of finally */ }
                 if (ReferenceEquals(_activeBuild, capturedBuild))
                 {
@@ -308,7 +315,7 @@ public class BuildHandlers : IBridgeHandler
                     // exits in one place; ReferenceEquals guard above keeps us
                     // from closing a fresh log if a new start-build raced this
                     // fallback Task.
-                    CloseActiveLog(capturedBuild.HasExited ? capturedBuild.ExitCode : (int?)null);
+                    CloseActiveLog(cachedExitCode);
                 }
             }
         });
