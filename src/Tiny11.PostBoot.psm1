@@ -294,10 +294,10 @@ function Set-RegistryValuePatternToZeroForAllUsers {
             Write-CleanupLog "  $userKey absent (pattern-zero no-op for sid=$sid)"
             continue
         }
-        $names = @(Get-ItemProperty -LiteralPath $userKey -ErrorAction SilentlyContinue |
-                   Get-Member -MemberType NoteProperty -ErrorAction SilentlyContinue |
-                   Where-Object Name -like $NamePattern |
-                   Select-Object -ExpandProperty Name)
+        # v1.0.8 B1: Get-Item .Property avoids PSObject ghost names (PSPath etc).
+        $allNames = @(Get-Item -LiteralPath $userKey -ErrorAction SilentlyContinue |
+                      Select-Object -ExpandProperty Property)
+        $names = @($allNames | Where-Object { $_ -like $NamePattern })
         if ($names.Count -eq 0) {
             Write-CleanupLog "  $userKey has no values matching '$NamePattern' (pattern-zero no-op for sid=$sid)"
             continue

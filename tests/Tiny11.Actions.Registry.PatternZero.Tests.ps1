@@ -90,3 +90,65 @@ Describe 'Invoke-RegistryPatternZeroAction (A11-I3, v1.0.3)' {
         { Invoke-RegistryPatternZeroAction -Action $action -ScratchDir 'C:\Temp\unused' } | Should -Not -Throw
     }
 }
+
+Describe 'Invoke-RegistryPatternZeroAction -- ghost-property filter guard (v1.0.8 audit BLOCKER ps-modules B1)' {
+    # Guards the fix: Get-Item .Property returns only real registry value names.
+    # Get-ItemProperty | Get-Member would also surface PSObject-injected ghost
+    # names (PSPath, PSChildName, PSDrive, PSProvider, PSParentPath). A future
+    # namePattern='PS*' would write real REG_DWORD values named PSPath etc. under
+    # every user hive. This Describe verifies ghosts are excluded at the offline
+    # (Actions.Registry) site.
+    BeforeEach {
+        Mock -CommandName 'Test-Path' -MockWith { $true } -ModuleName 'Tiny11.Actions.Registry'
+        Mock -CommandName 'Invoke-RegCommand' -MockWith { 0 } -ModuleName 'Tiny11.Actions.Registry'
+
+        # Return a fake key object whose Property array mixes real names with
+        # all five standard PS ghost names.
+        $fakeKey = [pscustomobject]@{
+            Property = @(
+                'SubscribedContent-338389Enabled',
+                'SubscribedContent-338393Enabled',
+                'PSPath',
+                'PSChildName',
+                'PSDrive',
+                'PSProvider',
+                'PSParentPath'
+            )
+        }
+        Mock -CommandName 'Get-Item' -MockWith { $fakeKey } -ModuleName 'Tiny11.Actions.Registry'
+    }
+
+    It 'calls Invoke-RegCommand exactly once per matching real value name' {
+        $action = [pscustomobject]@{
+            type='registry-pattern-zero'; hive='NTUSER'
+            key='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+            namePattern='SubscribedContent-*Enabled'
+            valueType='REG_DWORD'
+        }
+        Invoke-RegistryPatternZeroAction -Action $action -ScratchDir 'C:\s'
+
+        Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Actions.Registry' -Times 2 -Exactly
+        Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Actions.Registry' -ParameterFilter {
+            $RegArgs[0] -eq 'add' -and $RegArgs -contains 'SubscribedContent-338389Enabled'
+        }
+        Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Actions.Registry' -ParameterFilter {
+            $RegArgs[0] -eq 'add' -and $RegArgs -contains 'SubscribedContent-338393Enabled'
+        }
+    }
+
+    It 'does NOT write any PS ghost property name to the registry' {
+        $action = [pscustomobject]@{
+            type='registry-pattern-zero'; hive='NTUSER'
+            key='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+            namePattern='SubscribedContent-*Enabled'
+            valueType='REG_DWORD'
+        }
+        Invoke-RegistryPatternZeroAction -Action $action -ScratchDir 'C:\s'
+
+        foreach ($ghost in @('PSPath', 'PSChildName', 'PSDrive', 'PSProvider', 'PSParentPath')) {
+            Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Actions.Registry' -Times 0 -ParameterFilter {
+                $RegArgs -contains $ghost
+            }
+        }
+    }
+}
