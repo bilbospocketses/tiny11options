@@ -1,8 +1,10 @@
 # Release signing setup — step by step
 
-> **Status (2026-05-12):** **v1.0.0 ships unsigned; code signing is scheduled for v1.0.2.** This guide is the forward-looking reference for the v1.0.2 signing pass — pick it up when you're ready to land Trusted Signing. The release workflow (`.github/workflows/release.yml`) already gates its two signing steps on `if: env.AZURE_TENANT_ID != ''`, so the moment the 5 secrets in Part 4 are added to the repo, the next tag push produces signed binaries automatically with no workflow edits needed.
+> **Status (2026-05-15):** **v1.0.0 through v1.0.7 ALL shipped unsigned; code signing is now scheduled for the v1.0.8 cycle.** This guide is the forward-looking reference for the v1.0.8 signing pass — pick it up when you're ready to land Trusted Signing. The release workflow (`.github/workflows/release.yml`) already gates its two signing steps on `if: env.AZURE_TENANT_ID != ''`, **validated end-to-end across 7 releases** (v1.0.1 through v1.0.7 all skipped the sign steps cleanly with the secrets absent). The moment the 5 secrets in Part 4 are added to the repo, the next tag push produces signed binaries automatically with no workflow edits needed.
 >
-> Until then, v1.0.0 (and any other pre-v1.0.2 releases) ship unsigned and rely on Windows SmartScreen click-through for first install. Velopack auto-updates work fine across the unsigned-to-signed transition, so v1.0.0 users will pick up the signed v1.0.2 build without manual reinstall.
+> The v1.0.7 release run (`actions/checkout@v6` + `actions/setup-dotnet@v5` on Node.js 24, runner pinned to `windows-2025-vs2026`) also confirmed the gate's `if:` syntax still routes correctly through the workflow-refresh bundle, so v1.0.8 work is JUST adding secrets — no workflow file edits required.
+>
+> Until then, all releases through v1.0.7 ship unsigned and rely on Windows SmartScreen click-through for first install. Velopack auto-updates work fine across the unsigned-to-signed transition, so existing installs will pick up the signed v1.0.8 build without manual reinstall.
 
 ---
 
