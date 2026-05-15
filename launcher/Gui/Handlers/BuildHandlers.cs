@@ -254,10 +254,20 @@ public class BuildHandlers : IBridgeHandler
         // error, ImportModule failure), it never writes a build-error JSON marker.
         // Capture stderr and emit build-error on non-zero exit only when no
         // build-error / build-complete has come through stdout.
-        // Capture _activeBuild into the closure so the finally block can dispose
-        // the right Process object even if _activeBuild is replaced by a fresh
-        // start-build before this fallback Task runs to completion.
+        // Capture _activeBuild AND _activeLogWriter AND _activeSource into the
+        // closure so the finally block can dispose the right Process, close the
+        // right writer, and clear the right source path even if a fresh
+        // start-build has replaced any of these instance fields before this
+        // fallback Task runs to completion.
+        // v1.0.8 audit WARNING launcher B2: per-run identity capture for all
+        // three fields. Pre-fix, only _activeBuild had the ReferenceEquals
+        // guard; _activeLogWriter (line 182 writer-open is BEFORE line 219
+        // process-start) and _activeSource (set at start-build entry) could
+        // already point at the NEW build's values during the audit's window.
+        // The finally would then close the new writer and wipe the new source.
         var capturedBuild = _activeBuild;
+        var capturedWriter = _activeLogWriter;
+        var capturedSource = _activeSource;
         _ = Task.Run(async () =>
         {
             try
@@ -309,12 +319,21 @@ public class BuildHandlers : IBridgeHandler
                 if (ReferenceEquals(_activeBuild, capturedBuild))
                 {
                     _activeBuild = null;
+                }
+                // v1.0.8 audit B2: gate _activeSource clear on per-build identity
+                // (string equality since ReferenceEquals on interned strings is
+                // unreliable). Pre-fix this was inside the process-identity
+                // guard but the race lets _activeSource diverge from
+                // _activeBuild in the writer-open → process-start window.
+                if (_activeSource == capturedSource)
+                {
                     _activeSource = "";
-                    // A13: close the log writer alongside the active-build slot.
-                    // Covers normal completion, build-error, cancel, and abnormal
-                    // exits in one place; ReferenceEquals guard above keeps us
-                    // from closing a fresh log if a new start-build raced this
-                    // fallback Task.
+                }
+                // v1.0.8 audit B2: gate CloseActiveLog on writer identity. A13
+                // semantics preserved -- still covers normal completion,
+                // build-error, cancel, and abnormal exits.
+                if (ReferenceEquals(_activeLogWriter, capturedWriter))
+                {
                     CloseActiveLog(cachedExitCode);
                 }
             }
