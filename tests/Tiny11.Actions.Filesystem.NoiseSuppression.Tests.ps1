@@ -67,4 +67,25 @@ Describe "Test-IsKnownBenignTakeownIcaclsNoise" {
             Test-IsKnownBenignTakeownIcaclsNoise -Line '   ' | Should -BeFalse
         }
     }
+
+    Context "v1.0.8 audit A4 -- anchored regexes preserve scratch-prefix semantics" {
+        It "still matches with arbitrary scratch prefix (anchored ^.* preserves substring start)" {
+            # This was line 21 of the existing tests; double-checking after the anchor change.
+            $line = 'D:\some\other\scratch\Windows\System32\LogFiles\WMI\RtBackup\*: Access is denied.'
+            Test-IsKnownBenignTakeownIcaclsNoise -Line $line | Should -BeTrue
+        }
+        It "rejects lines that have the protected path but NOT at end (trailing content past pattern)" {
+            # Anchored \s*$ catches lines where extra junk follows the period -- without the anchor,
+            # a line like 'C:\scratch\Windows\System32\WebThreatDefSvc\*: Access is denied. AND MORE'
+            # would have matched. With ^.*<pattern>\s*$, the trailing content blocks the match
+            # (unless it is pure whitespace).
+            $line = 'C:\scratch\Windows\System32\WebThreatDefSvc\*: Access is denied. AND HERE IS UNEXPECTED EXTRA TEXT'
+            Test-IsKnownBenignTakeownIcaclsNoise -Line $line | Should -BeFalse
+        }
+        It "still matches lines with trailing whitespace only" {
+            # \s*$ accommodates trailing whitespace from terminal CR/LF artifacts.
+            $line = 'C:\scratch\Windows\System32\LogFiles\WMI\RtBackup\*: Access is denied.   '
+            Test-IsKnownBenignTakeownIcaclsNoise -Line $line | Should -BeTrue
+        }
+    }
 }

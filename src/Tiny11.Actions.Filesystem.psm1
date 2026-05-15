@@ -9,9 +9,14 @@ Set-StrictMode -Version Latest
 # verbatim "<protected-path>\*: Access is denied." lines are dropped, anchored on
 # the trailing-asterisk wildcard form takeown/icacls emit when /R or /T can't
 # enumerate a subtree's children.
+# v1.0.8 audit WARNING ps-modules A4: anchor with ^.*...\s*$ to preserve the
+# scratch-dir-prefix match semantics (the .* prefix allows arbitrary leading
+# path; tests use D:\some\other\scratch\... etc.) while tightening end-of-line
+# so a partial match without the trailing "\*: Access is denied." line shape
+# doesn't accidentally suppress real errors.
 $script:KnownBenignTakeownIcaclsNoisePatterns = @(
-    'Windows\\System32\\LogFiles\\WMI\\RtBackup\\\*:\s+Access is denied\.',
-    'Windows\\System32\\WebThreatDefSvc\\\*:\s+Access is denied\.'
+    '^.*Windows\\System32\\LogFiles\\WMI\\RtBackup\\\*:\s+Access is denied\.\s*$',
+    '^.*Windows\\System32\\WebThreatDefSvc\\\*:\s+Access is denied\.\s*$'
 )
 
 function Test-IsKnownBenignTakeownIcaclsNoise {
@@ -23,11 +28,13 @@ function Test-IsKnownBenignTakeownIcaclsNoise {
     return $false
 }
 
-# Internal helper -- pipes stdout+stderr through the noise filter. Real stderr
-# (anything not matching the benign patterns) is re-emitted to the host's
-# console error stream so the launcher's child-process stderr capture still
-# sees real failures. Stdout is dropped, matching the pre-v1.0.7 `| Out-Null`
-# behavior of Invoke-Takeown / Invoke-Icacls.
+# Internal helper -- pipes stdout+stderr through the noise filter. Symmetric
+# in v1.0.8 (audit A4): the filter applies to BOTH ErrorRecord AND string-
+# wrapped lines (PS 5.1 host-dependent native-stream wrapping can deliver
+# native stderr as either). Non-noise stdout is passed through to STDOUT so
+# takeown.exe / icacls.exe "SUCCESS: ..." lines remain visible in build logs.
+# Pre-v1.0.8 the filter only fired on ErrorRecord branch + all stdout was
+# silently dropped (regression in observability vs pre-v1.0.7).
 function Invoke-NativeWithNoiseFilter {
     [CmdletBinding()]
     param(
@@ -39,6 +46,11 @@ function Invoke-NativeWithNoiseFilter {
             $msg = $_.Exception.Message
             if (-not (Test-IsKnownBenignTakeownIcaclsNoise -Line $msg)) {
                 [System.Console]::Error.WriteLine($msg)
+            }
+        } else {
+            $msg = [string]$_
+            if (-not (Test-IsKnownBenignTakeownIcaclsNoise -Line $msg)) {
+                [System.Console]::Out.WriteLine($msg)
             }
         }
     }
