@@ -39,7 +39,7 @@ public class Bridge
         }
 
         if (!_handlers.TryGetValue(msg.Type, out var handler))
-            return ErrorResponse($"Unknown message type: {msg.Type}");
+            return ErrorResponse($"Unknown message type: {msg.Type}", msg.Type);
 
         try
         {
@@ -48,7 +48,7 @@ public class Bridge
         }
         catch (Exception ex)
         {
-            return ErrorResponse($"Handler {msg.Type} threw: {ex.Message}");
+            return ErrorResponse($"Handler {msg.Type} threw: {ex.Message}", msg.Type);
         }
     }
 
@@ -60,9 +60,17 @@ public class Bridge
     private static string Serialize(BridgeMessage msg)
         => JsonSerializer.Serialize(msg);
 
-    private static string ErrorResponse(string msg)
+    private static string ErrorResponse(string msg, string? requestType = null)
     {
         var obj = new JsonObject { ["message"] = msg };
+        // v1.0.8 audit WARNING launcher B4: echo the original request type so
+        // JS state machines can route by request type, not by substring-matching
+        // the error message. Null/empty when the bridge couldn't determine the
+        // type (malformed JSON, missing/empty type field).
+        if (!string.IsNullOrEmpty(requestType))
+        {
+            obj["requestType"] = requestType;
+        }
         return JsonSerializer.Serialize(new BridgeMessage { Type = "handler-error", Payload = obj });
     }
 }
