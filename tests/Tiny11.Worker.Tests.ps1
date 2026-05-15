@@ -1,5 +1,10 @@
 Import-Module "$PSScriptRoot/Tiny11.TestHelpers.psm1" -Force
 Import-Tiny11Module -Name 'Tiny11.Worker'
+# A11/v1.0.3: Get-Tiny11ApplyItems / Invoke-Tiny11ApplyActions moved to
+# Tiny11.Actions.psm1 -- import it explicitly so Mock -ModuleName targets the
+# correct scope (the moved functions now call Invoke-Tiny11Action from within
+# Tiny11.Actions module scope, not Tiny11.Worker).
+Import-Tiny11Module -Name 'Tiny11.Actions'
 
 Describe "Get-Tiny11ApplyItems" {
     It "returns only items with EffectiveState=apply" {
@@ -16,7 +21,7 @@ Describe "Get-Tiny11ApplyItems" {
 }
 
 Describe "Invoke-Tiny11ApplyActions" {
-    BeforeEach { Mock -CommandName 'Invoke-Tiny11Action' -MockWith { } -ModuleName 'Tiny11.Worker' }
+    BeforeEach { Mock -CommandName 'Invoke-Tiny11Action' -MockWith { } -ModuleName 'Tiny11.Actions' }
     It "calls dispatcher once per action across apply items" {
         $catalog = [pscustomobject]@{
             Items = @(
@@ -26,7 +31,7 @@ Describe "Invoke-Tiny11ApplyActions" {
         }
         $resolved = @{ 'a' = [pscustomobject]@{ ItemId='a'; EffectiveState='apply' }; 'b' = [pscustomobject]@{ ItemId='b'; EffectiveState='apply' } }
         Invoke-Tiny11ApplyActions -Catalog $catalog -ResolvedSelections $resolved -ScratchDir 'C:\s' -ProgressCallback {}
-        Should -Invoke -CommandName 'Invoke-Tiny11Action' -ModuleName 'Tiny11.Worker' -Times 3
+        Should -Invoke -CommandName 'Invoke-Tiny11Action' -ModuleName 'Tiny11.Actions' -Times 3
     }
     It "invokes the progress callback per item" {
         $catalog = [pscustomobject]@{ Items = @(@{ id='a'; actions=@() }) }

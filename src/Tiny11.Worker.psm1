@@ -5,29 +5,10 @@ Import-Module "$PSScriptRoot/Tiny11.Iso.psm1"            -Force -Global -Disable
 Import-Module "$PSScriptRoot/Tiny11.Autounattend.psm1"   -Force -Global -DisableNameChecking
 Import-Module "$PSScriptRoot/Tiny11.PostBoot.psm1"       -Force -Global -DisableNameChecking
 
-function Get-Tiny11ApplyItems {
-    [CmdletBinding()]
-    param([Parameter(Mandatory)] $Catalog, [Parameter(Mandatory)][hashtable]$ResolvedSelections)
-    $Catalog.Items | Where-Object { $ResolvedSelections[$_.id].EffectiveState -eq 'apply' }
-}
-
-function Invoke-Tiny11ApplyActions {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)] $Catalog,
-        [Parameter(Mandatory)][hashtable]$ResolvedSelections,
-        [Parameter(Mandatory)][string]$ScratchDir,
-        [Parameter(Mandatory)][scriptblock]$ProgressCallback
-    )
-    $items = Get-Tiny11ApplyItems -Catalog $Catalog -ResolvedSelections $ResolvedSelections
-    $total = $items.Count; $i = 0
-    foreach ($item in $items) {
-        $i++
-        $displayName = if ($item -is [hashtable]) { $item['displayName'] } elseif ($item.PSObject.Properties['displayName']) { $item.displayName } else { $item.id }
-        & $ProgressCallback @{ phase='apply'; step="$i of $total : $displayName"; percent=([int](($i / [math]::Max(1,$total)) * 100)); itemId=$item.id }
-        foreach ($action in $item.actions) { Invoke-Tiny11Action -Action $action -ScratchDir $ScratchDir }
-    }
-}
+# A11/v1.0.3: Get-Tiny11ApplyItems and Invoke-Tiny11ApplyActions moved to
+# Tiny11.Actions.psm1 (their natural home alongside the Invoke-Tiny11Action
+# dispatcher). Both Worker and Core build pipelines now share the same
+# catalog-iteration helpers via that module.
 
 function Invoke-Tiny11BuildPipeline {
     [CmdletBinding()]
@@ -236,4 +217,4 @@ function Resolve-Tiny11Oscdimg {
     return $local
 }
 
-Export-ModuleMember -Function Get-Tiny11ApplyItems, Invoke-Tiny11ApplyActions, Invoke-Tiny11BuildPipeline, Resolve-Tiny11Oscdimg
+Export-ModuleMember -Function Invoke-Tiny11BuildPipeline, Resolve-Tiny11Oscdimg

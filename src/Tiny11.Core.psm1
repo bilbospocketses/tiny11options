@@ -1161,6 +1161,13 @@ function Invoke-Tiny11CoreBuildPipeline {
     # flag. See src/Tiny11.Actions.Registry.psm1's leading Hives import
     # for the same rule at module-load time.
     Import-Module (Join-Path $PSScriptRoot 'Tiny11.Hives.psm1') -Force -Global
+    # A11/v1.0.3: Actions module needed for Invoke-Tiny11ApplyActions which
+    # applies the user's catalog tweaks at offline build time. Pre-v1.0.3,
+    # Core skipped offline catalog application (relied on the post-boot
+    # cleanup task). With Core + -NoPostBootCleanup that meant the catalog
+    # was NEVER applied; now both build paths apply at offline time and
+    # the cleanup task remains the runtime re-enforcement layer.
+    Import-Module (Join-Path $PSScriptRoot 'Tiny11.Actions.psm1') -Force -Global -DisableNameChecking
 
     Write-CoreLog '==== Invoke-Tiny11CoreBuildPipeline start ===='
     Write-CoreLog "Pipeline params: Source=$Source ImageIndex=$ImageIndex ScratchDir=$ScratchDir OutputIso=$OutputIso EnableNet35=$EnableNet35 UnmountSource=$UnmountSource FastBuild=$FastBuild"
@@ -1367,6 +1374,28 @@ function Invoke-Tiny11CoreBuildPipeline {
                         }
                     }
                 }
+            }
+
+            # A11/v1.0.3: apply user's catalog actions on top of Core's hardcoded
+            # registry tweaks, while all 5 hives are still mounted. Catalog runs
+            # AFTER Core's tweaks so user-customizable layer overrides Core's
+            # foundation for any overlapping keys -- and so new v1.0.3 catalog
+            # entries that Core doesn't know about (RotatingLockScreen*,
+            # SlideshowEnabled, WindowsStore AutoDownload, plus the new
+            # registry-pattern-zero action type) actually land at offline build
+            # time. Pre-v1.0.3 this was missing -- Core relied entirely on the
+            # post-boot cleanup task at first boot, which meant Core +
+            # -NoPostBootCleanup left the catalog unapplied. Restores symmetry
+            # with Worker (Tiny11.Worker.psm1's Invoke-Tiny11ApplyActions call).
+            # Skipped if PostBootCleanupCatalog isn't passed (legacy callers /
+            # tests / non-cleanup-aware invocations).
+            if ($PostBootCleanupCatalog -and $PostBootCleanupResolvedSelections) {
+                & $ProgressCallback @{ phase='registry-catalog'; step='Applying catalog tweaks (offline overlay)'; percent=80 }
+                Invoke-Tiny11ApplyActions `
+                    -Catalog $PostBootCleanupCatalog `
+                    -ResolvedSelections $PostBootCleanupResolvedSelections `
+                    -ScratchDir $mountDir `
+                    -ProgressCallback $ProgressCallback
             }
         }
         finally {
