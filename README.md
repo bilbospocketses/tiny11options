@@ -40,7 +40,13 @@ This form copy-pastes safely into ANY Windows terminal — `cmd.exe` (Command Pr
 cmd /c pwsh -NoProfile -File tiny11maker.ps1 -Source "C:\path\to\Win11.iso" -Config "config\examples\tiny11-classic.json" -Edition "Windows 11 Pro" -OutputPath "C:\out\tiny11.iso" -NonInteractive
 ```
 
-Mechanism: `cmd /c` spawns `cmd.exe` → `cmd.exe` spawns `pwsh.exe` → the script's parent-process check sees `cmd`, not `pwsh`, and lets the build proceed. See [Known caveat — pwsh-from-pwsh invocation](#known-caveat--pwsh-from-pwsh-invocation) below for why the gate exists.
+Equivalent form via `powershell.exe` (Windows PowerShell 5.1) instead of `cmd.exe` as the instantiator — also works from any terminal:
+
+```powershell
+powershell -NoProfile -Command "pwsh -NoProfile -File tiny11maker.ps1 -Source 'C:\path\to\Win11.iso' -Config 'config\examples\tiny11-classic.json' -Edition 'Windows 11 Pro' -OutputPath 'C:\out\tiny11.iso' -NonInteractive"
+```
+
+Mechanism (either form): the outer shell (`cmd` or `powershell`) spawns `pwsh.exe`, so the script's parent-process check sees `cmd` or `powershell` — not `pwsh` — and lets the build proceed. See [Known caveat — pwsh-from-pwsh invocation](#known-caveat--pwsh-from-pwsh-invocation) below for why the gate exists. Pick whichever feels less ugly; they produce identical builds.
 
 **Why this is the recommended form:** if you don't already know which shell you're in (most users don't, and there's no obvious way to tell at a glance), the bare `pwsh -NoProfile -File tiny11maker.ps1 ...` invocation will fail unpredictably — it works from `cmd.exe` or `powershell.exe` but is rejected from `pwsh` (PowerShell 7+):
 
@@ -97,8 +103,19 @@ Documented flags include all the `-Source` / `-Edition` / `-ImageIndex` / `-Conf
 
 Two launcher-level flags (consumed by `tiny11options.exe` itself, NOT forwarded to `tiny11maker.ps1`) capture the build to a file:
 
-- **`--log <path>`** — write build output (stdout + stderr) to the given file IN ADDITION to the attached console. Lowercase only. Both space-form (`--log out.log`) and equals-form (`--log=out.log`) are accepted. Relative paths resolve against the current working directory.
-- **`--append`** — when paired with `--log`, append to the existing log file rather than overwriting. Lowercase only. Using `--append` without `--log` is a parse error (exit 12).
+- **`--log <path>`** — write build output (stdout + stderr) to the given file IN ADDITION to the attached console. Lowercase only (`--Log` / `--LOG` are NOT recognized and fall through to `tiny11maker.ps1` as unknown wrapper params).
+
+  Two accepted forms:
+  - **Space form: `--log <path>`** — the path MUST be the very next argument after `--log`. The parser greedily consumes whatever follows `--log` as the path, so do NOT put any other flag in between. Correct: `--log "C:\logs\build.log" -Source ...`. Wrong: `--log -Source ... "C:\logs\build.log"` (the parser would treat `-Source` as the log path).
+  - **Equals form: `--log=<path>`** — the path is fused into the same token, no separating space. Correct: `--log="C:\logs\build.log"` or `--log=C:\logs\build.log` (no quotes needed if the path has no spaces).
+
+  **Position of the `--log <path>` pair (or `--log=<path>` token) in the overall arg list does NOT matter** — it can sit at the start, in the middle, or at the end. Surrounding `-Source` / `-Edition` / etc. wrapper args keep their relative order after the launcher strips out the `--log` flag and its value.
+
+  Relative paths resolve against the current working directory (the directory you ran the launcher from, captured BEFORE the launcher swaps its own `WorkingDirectory` during init). On duplicate `--log` occurrences the LAST one wins. An empty `--log=` (equals with no value) is a parse error (exit 12); a bare `--log` at the very end of the arg list with nothing after it is also a parse error (exit 12).
+
+- **`--append`** — when paired with `--log`, append to the existing log file rather than overwriting (default is overwrite). Lowercase only.
+
+  **Position-independent**: `--append` can appear ANYWHERE in your argument list — before `--log`, after `--log`, sandwiched between wrapper params, at the very end — it just needs `--log` to also be present somewhere on the same line. Using `--append` without `--log` is a parse error (exit 12 — "you can't append to nothing").
 
 **Headless logging is opt-in** — by default, `tiny11options.exe` writes to whatever console is attached (or nothing, in piped contexts where `AttachConsole` fails). If you need a build artifact for troubleshooting, pass `--log`. The Step 1 GUI checkbox ("Log build output", on by default) does NOT carry over to headless invocations; the two paths are independent.
 
