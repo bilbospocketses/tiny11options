@@ -29,8 +29,21 @@ function Mount-Tiny11Source {
         return [pscustomobject]@{ DriveLetter = $resolved.DriveLetter; MountedByUs = $false; IsoPath = $null }
     }
     $img = Mount-DiskImage -ImagePath $resolved.IsoPath -PassThru
-    $vol = Get-Tiny11VolumeForImage -DiskImage $img
-    if (-not $vol -or -not $vol.DriveLetter) { throw "Mount succeeded but no drive letter assigned to $($resolved.IsoPath)" }
+    # v1.0.8 audit WARNING ps-modules A1: poll for drive-letter assignment
+    # with 100ms increments up to ~5s ceiling. Mount-DiskImage -PassThru
+    # returns as soon as the kernel reports the image attached, but the
+    # SCSI bus rescan + drive-letter assignment happens asynchronously.
+    # On a busy box, an immediate Get-Volume can return a null DriveLetter.
+    $vol = $null
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        $vol = Get-Tiny11VolumeForImage -DiskImage $img
+        if ($vol -and $vol.DriveLetter) { break }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $deadline)
+    if (-not $vol -or -not $vol.DriveLetter) {
+        throw "Mount succeeded but no drive letter assigned to $($resolved.IsoPath) within 5 seconds"
+    }
     [pscustomobject]@{ DriveLetter = "$($vol.DriveLetter)"; MountedByUs = $true; IsoPath = $resolved.IsoPath }
 }
 
