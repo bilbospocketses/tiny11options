@@ -25,9 +25,8 @@ Cmd 'Get-ScheduledTask tiny11options' { Get-ScheduledTask -TaskPath '\tiny11opti
 Section 'Test 2: Windows Update service disabled' 'Expected: Status=Stopped, StartType=Disabled'
 Cmd 'Get-Service wuauserv' { Get-Service wuauserv | Format-List Name, Status, StartType }
 
-Section 'Test 3: SetupComplete.cmd contains both task registrations' 'Expected: TWO schtasks /create /xml lines (one per task)'
-Cmd 'Test-Path SetupComplete.cmd' { Test-Path 'C:\Windows\Setup\Scripts\SetupComplete.cmd' }
-Cmd 'schtasks /create lines' { Select-String -Pattern 'schtasks.*create' -Path 'C:\Windows\Setup\Scripts\SetupComplete.cmd' | ForEach-Object { $_.Line } }
+Section 'Test 3: SetupComplete.cmd self-deleted after first-boot task registration' 'Expected: False (self-delete via `del /F /Q "%~f0"` in PostBoot.psm1:488 fires after task registration; presence of both tasks per Test 1 proves SetupComplete.cmd ran successfully before deleting itself)'
+Cmd 'Test-Path SetupComplete.cmd (should be False)' { Test-Path 'C:\Windows\Setup\Scripts\SetupComplete.cmd' }
 
 Section 'Test 4: 4 new v1.0.3 catalog entries present (offline registry writes)' 'Expected: first 3 = 0x0, AutoDownload = 0x2'
 Cmd 'RotatingLockScreenEnabled' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v RotatingLockScreenEnabled }
@@ -50,6 +49,13 @@ Add-Content -LiteralPath $out -Value '> Wait 15 seconds for task to complete ...
 Start-Sleep -Seconds 15
 Cmd 'Post-trigger value (should be 0x0)' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v 'SubscribedContent-FAKE99Enabled' }
 Cmd 'Cleanup-log entry for the fabricated value' { Select-String -Pattern 'SubscribedContent-FAKE99Enabled' -Path 'C:\Windows\Logs\tiny11-cleanup.log' | Select-Object -Last 3 | ForEach-Object { $_.Line } }
+
+Section 'Test 8: PROOF OF FIX -- offline catalog write happened (NOT just runtime correction)' 'Expected: cleanup-log lines for the 4 new entries say `already`, NOT `CORRECTED: 1 -> 0`. If they say CORRECTED, the offline build did not write them and we are still relying on the post-boot cleanup task as the sole enforcement mechanism (pre-a91991b behavior).'
+Cmd 'cleanup-log entries for 4 new v1.0.3 entries (first SetupComplete-time run)' {
+    Select-String -Pattern 'RotatingLockScreenEnabled|RotatingLockScreenOverlayEnabled|SlideshowEnabled|AutoDownload' -Path 'C:\Windows\Logs\tiny11-cleanup.log' |
+        Select-Object -First 8 |
+        ForEach-Object { $_.Line }
+}
 
 Write-Host ''
 Write-Host "Done. Output written to $out"

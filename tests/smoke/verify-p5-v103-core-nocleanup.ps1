@@ -25,9 +25,8 @@ Cmd 'Get-ScheduledTask tiny11options' { Get-ScheduledTask -TaskPath '\tiny11opti
 Section 'Test 2: Windows Update service still disabled (Core mode unconditionally disables WU)' 'Expected: Status=Stopped, StartType=Disabled (cleanup-toggle does NOT affect WU disable)'
 Cmd 'Get-Service wuauserv' { Get-Service wuauserv | Format-List Name, Status, StartType }
 
-Section 'Test 3: SetupComplete.cmd EXISTS (Core writes it for Keep WU Disabled regardless of cleanup-toggle) but contains ONE schtasks line only' 'Expected: file present, exactly 1 schtasks /create line (Keep WU Disabled only, no Post-Boot Cleanup line)'
-Cmd 'Test-Path SetupComplete.cmd' { Test-Path 'C:\Windows\Setup\Scripts\SetupComplete.cmd' }
-Cmd 'schtasks /create lines (count + content)' { Select-String -Pattern 'schtasks.*create' -Path 'C:\Windows\Setup\Scripts\SetupComplete.cmd' | ForEach-Object { $_.Line } }
+Section 'Test 3: SetupComplete.cmd self-deleted after first-boot Keep WU Disabled task registration' 'Expected: False (self-delete via `del /F /Q "%~f0"` in PostBoot.psm1:488 fires after task registration; presence of Keep WU Disabled task per Test 1 proves SetupComplete.cmd ran successfully before deleting itself; Core writes only ONE schtasks /create line in this mode for Keep WU Disabled, no Post-Boot Cleanup line)'
+Cmd 'Test-Path SetupComplete.cmd (should be False)' { Test-Path 'C:\Windows\Setup\Scripts\SetupComplete.cmd' }
 
 Section 'Test 4: cleanup script artifacts ABSENT (no Post-Boot Cleanup task means no script either)' 'Expected: both False'
 Cmd 'Test-Path tiny11-cleanup.ps1' { Test-Path 'C:\Windows\Setup\Scripts\tiny11-cleanup.ps1' }
