@@ -1,4 +1,4 @@
-namespace Tiny11Options.Launcher.Gui.Subprocess;
+namespace Tiny11Options.Launcher.Subprocess;
 
 /// <summary>
 /// Shared path-arg quoting for powershell.exe command lines.

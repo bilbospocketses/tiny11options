@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Tiny11Options.Launcher.Gui.Bridge;
-using Tiny11Options.Launcher.Gui.Subprocess;
+using Tiny11Options.Launcher.Subprocess;
 
 namespace Tiny11Options.Launcher.Gui.Handlers;
 

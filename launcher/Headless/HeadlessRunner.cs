@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Tiny11Options.Launcher.Gui.Subprocess;
+using Tiny11Options.Launcher.Subprocess;
 using Tiny11Options.Launcher.Interop;
 
 namespace Tiny11Options.Launcher.Headless;

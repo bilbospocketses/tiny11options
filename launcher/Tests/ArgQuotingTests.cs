@@ -1,4 +1,4 @@
-using Tiny11Options.Launcher.Gui.Subprocess;
+using Tiny11Options.Launcher.Subprocess;
 using Xunit;
 
 namespace Tiny11Options.Launcher.Tests;
