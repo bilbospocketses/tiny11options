@@ -1039,7 +1039,12 @@ function Install-Tiny11CorePostBootCleanup {
     $ps1Path = Join-Path $scriptDir 'tiny11-wu-enforce.ps1'
     $ps1Content = New-Tiny11CoreWuEnforceScript
     $ps1ContentCRLF = ($ps1Content -split "`r?`n") -join "`r`n"
-    [System.IO.File]::WriteAllText($ps1Path, $ps1ContentCRLF, [System.Text.Encoding]::UTF8)
+    # v1.0.8 audit INFO ps-modules I12: [System.Text.Encoding]::UTF8 has
+    # runtime-dependent BOM behavior (.NET FW writes WITH BOM; .NET 5+ WITHOUT).
+    # PS 5.1 readers expect BOM; without it they treat the file as Windows-1252
+    # and mangle multi-byte chars. Use explicit UTF8Encoding($true) for
+    # symmetry with Tiny11.PostBoot.psm1's correct pattern.
+    [System.IO.File]::WriteAllText($ps1Path, $ps1ContentCRLF, [System.Text.UTF8Encoding]::new($true))
 
     # 3. tiny11-wu-enforce.xml
     $xmlPath = Join-Path $scriptDir 'tiny11-wu-enforce.xml'
