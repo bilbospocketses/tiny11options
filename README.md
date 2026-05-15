@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="launcher/Resources/tiny11options.png" alt="tiny11options" width="256">
+  <img src="launcher/Resources/tiny11options.png" alt="tiny11options" width="512">
 </p>
 
 # tiny11options
