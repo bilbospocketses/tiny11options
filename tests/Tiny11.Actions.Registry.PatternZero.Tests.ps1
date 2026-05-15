@@ -146,8 +146,13 @@ Describe 'Invoke-RegistryPatternZeroAction -- ghost-property filter guard (v1.0.
         Invoke-RegistryPatternZeroAction -Action $action -ScratchDir 'C:\s'
 
         foreach ($ghost in @('PSPath', 'PSChildName', 'PSDrive', 'PSProvider', 'PSParentPath')) {
+            # PS 5.1 closure-capture: -ParameterFilter is a deferred scriptblock that
+            # references $ghost by name when Pester evaluates it. Without an
+            # iteration-local copy, all 5 evaluations would see the LAST value of $ghost
+            # (PSParentPath), passing trivially even if 4/5 ghosts were leaking through.
+            $localGhost = $ghost
             Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Actions.Registry' -Times 0 -ParameterFilter {
-                $RegArgs -contains $ghost
+                $RegArgs -contains $localGhost
             }
         }
     }
