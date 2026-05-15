@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Tiny11Options.Launcher.Gui.Bridge;
+using Tiny11Options.Launcher.Gui.Subprocess;
 
 namespace Tiny11Options.Launcher.Gui.Handlers;
 
@@ -144,12 +145,12 @@ public class CleanupHandlers : IBridgeHandler
     {
         var script = Path.Combine(resourcesDir, "tiny11-cancel-cleanup.ps1");
         var args = new System.Text.StringBuilder("-ExecutionPolicy Bypass -NoProfile -File ");
-        args.Append('"').Append(script).Append('"');
-        args.Append(" -MountDir \"").Append(mountDir).Append('"');
-        args.Append(" -SourceDir \"").Append(sourceDir).Append('"');
+        args.Append(ArgQuoting.QuoteIfNeeded(script));
+        args.Append(" -MountDir ").Append(ArgQuoting.QuoteIfNeeded(mountDir));
+        args.Append(" -SourceDir ").Append(ArgQuoting.QuoteIfNeeded(sourceDir));
         if (!string.IsNullOrWhiteSpace(outputIso))
         {
-            args.Append(" -OutputIso \"").Append(outputIso).Append('"');
+            args.Append(" -OutputIso ").Append(ArgQuoting.QuoteIfNeeded(outputIso));
         }
         return args.ToString();
     }

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Tiny11Options.Launcher.Gui.Subprocess;
 using Tiny11Options.Launcher.Interop;
 
 namespace Tiny11Options.Launcher.Headless;
@@ -153,11 +154,11 @@ internal static class HeadlessRunner
     {
         var sb = new StringBuilder();
         sb.Append("-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File ");
-        sb.Append(QuoteIfNeeded(ps1Path));
+        sb.Append(ArgQuoting.QuoteIfNeeded(ps1Path));
         foreach (var a in userArgs)
         {
             sb.Append(' ');
-            sb.Append(QuoteIfNeeded(a));
+            sb.Append(ArgQuoting.QuoteIfNeeded(a));
         }
         return sb.ToString();
     }
@@ -185,14 +186,6 @@ internal static class HeadlessRunner
             }
             catch { /* read loop must not crash the launcher */ }
         });
-    }
-
-    private static string QuoteIfNeeded(string s)
-    {
-        if (string.IsNullOrEmpty(s)) return "\"\"";
-        if (s.Contains(' ') || s.Contains('"'))
-            return "\"" + s.Replace("\"", "\\\"") + "\"";
-        return s;
     }
 
     private static string ResolveExtractionDir()

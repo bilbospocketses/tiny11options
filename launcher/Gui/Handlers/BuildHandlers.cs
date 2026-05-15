@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Tiny11Options.Launcher.Gui.Bridge;
+using Tiny11Options.Launcher.Gui.Subprocess;
 
 namespace Tiny11Options.Launcher.Gui.Handlers;
 
@@ -483,13 +484,13 @@ public class BuildHandlers : IBridgeHandler
     {
         var script = Path.Combine(resourcesDir, "tiny11maker-from-config.ps1");
         var args = new System.Text.StringBuilder("-ExecutionPolicy Bypass -NoProfile -File ");
-        args.Append('"').Append(script).Append('"');
-        args.Append(" -ConfigPath \"").Append(configPath).Append('"');
-        args.Append(" -Source \"").Append(src).Append('"');
-        args.Append(" -OutputIso \"").Append(outputIso).Append('"');
+        args.Append(ArgQuoting.QuoteIfNeeded(script));
+        args.Append(" -ConfigPath ").Append(ArgQuoting.QuoteIfNeeded(configPath));
+        args.Append(" -Source ").Append(ArgQuoting.QuoteIfNeeded(src));
+        args.Append(" -OutputIso ").Append(ArgQuoting.QuoteIfNeeded(outputIso));
         if (imageIndex > 0) args.Append(" -ImageIndex ").Append(imageIndex);
-        if (!string.IsNullOrEmpty(editionName)) args.Append(" -Edition \"").Append(editionName).Append('"');
-        if (!string.IsNullOrEmpty(scratchDir)) args.Append(" -ScratchDir \"").Append(scratchDir).Append('"');
+        if (!string.IsNullOrEmpty(editionName)) args.Append(" -Edition ").Append(ArgQuoting.QuoteIfNeeded(editionName));
+        if (!string.IsNullOrEmpty(scratchDir)) args.Append(" -ScratchDir ").Append(ArgQuoting.QuoteIfNeeded(scratchDir));
         if (unmountSource) args.Append(" -UnmountSource");
         if (fastBuild) args.Append(" -FastBuild");
         if (!installPostBootCleanup) args.Append(" -NoPostBootCleanup");
@@ -515,12 +516,12 @@ public class BuildHandlers : IBridgeHandler
     {
         var script = Path.Combine(resourcesDir, "tiny11Coremaker-from-config.ps1");
         var args = new System.Text.StringBuilder("-ExecutionPolicy Bypass -NoProfile -File ");
-        args.Append('"').Append(script).Append('"');
-        args.Append(" -Source \"").Append(src).Append('"');
-        args.Append(" -OutputIso \"").Append(outputIso).Append('"');
+        args.Append(ArgQuoting.QuoteIfNeeded(script));
+        args.Append(" -Source ").Append(ArgQuoting.QuoteIfNeeded(src));
+        args.Append(" -OutputIso ").Append(ArgQuoting.QuoteIfNeeded(outputIso));
         if (imageIndex > 0) args.Append(" -ImageIndex ").Append(imageIndex);
-        if (!string.IsNullOrEmpty(editionName)) args.Append(" -Edition \"").Append(editionName).Append('"');
-        if (!string.IsNullOrEmpty(scratchDir)) args.Append(" -ScratchDir \"").Append(scratchDir).Append('"');
+        if (!string.IsNullOrEmpty(editionName)) args.Append(" -Edition ").Append(ArgQuoting.QuoteIfNeeded(editionName));
+        if (!string.IsNullOrEmpty(scratchDir)) args.Append(" -ScratchDir ").Append(ArgQuoting.QuoteIfNeeded(scratchDir));
         if (enableNet35) args.Append(" -EnableNet35");
         if (unmountSource) args.Append(" -UnmountSource");
         if (fastBuild) args.Append(" -FastBuild");
@@ -593,7 +594,7 @@ public class BuildHandlers : IBridgeHandler
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -NonInteractive -Command \"{cmd}\"",
+                    Arguments = $"-NoProfile -NonInteractive -Command {ArgQuoting.QuoteIfNeeded(cmd)}",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,

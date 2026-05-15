@@ -122,8 +122,8 @@ public class CleanupHandlersTests
         })!;
 
         Assert.Contains("tiny11-cancel-cleanup.ps1", result);
-        Assert.Contains("-MountDir \"C:\\Temp\\scratch\\mount\"", result);
-        Assert.Contains("-SourceDir \"C:\\Temp\\scratch\\source\"", result);
+        Assert.Contains("-MountDir C:\\Temp\\scratch\\mount", result);
+        Assert.Contains("-SourceDir C:\\Temp\\scratch\\source", result);
         Assert.Contains("-NoProfile", result);
         Assert.Contains("-ExecutionPolicy Bypass", result);
     }
@@ -157,7 +157,7 @@ public class CleanupHandlersTests
             @"C:\resources", @"C:\Temp\scratch\mount", @"C:\Temp\scratch\source", @"D:\out\tiny11.iso"
         })!;
 
-        Assert.Contains("-OutputIso \"D:\\out\\tiny11.iso\"", result);
+        Assert.Contains("-OutputIso D:\\out\\tiny11.iso", result);
     }
 
     [Fact]
