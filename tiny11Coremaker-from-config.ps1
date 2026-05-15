@@ -114,8 +114,8 @@ try {
         -UnmountSource $UnmountSource.IsPresent `
         -FastBuild $FastBuild.IsPresent `
         -InstallPostBootCleanup (-not $NoPostBootCleanup.IsPresent) `
-        -PostBootCleanupCatalog $catalog `
-        -PostBootCleanupResolvedSelections $resolved `
+        -Catalog $catalog `
+        -ResolvedSelections $resolved `
         -ProgressCallback {
             param($p)
             # Forward the entire payload, not just phase/step/percent. The Core

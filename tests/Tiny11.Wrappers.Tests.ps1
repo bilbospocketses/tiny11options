@@ -55,8 +55,8 @@ Describe 'tiny11Coremaker-from-config.ps1 -NoPostBootCleanup switch (A3 W1+W2 po
         # The pipeline function still takes -InstallPostBootCleanup [bool];
         # the wrapper now derives the bool from the single switch.
         $source | Should -Match '-InstallPostBootCleanup \(-not \$NoPostBootCleanup\.IsPresent\)'
-        $source | Should -Match '-PostBootCleanupCatalog'
-        $source | Should -Match '-PostBootCleanupResolvedSelections'
+        $source | Should -Match '-Catalog\s+\$catalog'
+        $source | Should -Match '-ResolvedSelections\s+\$resolved'
         # Make sure the legacy and-not expression is gone:
         $source | Should -Not -Match '\$InstallPostBootCleanup\s+-and\s+-not\s+\$NoPostBootCleanup'
     }

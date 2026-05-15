@@ -1125,15 +1125,43 @@ Describe 'Invoke-Tiny11CoreBuildPipeline post-boot cleanup wiring' {
         $source = Get-Content (Join-Path $PSScriptRoot '..' 'src' 'Tiny11.Core.psm1') -Raw
         $source | Should -Match "Import-Module \(Join-Path \`$PSScriptRoot 'Tiny11\.Hives\.psm1'\) -Force -Global"
     }
-    It 'has PostBootCleanupCatalog + PostBootCleanupResolvedSelections parameters' {
+    It 'has Catalog + ResolvedSelections parameters (v1.0.8 audit A7 rename)' {
         $cmd = Get-Command Invoke-Tiny11CoreBuildPipeline
-        $cmd.Parameters.Keys | Should -Contain 'PostBootCleanupCatalog'
-        $cmd.Parameters.Keys | Should -Contain 'PostBootCleanupResolvedSelections'
+        $cmd.Parameters.Keys | Should -Contain 'Catalog'
+        $cmd.Parameters.Keys | Should -Contain 'ResolvedSelections'
     }
     It 'source passes the cleanup catalog and resolved selections to Install-Tiny11CorePostBootCleanup' {
         $source = Get-Content (Join-Path $PSScriptRoot '..' 'src' 'Tiny11.Core.psm1') -Raw
         $source | Should -Match '-PostBootCleanupCatalog'
         $source | Should -Match '-PostBootCleanupResolvedSelections'
         $source | Should -Match '-PostBootCleanupEnabled'
+    }
+}
+
+Describe 'Invoke-Tiny11CoreBuildPipeline catalog-application gate (v1.0.8 audit A7)' {
+    # Behavior guard: verifies the offline overlay gate uses the renamed vars
+    # ($Catalog / $ResolvedSelections) and is NOT coupled to $InstallPostBootCleanup.
+    # Full-pipeline invocation with mocks is infeasible here (DISM, hive ops, WinSxS
+    # wipe, etc.) -- source-structural assertions guard the gate shape instead.
+    # The gate fires on $Catalog/$ResolvedSelections presence independently of
+    # the task-install switch. A future smoke harness can layer a live-invoke guard
+    # on top; this covers the rename contract.
+    BeforeAll {
+        $script:coreSource = Get-Content (Join-Path $PSScriptRoot '..' 'src' 'Tiny11.Core.psm1') -Raw
+    }
+    It 'offline overlay gate tests $Catalog and $ResolvedSelections (renamed vars, not old PostBootCleanup names)' {
+        # The gate condition must use the renamed local vars.
+        $script:coreSource | Should -Match 'if \(\$Catalog -and \$ResolvedSelections\)'
+    }
+    It 'offline overlay gate does not test $InstallPostBootCleanup (decoupled per A7)' {
+        # Extract just the catalog-gate block (between the A7 audit comment and the
+        # closing brace of the if block) and assert the switch is absent from it.
+        # Pattern: the if-line itself must not reference InstallPostBootCleanup.
+        $script:coreSource | Should -Not -Match 'if \(.*\$InstallPostBootCleanup.*\$Catalog'
+        $script:coreSource | Should -Not -Match 'if \(.*\$Catalog.*\$InstallPostBootCleanup'
+    }
+    It 'Invoke-Tiny11ApplyActions is called inside the catalog gate with renamed $Catalog/$ResolvedSelections' {
+        # The call inside the gate must pass the renamed vars, not the old PostBootCleanup names.
+        $script:coreSource | Should -Match 'Invoke-Tiny11ApplyActions[\s\S]*?-Catalog \$Catalog[\s\S]*?-ResolvedSelections \$ResolvedSelections'
     }
 }

@@ -1148,8 +1148,8 @@ function Invoke-Tiny11CoreBuildPipeline {
         [bool]$FastBuild = $false,
         [Parameter(Mandatory)][scriptblock]$ProgressCallback,
         [bool]$InstallPostBootCleanup = $true,
-        $PostBootCleanupCatalog = $null,
-        [hashtable]$PostBootCleanupResolvedSelections = $null
+        $Catalog = $null,
+        [hashtable]$ResolvedSelections = $null
     )
 
     Import-Module (Join-Path $PSScriptRoot 'Tiny11.Iso.psm1')   -Force
@@ -1387,13 +1387,14 @@ function Invoke-Tiny11CoreBuildPipeline {
             # post-boot cleanup task at first boot, which meant Core +
             # -NoPostBootCleanup left the catalog unapplied. Restores symmetry
             # with Worker (Tiny11.Worker.psm1's Invoke-Tiny11ApplyActions call).
-            # Skipped if PostBootCleanupCatalog isn't passed (legacy callers /
-            # tests / non-cleanup-aware invocations).
-            if ($PostBootCleanupCatalog -and $PostBootCleanupResolvedSelections) {
+            # v1.0.8 audit A7: the gate is decoupled from the runtime cleanup-
+            # task install ($InstallPostBootCleanup) -- $Catalog data drives the
+            # offline overlay regardless of whether a runtime task is installed.
+            if ($Catalog -and $ResolvedSelections) {
                 & $ProgressCallback @{ phase='registry-catalog'; step='Applying catalog tweaks (offline overlay)'; percent=80 }
                 Invoke-Tiny11ApplyActions `
-                    -Catalog $PostBootCleanupCatalog `
-                    -ResolvedSelections $PostBootCleanupResolvedSelections `
+                    -Catalog $Catalog `
+                    -ResolvedSelections $ResolvedSelections `
                     -ScratchDir $mountDir `
                     -ProgressCallback $ProgressCallback
             }
@@ -1430,8 +1431,8 @@ function Invoke-Tiny11CoreBuildPipeline {
         # and shrinks at first user boot.
         & $ProgressCallback @{ phase='inject-postboot-cleanup'; step='Installing SetupComplete.cmd for first-boot /Cleanup-Image'; percent=84 }
         Install-Tiny11CorePostBootCleanup -MountDir $mountDir `
-            -PostBootCleanupCatalog $PostBootCleanupCatalog `
-            -PostBootCleanupResolvedSelections $PostBootCleanupResolvedSelections `
+            -PostBootCleanupCatalog $Catalog `
+            -PostBootCleanupResolvedSelections $ResolvedSelections `
             -PostBootCleanupEnabled $InstallPostBootCleanup
 
         $pipelineSucceeded = $true
