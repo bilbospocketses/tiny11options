@@ -20,21 +20,60 @@ A catalog-driven Windows 11 image trimmer with an interactive WebView2 + WPF wiz
 
 ## Two modes
 
-### Interactive (default)
+`tiny11options` has two **entry points** and two **modes**. Pick the entry point that matches what you have installed; the mode is just whether you pass `-NonInteractive` (and build args) or not.
 
-```powershell
-# from cmd.exe or Windows PowerShell 5.1 (NOT from a pwsh terminal — see "Known caveat" below)
-pwsh -NoProfile -File tiny11maker.ps1
-```
+| Entry point | Install requirement | Use when |
+|---|---|---|
+| **`tiny11options.exe`** (bundled launcher) | Nothing — single Win32 binary, downloaded from [Releases](https://github.com/bilbospocketses/tiny11options/releases) | You want the easiest path; you're an end user; you don't have or want PowerShell 7+ installed |
+| **`tiny11maker.ps1`** (direct script invocation, repo clone) | Windows PowerShell 5.1 (built into every Windows install) — OR PowerShell 7+ (`pwsh.exe`, [must be installed separately](https://github.com/PowerShell/PowerShell/releases)) | You've cloned the repo to fork / customize / iterate; you're running CI without distributing the launcher binary |
 
-Opens a 1200×900 wizard window (resizable; size is remembered between sessions in `%LOCALAPPDATA%\tiny11options\settings.json`). The theme follows your system light/dark preference on first launch, with a toggle button in the header to override (override is persisted in WebView2 localStorage):
+Both entry points support both modes. The Interactive and Scripted sections below show each entry point side-by-side so you can copy whichever matches your setup.
+
+### Interactive (GUI wizard)
+
+A 1200×900 wizard window opens (resizable; size remembered between sessions in `%LOCALAPPDATA%\tiny11options\settings.json`). The theme follows your system light/dark preference on first launch, with a toggle button in the header to override (override is persisted in WebView2 localStorage):
+
 1. **Source** — pick your Win11 ISO + edition, scratch directory, fast-build option, post-boot cleanup, and build-output logging (writes `tiny11build.log` alongside the scratch directory; on by default; "Append to existing log" is an opt-in toggle indented underneath the logging checkbox).
 2. **Customize** — browse 10 categories of removable items + tweaks; drill into any category to fine-tune; click anywhere on a row to toggle it; "Check all" / "Uncheck all" button operates on the visible filtered set; Save / Load profile JSON; cross-category search.
 3. **Build** — review the summary; output ISO path is auto-prefilled to `<scratchDir>\tiny11.iso` (override anytime); click Build. Progress streams live; cancel button works mid-build; the "Show build details" panel stays open across phase changes once expanded.
 
-### Scripted
+**Easiest — bundled launcher (`tiny11options.exe`):** double-click the Start menu shortcut after running the Velopack `Setup.exe` from [Releases](https://github.com/bilbospocketses/tiny11options/releases), or launch directly from any terminal (`cmd.exe`, `powershell.exe`, or `pwsh.exe` — all work):
 
-`tiny11maker.ps1` runs under either Windows PowerShell 5.1 (`powershell.exe`, **built into every Windows install — nothing to download**) or PowerShell 7+ (`pwsh.exe`, **must be installed separately** via `winget install Microsoft.PowerShell`, the Microsoft Store, or the [GitHub releases page](https://github.com/PowerShell/PowerShell/releases)). The four forms below all produce identical builds and copy-paste safely into ANY Windows terminal (`cmd.exe`, `powershell.exe`, or `pwsh.exe`). **Pick whichever feels least ugly — it doesn't matter which one, as long as it isn't bare `pwsh -File tiny11maker.ps1` typed into a `pwsh` terminal** (the rejected pwsh-from-pwsh pattern; see the red example below).
+```powershell
+.\tiny11options.exe
+```
+
+**From source (`tiny11maker.ps1`):** any of the forms below works from any Windows terminal. Pick whichever matches what you have installed.
+
+- **Using Windows PowerShell 5.1** — built into every Windows install, no extra download:
+
+  ```powershell
+  powershell -NoProfile -File tiny11maker.ps1
+  ```
+
+- **Using PowerShell 7+** — `pwsh.exe` must be installed first (`winget install Microsoft.PowerShell`, the Microsoft Store, or the [GitHub releases page](https://github.com/PowerShell/PowerShell/releases)). The `cmd /c` prefix is load-bearing — bare `pwsh -NoProfile -File tiny11maker.ps1` typed into a `pwsh` terminal is rejected at startup (see [Known caveat](#known-caveat--pwsh-from-pwsh-invocation) and the Scripted section below for the full workaround list):
+
+  ```bat
+  cmd /c pwsh -NoProfile -File tiny11maker.ps1
+  ```
+
+### Scripted (CLI / headless)
+
+Pass `-NonInteractive` and the build args (the same things you'd otherwise click through in the GUI) to either entry point. All forms below produce identical builds.
+
+**Easiest — bundled launcher (`tiny11options.exe`):**
+
+```powershell
+.\tiny11options.exe -NonInteractive `
+    -Source "C:\path\to\Win11.iso" `
+    -Config "config\examples\tiny11-classic.json" `
+    -Edition "Windows 11 Pro" `
+    -OutputPath "C:\out\tiny11.iso"
+```
+
+The launcher forwards every wrapper-script argument verbatim to `tiny11maker.ps1` (it does not parse them itself); internally it always invokes Windows PowerShell 5.1, so it's immune to the pwsh-from-pwsh constraint that affects the direct-script path below. `tiny11options.exe` also supports two launcher-only flags for build logging (`--log` / `--append`) — see [Build logging](#build-logging-launcher-only-v103) below.
+
+**From source (`tiny11maker.ps1`):** four working forms — all produce identical builds, copy-paste safely into `cmd.exe`, `powershell.exe`, or `pwsh.exe`. **Pick whichever feels least ugly. The ONLY invocation that doesn't work is bare `pwsh -File tiny11maker.ps1` typed into a `pwsh.exe` terminal** (the rejected pwsh-from-pwsh pattern; see the red example at the bottom of this section).
 
 #### Using Windows PowerShell 5.1 (works on every Windows — no extra install required)
 
@@ -52,7 +91,7 @@ cmd /c powershell -NoProfile -File tiny11maker.ps1 -Source "C:\path\to\Win11.iso
 
 #### Using PowerShell 7+ (`pwsh.exe` must be installed first)
 
-If you haven't installed PowerShell 7+ yet, use the Windows PowerShell 5.1 forms above instead — they work on a stock Windows install with no extra download. The forms below only work AFTER you've run `winget install Microsoft.PowerShell` (or installed `pwsh.exe` via the Microsoft Store / [GitHub releases page](https://github.com/PowerShell/PowerShell/releases)). Both forms route through a non-pwsh parent process (`cmd.exe` or `powershell.exe`) so the script's pwsh-from-pwsh gate stays quiet regardless of where you started:
+If you haven't installed PowerShell 7+ yet, use the Windows PowerShell 5.1 forms above instead — they work on a stock Windows install with no extra download. The forms below only work AFTER you've installed `pwsh.exe` (`winget install Microsoft.PowerShell`, the Microsoft Store, or the [GitHub releases page](https://github.com/PowerShell/PowerShell/releases)). Both forms route through a non-pwsh parent process (`cmd.exe` or `powershell.exe`) so the script's pwsh-from-pwsh gate stays quiet regardless of where you started:
 
 ```bat
 cmd /c pwsh -NoProfile -File tiny11maker.ps1 -Source "C:\path\to\Win11.iso" -Config "config\examples\tiny11-classic.json" -Edition "Windows 11 Pro" -OutputPath "C:\out\tiny11.iso" -NonInteractive
@@ -74,50 +113,38 @@ Bare `pwsh -File tiny11maker.ps1` pasted directly into a `pwsh.exe` terminal (Po
 - # ISOs that fail Setup product-key validation on Windows 11 25H2 (mechanism unknown;
 - # build output is content-identical to working invocations).
 - # Workarounds:
-- #   1. Use one of the powershell -File forms above (no pwsh needed at all).
-- #   2. Prefix with cmd /c (the cmd /c pwsh form above).
-- #   3. Wrap in powershell -Command (the powershell -Command pwsh form above).
-- #   4. Use tiny11options.exe -NonInteractive (bundled launcher, immune to this constraint).
+- #   1. Use tiny11options.exe -NonInteractive (bundled launcher, immune to this constraint and doesn't need pwsh installed).
+- #   2. Use one of the powershell -File forms above (no pwsh needed at all).
+- #   3. Prefix with cmd /c (the cmd /c pwsh form above).
+- #   4. Wrap in powershell -Command (the powershell -Command pwsh form above).
 - # exit 1
 ```
 
 See [Known caveat — pwsh-from-pwsh invocation](#known-caveat--pwsh-from-pwsh-invocation) below for the full mechanism story.
 
-Or use [`tiny11options.exe -NonInteractive ...`](#headless-via-tiny11optionsexe) below — the bundled launcher is a Win32 binary that invokes Windows PowerShell 5.1 internally, so it's also invocation-agnostic without needing any of these wrappers and without needing `pwsh.exe` installed.
+#### Args reference (both entry points)
 
-`-Source` accepts an `.iso` path or a drive letter (`E:`, `E:\`, just `E`).
-`-Edition` resolves an edition name (case-insensitive exact match) to the right `ImageIndex` by enumerating the source. Cleaner than `-ImageIndex` because the index varies between ISOs.
-`-ImageIndex` is the edition index inside `install.wim` (typically 6 for Pro on consumer ISOs). Mutually exclusive with `-Edition`; use whichever you prefer.
-`-Config` is one of the example profiles or your own.
-`-NonInteractive` suppresses the GUI; implied when both `-Source` and `-Config` are present.
+These are the wrapper-script arguments — accepted by both `tiny11options.exe -NonInteractive ...` and `tiny11maker.ps1` direct invocations. The launcher just forwards them verbatim to the script.
 
-### Headless via `tiny11options.exe`
-
-The same scripted invocation also works through the bundled launcher (`tiny11options.exe`) — useful when you'd rather not require `pwsh` on the path or distribute the script tree. `tiny11options.exe -NonInteractive ...` forwards every remaining argument verbatim to `tiny11maker.ps1` (the launcher itself does not parse flags); internally the launcher invokes Windows PowerShell 5.1.
-
-```powershell
-.\tiny11options.exe -NonInteractive `
-    -Source 'C:\path\to\Win11.iso' `
-    -Config 'config\examples\tiny11-classic.json' `
-    -Edition 'Windows 11 Pro' `
-    -OutputPath 'C:\out\tiny11.iso' `
-    -NoPostBootCleanup
-```
-
-The authoritative reference for available flags is `tiny11maker.ps1` itself:
-
-```powershell
-Get-Help .\tiny11maker.ps1 -Detailed
-```
-
-Documented flags include all the `-Source` / `-Edition` / `-ImageIndex` / `-Config` / `-OutputPath` / `-NonInteractive` listed under [Scripted](#scripted) above, plus:
-
+- **`-Source`** — accepts an `.iso` path or a drive letter (`E:`, `E:\`, just `E`).
+- **`-Edition`** — resolves an edition name (case-insensitive exact match) to the right `ImageIndex` by enumerating the source. Cleaner than `-ImageIndex` because the index varies between ISOs.
+- **`-ImageIndex`** — the edition index inside `install.wim` (typically 6 for Pro on consumer ISOs). Mutually exclusive with `-Edition`; use whichever you prefer.
+- **`-Config`** — one of the example profiles in `config/examples/` or your own JSON.
+- **`-ScratchDir`** — directory the build pipeline uses for scratch space (DISM mount root, hive temp files, intermediate WIM exports). Optional; defaults to a fresh per-build temp folder under `%TEMP%\tiny11options-<random>`. Specify if you want to control where the (multi-GB) intermediate files land.
+- **`-OutputPath`** — output ISO path. Optional; defaults to `<scratchDir>\tiny11.iso`.
+- **`-NonInteractive`** — suppresses the GUI; implied when both `-Source` and `-Config` are present.
 - **`-FastBuild`** — skip the post-build recovery-image compression pass (~2 GB smaller savings forfeited, ~5–10 minutes faster).
 - **`-NoPostBootCleanup`** — opt out of installing the [post-boot cleanup task](#post-boot-cleanup-task-v101). Default behavior installs the task; this switch suppresses it.
 
-#### Build logging (v1.0.3+)
+The authoritative reference is the script itself:
 
-Two launcher-level flags (consumed by `tiny11options.exe` itself, NOT forwarded to `tiny11maker.ps1`) capture the build to a file:
+```powershell
+powershell -NoProfile -Command "Get-Help .\tiny11maker.ps1 -Detailed"
+```
+
+#### Build logging (launcher-only, v1.0.3+)
+
+Two flags consumed by `tiny11options.exe` itself, NOT forwarded to `tiny11maker.ps1`. **They only work via the bundled launcher** — `powershell -File tiny11maker.ps1 --log ...` would just pass `--log` through to the wrapper script as an unknown parameter and fail.
 
 - **`--log <path>`** — write build output (stdout + stderr) to the given file IN ADDITION to the attached console. Lowercase only (`--Log` / `--LOG` are NOT recognized and fall through to `tiny11maker.ps1` as unknown wrapper params).
 
@@ -133,17 +160,33 @@ Two launcher-level flags (consumed by `tiny11options.exe` itself, NOT forwarded 
 
   **Position-independent**: `--append` can appear ANYWHERE in your argument list — before `--log`, after `--log`, sandwiched between wrapper params, at the very end — it just needs `--log` to also be present somewhere on the same line. Using `--append` without `--log` is a parse error (exit 12 — "you can't append to nothing").
 
-**Headless logging is opt-in** — by default, `tiny11options.exe` writes to whatever console is attached (or nothing, in piped contexts where `AttachConsole` fails). If you need a build artifact for troubleshooting, pass `--log`. The Step 1 GUI checkbox ("Log build output", on by default) does NOT carry over to headless invocations; the two paths are independent.
+Headless logging is opt-in — by default, `tiny11options.exe` writes to whatever console is attached (or nothing, in piped contexts where `AttachConsole` fails). If you need a build artifact for troubleshooting, pass `--log`. The Step 1 GUI checkbox ("Log build output", on by default) does NOT carry over to headless invocations; the two paths are independent.
+
+Example with `--log`:
 
 ```powershell
 .\tiny11options.exe -NonInteractive --log C:\logs\tiny11build.log `
-    -Source 'C:\path\to\Win11.iso' `
-    -Config 'config\examples\tiny11-classic.json' `
-    -Edition 'Windows 11 Pro' `
-    -OutputPath 'C:\out\tiny11.iso'
+    -Source "C:\path\to\Win11.iso" `
+    -Config "config\examples\tiny11-classic.json" `
+    -Edition "Windows 11 Pro" `
+    -OutputPath "C:\out\tiny11.iso"
 ```
 
-Exit codes: `0` success, `1` build failure, `2` host-architecture rejection (non-x64 host — see [Architecture and language support](#architecture-and-language-support)), `10` resource-extraction failure, `11` `powershell.exe` not found on PATH, `12` invalid `--log` / `--append` argument, `13` log file could not be opened.
+#### Exit codes
+
+`tiny11options.exe`:
+
+| Code | Meaning |
+|---|---|
+| `0` | success |
+| `1` | build failure |
+| `2` | host-architecture rejection (non-x64 host — see [Architecture and language support](#architecture-and-language-support)) |
+| `10` | resource-extraction failure |
+| `11` | `powershell.exe` not found on PATH |
+| `12` | invalid `--log` / `--append` argument |
+| `13` | log file could not be opened |
+
+`tiny11maker.ps1` (direct invocation): `0` for success, `1` for build failure (also `1` if the script's pwsh-from-pwsh gate fires — see the red example above).
 
 ## Post-boot cleanup task (v1.0.1+)
 
