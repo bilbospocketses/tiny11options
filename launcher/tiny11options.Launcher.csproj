@@ -15,6 +15,14 @@
     <RootNamespace>Tiny11Options.Launcher</RootNamespace>
     <AssemblyName>tiny11options</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- ApplicationIcon embeds the multi-resolution .ico into the executable's
+         resource section. Used by Windows Explorer, Start menu, taskbar, the
+         WPF window title-bar (auto-resolved at runtime when Window.Icon is not
+         explicitly set), and Velopack's Setup.exe + shortcut metadata (vpk
+         pack reads the exe icon by default; no explicit icon flag needed).
+         The .ico carries six frames (16/32/48/64/128/256 px @ 32bpp), covering
+         every Windows shell rendering tier including the high-DPI 256 px form. -->
+    <ApplicationIcon>Resources\tiny11options.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <!-- Override WPF SDK's auto-generated Main() so our Program.Main is the entry point.
