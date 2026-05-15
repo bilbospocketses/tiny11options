@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-05-15
+
 ### Added
 
 - **App icon** — multi-resolution `.ico` embedded into `tiny11options.exe` via the new `<ApplicationIcon>Resources\tiny11options.ico</ApplicationIcon>` MSBuild property. Six frames covering 16/32/48/64/128/256 px at 32bpp — covers every Windows shell rendering tier including the high-DPI 256 px form. Embedded icon is consumed automatically by Windows Explorer (file thumbnail), the WPF window title-bar (auto-resolved at runtime when `Window.Icon` is not explicitly set), the taskbar, the Start menu shortcut Velopack creates, and `vpk pack`'s Setup.exe (no explicit `--icon` flag needed; vpk reads the embedded icon from the main exe). Resource file at `launcher/Resources/tiny11options.ico`. Empirical verification: post-build exe size grew from 163,328 bytes (pre-icon) to 270,848 bytes (+107,520, matching the 107,152-byte .ico plus a few bytes of PE resource-directory overhead).
