@@ -196,10 +196,27 @@ function Invoke-Tiny11BuildPipeline {
             & $progress @{ phase='unmount-source'; step='Unmounting source ISO'; percent=99 }
             Dismount-Tiny11Source -IsoPath $mountResult.IsoPath -MountedByUs:$mountResult.MountedByUs -ForceUnmount:$UnmountSource
         }
+        # v1.0.8 audit WARNING ps-modules A6: track and surface scratch-cleanup
+        # failures instead of silently swallowing via -EA SilentlyContinue.
+        # Locked files (robocopy delete-on-close shares; in-flight handles) leave
+        # stale partial trees that confuse subsequent builds. Lock release
+        # typically happens on next reboot.
         $tinyDir = Join-Path $ScratchDir 'tiny11'
         $scratchImg = Join-Path $ScratchDir 'scratchdir'
-        if (Test-Path $tinyDir)    { Remove-Item -Path $tinyDir    -Recurse -Force -ErrorAction SilentlyContinue }
-        if (Test-Path $scratchImg) { Remove-Item -Path $scratchImg -Recurse -Force -ErrorAction SilentlyContinue }
+        $cleanupFailures = @()
+        foreach ($path in @($tinyDir, $scratchImg)) {
+            if (Test-Path $path) {
+                try { Remove-Item -Path $path -Recurse -Force -ErrorAction Stop }
+                catch { $cleanupFailures += $path }
+            }
+        }
+        if ($cleanupFailures.Count -gt 0) {
+            & $progress @{
+                phase   = 'cleanup-warn'
+                step    = "Some scratch files could not be deleted (rmdir-locked): $($cleanupFailures -join '; '). Lock release typically happens at next reboot; the next build's cleanup will retry."
+                percent = 100
+            }
+        }
     }
 }
 
