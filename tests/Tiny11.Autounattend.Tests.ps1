@@ -29,6 +29,11 @@ Describe "Get-Tiny11AutounattendBindings" {
         $b['COMPACT_INSTALL']             | Should -Be 'true'
         $b['IMAGE_INDEX']                 | Should -Be '6'
     }
+
+    It "throws on missing item ID instead of defaulting to apply" {
+        $resolved = @{}  # No item IDs at all
+        { Get-Tiny11AutounattendBindings -ResolvedSelections $resolved -ImageIndex 6 } | Should -Throw "*not found in ResolvedSelections*"
+    }
 }
 
 Describe "Get-Tiny11AutounattendTemplate (3-tier)" {

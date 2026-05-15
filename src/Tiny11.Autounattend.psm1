@@ -63,7 +63,18 @@ function Get-Tiny11AutounattendBindings {
         [Parameter(Mandatory)][hashtable]$ResolvedSelections,
         [Parameter(Mandatory)][int]$ImageIndex
     )
-    function State($id) { if ($ResolvedSelections.ContainsKey($id)) { $ResolvedSelections[$id].EffectiveState } else { 'apply' } }
+    function State($id) {
+        # v1.0.8 audit WARNING ps-modules A5: throw on missing item ID rather than
+        # silently defaulting to 'apply'. The bindings function is lockstep with
+        # the catalog -- a missing ID means a coding error (catalog renamed an
+        # item without updating bindings), not a user-data issue. Pre-fix, a
+        # missing 'tweak-bypass-nro' would silently override the user's actual
+        # selection.
+        if (-not $ResolvedSelections.ContainsKey($id)) {
+            throw "Get-Tiny11AutounattendBindings: catalog item ID '$id' not found in ResolvedSelections. The bindings function references an item that doesn't exist -- coding error, not user error."
+        }
+        $ResolvedSelections[$id].EffectiveState
+    }
     $hideOnline = if ((State 'tweak-bypass-nro') -eq 'apply') { 'true' } else { 'false' }
     $chatAuto   = if ((State 'tweak-disable-chat-icon') -eq 'apply') { 'false' } else { 'true' }
     $compact    = if ((State 'tweak-compact-install') -eq 'apply') { 'true' } else { 'false' }
