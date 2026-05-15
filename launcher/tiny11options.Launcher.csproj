@@ -2,10 +2,10 @@
 
   <PropertyGroup>
     <!-- Version: keep in sync with app.manifest's assemblyIdentity version.
-         Auto-populates AssemblyVersion (1.0.2.0) and FileVersion (1.0.2.0).
+         Auto-populates AssemblyVersion (1.0.3.0) and FileVersion (1.0.3.0).
          Velopack reads this for its NuGet package version; without it, MSBuild
          falls back to 1.0.0.0 and v1.0.0 installs see no auto-update offer. -->
-    <Version>1.0.2</Version>
+    <Version>1.0.3</Version>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
