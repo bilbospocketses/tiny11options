@@ -127,6 +127,16 @@ public partial class MainWindow : Window
             await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 $"window.__tinyCatalog = {catalogJson};");
 
+            // Inject the app version alongside the catalog so ui/app.js can render
+            // it into the footer without a JS<->C# round-trip. Source of truth is
+            // csproj <Version> via Assembly.GetExecutingAssembly() — bumping the
+            // csproj element per release updates the UI footer automatically with
+            // no manual sync step (verified by AppVersionTests).
+            var appVersionJs = System.Text.Json.JsonSerializer.Serialize(
+                Tiny11Options.Launcher.Gui.AppVersion.Current());
+            await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                $"window.__appVersion = {appVersionJs};");
+
             WebView.Source = new Uri("http://app.local/index.html");
             // No post-navigation update-check fire here — JS sends `request-update-check`
             // on its DOMContentLoaded, UpdateHandlers receives that and triggers

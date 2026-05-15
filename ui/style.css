@@ -146,6 +146,21 @@ body {
     border-top: 1px solid var(--border);
 }
 
+/* App version label — text injected at runtime by ui/app.js from
+   window.__appVersion (set in MainWindow.xaml.cs from the assembly version,
+   which tracks csproj <Version>). margin-right: auto pushes the span to the
+   LEFT edge of the footer's flex-end-aligned button group, putting it in the
+   lower-left corner of the running app. */
+.app-version {
+    margin-right: auto;
+    align-self: center;
+    color: var(--fg-muted);
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+    user-select: text;
+    opacity: 0.7;
+}
+
 /* Buttons */
 button {
     background: var(--bg-card);

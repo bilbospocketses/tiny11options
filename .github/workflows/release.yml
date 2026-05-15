@@ -25,7 +25,13 @@ env:
 
 jobs:
   build-sign-release:
-    runs-on: windows-latest
+    # v1.0.7: pinned explicitly to windows-2025-vs2026 (Windows Server 2025 +
+    # Visual Studio 2026 image) to control the migration moment rather than
+    # being silently redirected when GitHub forces the windows-latest alias
+    # over on 2026-06-15. v1.0.4 + v1.0.5 + v1.0.6 release runs all logged
+    # the redirect notice; pinning here pre-empts it. .NET 10 SDK / WebView2 /
+    # vpk all confirmed working on this image as of v1.0.7.
+    runs-on: windows-2025-vs2026
     permissions:
       id-token: write   # OIDC federation to Azure for Trusted Signing
       contents: write   # gh release create
@@ -40,9 +46,14 @@ jobs:
       TRUSTED_SIGNING_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
       TRUSTED_SIGNING_CERT_PROFILE: ${{ secrets.TRUSTED_SIGNING_CERT_PROFILE }}
     steps:
-      - uses: actions/checkout@v4
+      # v1.0.7: bumped checkout v4 -> v6 (latest stable, Node.js 24) and
+      # setup-dotnet v4 -> v5 (latest stable, Node.js 24) ahead of GitHub's
+      # 2026-06-02 default-Node-24 cutover and the 2026-09-16 Node 20 removal.
+      # Both deprecation notices were logged on every v1.0.2 -> v1.0.6 release
+      # run; this pair-bump retires both.
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           # Pinned via global.json (SDK 10.0.203 + rollForward: latestPatch).
           # Avoids the runner pulling an SDK whose matching runtime pack
@@ -76,9 +87,11 @@ jobs:
             -o dist/raw/
 
       - name: Sign tiny11options.exe via Trusted Signing
-        # Skipped when signing secrets aren't configured (v1.0.0 ships unsigned;
-        # signing scheduled for v1.0.2). Presence-check on AZURE_TENANT_ID is
-        # sufficient because all 5 signing secrets are wired together.
+        # Skipped when signing secrets aren't configured. v1.0.0 -> v1.0.7 all
+        # ship unsigned; signing is scheduled for v1.0.8 (split off from this
+        # cycle so the Node24/runner June-2026 hard deadlines could land
+        # standalone). Presence-check on AZURE_TENANT_ID is sufficient because
+        # all 5 signing secrets are wired together.
         if: env.AZURE_TENANT_ID != ''
         uses: azure/trusted-signing-action@v0.5.1
         with:

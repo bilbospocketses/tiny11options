@@ -1040,7 +1040,12 @@ function renderSourceStep() {
     return section;
 }
 
-document.addEventListener('DOMContentLoaded', () => { initTheme(); renderStep(); });
+document.addEventListener('DOMContentLoaded', () => {
+    initTheme();
+    renderStep();
+    const ver = document.getElementById('app-version');
+    if (ver && typeof window.__appVersion === 'string') ver.textContent = window.__appVersion;
+});
 
 onPs(msg => {
     const p = msg.payload || {};

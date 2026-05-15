@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-05-15
+
+### Added
+
+- **App version label in the WebView2 UI footer (lower-left corner of the running app).** New `<span class="app-version" id="app-version">` rendered inside `<footer class="actions">` with `margin-right: auto` to push it to the LEFT of the existing right-aligned Back/Next buttons. Text is populated at runtime from `window.__appVersion`, which `MainWindow.xaml.cs` injects via `AddScriptToExecuteOnDocumentCreatedAsync` (alongside the existing `window.__tinyCatalog` injection) before the WebView2 navigates to `index.html`. **Source of truth = csproj `<Version>`** through `Assembly.GetExecutingAssembly().GetName().Version` -> `AppVersion.Format(System.Version)` -> `"vMajor.Minor.Build"`. Bumping the csproj `<Version>` element per release automatically updates the UI display with no manual sync step. New file `launcher/Gui/AppVersion.cs` (16-line static class with `Current()` accessor and a pure-function `Format()` for testing). New file `launcher/Tests/AppVersionTests.cs` (+8 xUnit Facts/Theories: 5 InlineData formatter cases, drops-revision case, null-version-returns-placeholder, executing-assembly-returns-three-segment-form). New `.app-version` CSS rule in `ui/style.css` using `var(--fg-muted)` for theme-respecting color. New 2-line block in `ui/app.js`'s existing `DOMContentLoaded` handler reads `window.__appVersion` and writes to the span's `textContent`.
+
+### Fixed
+
+- **(Finding 4) Suppress two known-benign stderr "Access is denied" lines from offline takeown/icacls passes.** The Worker-mode catalog application phase logs two lines into headless build output (visible since A13 added `--log` in v1.0.3): `Windows\System32\LogFiles\WMI\RtBackup\*: Access is denied.` and `Windows\System32\WebThreatDefSvc\*: Access is denied.`. Both folders are SYSTEM-owned with restrictive DACLs that block elevated takeown/icacls recursion -- the build still exits 0 with a valid ISO; the lines are pure log noise. Pre-fix: `Invoke-Takeown` and `Invoke-Icacls` did `& 'takeown.exe' ... | Out-Null` which consumed stdout but let stderr leak unfiltered to the parent process. **Fix:** new `Invoke-NativeWithNoiseFilter` helper in `Tiny11.Actions.Filesystem.psm1` pipes stdout+stderr through `2>&1`, drops lines matching `$script:KnownBenignTakeownIcaclsNoisePatterns` (two anchored regexes for the verbatim `<protected-path>\*: Access is denied.` form), and re-emits real stderr to `[System.Console]::Error.WriteLine` so the launcher's child-process error capture still sees genuine failures. New exported function `Test-IsKnownBenignTakeownIcaclsNoise` is the testable surface. New file `tests/Tiny11.Actions.Filesystem.NoiseSuppression.Tests.ps1` (+11 Pester guards: 4 must-suppress cases including case-insensitive + arbitrary scratch-dir prefixes; 5 must-pass-through cases including Edge WebView genuine failure + ERROR-style failures + new-protected-folder discovery; 2 edge cases for empty/whitespace input). Core mode is unaffected -- its `Start-CoreProcess` already captures stderr to a separate Core log file rather than leaking to build log, so the noise wasn't visible there.
+
+### Changed
+
+- **(release.yml) `actions/checkout@v4` -> `actions/checkout@v6` and `actions/setup-dotnet@v4` -> `actions/setup-dotnet@v5`** to land Node.js 24 support ahead of GitHub's 2026-06-02 default cutover and 2026-09-16 Node.js 20 removal. Both deprecation notices were logged on every v1.0.2 -> v1.0.6 release run; this pair-bump retires both. Versions verified against the official action release pages: checkout v6.0.0 (2024-11-20) added Node 24 support; setup-dotnet v5.0.0 (2024-09-03) made the Node 24 jump.
+- **(release.yml) `runs-on: windows-latest` -> `runs-on: windows-2025-vs2026`** (the new Windows Server 2025 + Visual Studio 2026 image). Pre-empts GitHub's 2026-06-15 silent redirect of the `windows-latest` alias by controlling the migration moment ourselves. The redirect notice was logged on every v1.0.4 -> v1.0.6 release run. .NET 10 SDK / WebView2 / vpk all confirmed working on this image as of v1.0.7's release run.
+
+### Tests
+
+- Pester: **485 / 0** -> **496 / 0** (+11 from the noise-suppression test file).
+- xUnit: **105 / 0** -> **113 / 0** (+8 from `AppVersionTests`).
+
 ## [1.0.6] - 2026-05-15
 
 ### Changed
