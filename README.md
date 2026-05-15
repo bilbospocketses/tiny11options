@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="launcher/Resources/tiny11options.png" alt="tiny11options" width="128">
+</p>
+
 # tiny11options
 
 > **Built on the shoulders of [ntdevlabs / NTDEV](https://github.com/ntdevlabs) and the upstream [tiny11builder](https://github.com/ntdevlabs/tiny11builder) project.** Enormous credit to the upstream maintainer for the years of deep image-trimming work that this fork stands on — the DISM orchestration, the `install.wim` + `boot.wim` mount/commit choreography, the autounattend integration, the scratch-mount-deploy pipeline. tiny11options exists only because that foundation was built first. If you find this fork useful, please go give the original a star and consider donating to them for this incredible project!
