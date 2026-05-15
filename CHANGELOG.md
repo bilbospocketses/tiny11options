@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-05-15
+
+### Changed
+
+- **App icon + README header image refreshed (second pass).** Same 9-frame `.ico` shape as v1.0.5 (16/24/32/48/64/72/96/128/256 px, 256 PNG-compressed), but a refined artwork variant supplied at `C:\Temp\data.ico` + `C:\Temp\cd-data.png`. `.ico` file size 244,532 → 253,821 bytes (+9 KB across the 9-frame stack); source PNG dimensions 1024×1024 → 962×962 (slight retrim) and file size 1,504,523 → 1,496,496 bytes. Embedded at the same `launcher/Resources/tiny11options.ico` + `launcher/Resources/tiny11options.png` paths; rides on v1.0.4's `<ApplicationIcon>` wiring + the README `<img>` tag — zero code paths or build configuration changed. csproj `<ApplicationIcon>` inline comment was already accurate for the 9-frame layout (left unchanged). Asset-only release: zero behavioural change, zero new tests, Pester + xUnit unchanged at 485/0 and 105/0.
+
 ## [1.0.5] - 2026-05-15
 
 ### Changed
