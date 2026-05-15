@@ -79,10 +79,18 @@ function Get-Tiny11AutounattendTemplate {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$LocalPath)
 
+    # v1.0.8 audit WARNING ps-modules A2: bound cache staleness to 7 days.
+    # Pre-fix the cache was permanent -- if upstream fixed a template bug,
+    # the cached file was used forever. Now: use cache if mtime <= 7 days;
+    # otherwise treat as stale and fall through to refetch + re-cache.
     if (Test-Path $LocalPath) {
-        $localContent = [System.IO.File]::ReadAllText($LocalPath)
-        $localContent = $localContent -replace '(\r?\n)+$', ''
-        return [pscustomobject]@{ Source='Local'; Content=$localContent }
+        $age = (Get-Date) - (Get-Item -LiteralPath $LocalPath).LastWriteTime
+        if ($age.TotalDays -lt 7) {
+            $localContent = [System.IO.File]::ReadAllText($LocalPath)
+            $localContent = $localContent -replace '(\r?\n)+$', ''
+            return [pscustomobject]@{ Source='Local'; Content=$localContent }
+        }
+        # Cache stale (older than 7 days); fall through to refetch.
     }
     try {
         $content = Invoke-RestMethod -Uri $ForkTemplateUrl -ErrorAction Stop

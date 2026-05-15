@@ -48,4 +48,28 @@ Describe "Get-Tiny11AutounattendTemplate (3-tier)" {
         $r.Source | Should -Be 'Embedded'
         $r.Content | Should -Match '<unattend'
     }
+    It "refetches from network when cached file is older than 7 days" {
+        $local = Join-Path $script:tmp 'stale.xml'
+        Set-Content -Path $local -Value '<unattend>stale-cache</unattend>' -Encoding UTF8
+        # Backdate the file 10 days to simulate stale cache
+        (Get-Item -LiteralPath $local).LastWriteTime = (Get-Date).AddDays(-10)
+        # Mock network to return fresh content
+        Mock -CommandName 'Invoke-RestMethod' -ModuleName 'Tiny11.Autounattend' -MockWith { '<unattend>fresh-network</unattend>' }
+        $r = Get-Tiny11AutounattendTemplate -LocalPath $local
+        $r.Source | Should -Be 'Network'
+        $r.Content | Should -Be '<unattend>fresh-network</unattend>'
+        # Verify the cache was refreshed on disk
+        Get-Content -LiteralPath $local -Raw | Should -Match 'fresh-network'
+    }
+    It "uses cached file when mtime is within 7-day window" {
+        $local = Join-Path $script:tmp 'fresh-cache.xml'
+        Set-Content -Path $local -Value '<unattend>fresh-cache</unattend>' -Encoding UTF8
+        # Backdate to 3 days (within window) -- should still use cache
+        (Get-Item -LiteralPath $local).LastWriteTime = (Get-Date).AddDays(-3)
+        # Mock network to prove it's NOT called (would change result if it were)
+        Mock -CommandName 'Invoke-RestMethod' -ModuleName 'Tiny11.Autounattend' -MockWith { '<unattend>should-not-be-used</unattend>' }
+        $r = Get-Tiny11AutounattendTemplate -LocalPath $local
+        $r.Source | Should -Be 'Local'
+        $r.Content | Should -Be '<unattend>fresh-cache</unattend>'
+    }
 }
