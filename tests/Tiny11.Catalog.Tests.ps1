@@ -81,6 +81,36 @@ Describe "Get-Tiny11Catalog" {
         Set-Content -Path $path -Value $catalog -Encoding UTF8
         { Get-Tiny11Catalog -Path $path } | Should -Throw "*default*maybe*"
     }
+
+    It "rejects registry-pattern-zero with invalid hive" {
+        $path = Join-Path $script:tmp 'badpzhive.json'
+        $catalog = @{
+            version = 1
+            categories = @(@{ id='c1'; displayName='C1'; description='' })
+            items = @(@{
+                id='i1'; category='c1'; displayName='X'; description='';
+                default='apply'; runtimeDepsOn=@();
+                actions=@(@{ type='registry-pattern-zero'; hive='NTUSR'; key='Software\Test'; namePattern='X-*'; valueType='REG_DWORD' })
+            })
+        } | ConvertTo-Json -Depth 5
+        Set-Content -Path $path -Value $catalog -Encoding UTF8
+        { Get-Tiny11Catalog -Path $path } | Should -Throw "*invalid hive*"
+    }
+
+    It "rejects registry-pattern-zero missing required fields" {
+        $path = Join-Path $script:tmp 'badpzmissing.json'
+        $catalog = @{
+            version = 1
+            categories = @(@{ id='c1'; displayName='C1'; description='' })
+            items = @(@{
+                id='i1'; category='c1'; displayName='X'; description='';
+                default='apply'; runtimeDepsOn=@();
+                actions=@(@{ type='registry-pattern-zero'; hive='NTUSER'; key='Software\Test' })
+            })
+        } | ConvertTo-Json -Depth 5
+        Set-Content -Path $path -Value $catalog -Encoding UTF8
+        { Get-Tiny11Catalog -Path $path } | Should -Throw "*missing required field*"
+    }
 }
 
 Describe "Real catalog file" {
