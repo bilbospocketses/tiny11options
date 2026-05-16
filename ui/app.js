@@ -210,10 +210,26 @@ function renderStep() {
     const root = document.getElementById('content');
     clear(root);
     document.querySelectorAll('.breadcrumb span').forEach(s => {
-        s.classList.toggle('active', s.dataset.step === state.step);
+        const isActive = s.dataset.step === state.step;
+        s.classList.toggle('active', isActive);
+        // v1.0.8 audit WARNING ui B2: ARIA semantics for the breadcrumb step
+        // indicator. aria-current='step' marks the active step for screen
+        // readers; aria-disabled='true' on the Core-skipped Customize step
+        // (data-disabled already drives the CSS dim). Without these, the
+        // three spans are orphan text runs to assistive tech.
+        if (isActive) {
+            s.setAttribute('aria-current', 'step');
+        } else {
+            s.removeAttribute('aria-current');
+        }
         if (s.dataset.step === 'customize') {
-            if (state.coreMode) s.setAttribute('data-disabled', 'true');
-            else s.removeAttribute('data-disabled');
+            if (state.coreMode) {
+                s.setAttribute('data-disabled', 'true');
+                s.setAttribute('aria-disabled', 'true');
+            } else {
+                s.removeAttribute('data-disabled');
+                s.removeAttribute('aria-disabled');
+            }
         }
     });
     if (state.step === 'source')    root.appendChild(renderSourceStep());
