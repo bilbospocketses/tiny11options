@@ -804,3 +804,68 @@ section.progress .cancel-row {
         border-top-color: var(--accent);
     }
 }
+
+/* v1.0.8 audit WARNING ui B9: in-app confirm modal. Replaces window.confirm
+   which blocked the WebView2 message pump for the modal's lifetime. Hidden
+   by default via the `hidden` HTML attribute; shown by removing it. */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.modal-overlay[hidden] {
+    display: none;
+}
+.modal-content {
+    background: var(--bg-card);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--gap-lg);
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.modal-content h2 {
+    margin: 0 0 var(--gap) 0;
+    font-size: 1.2em;
+}
+.modal-version {
+    margin: 0 0 var(--gap) 0;
+    font-weight: 600;
+    color: var(--fg-muted);
+}
+.modal-notes {
+    background: var(--bg-alt);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--gap);
+    max-height: 40vh;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 0.9em;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0 0 var(--gap-lg) 0;
+}
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--gap);
+}
+.modal-actions button.primary {
+    background: var(--accent);
+    color: white;
+    border: 1px solid var(--accent);
+}
+.modal-actions button.primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}

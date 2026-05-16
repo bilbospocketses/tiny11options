@@ -23,6 +23,20 @@
         <button id="back-btn" disabled>&lt; Back</button>
         <button id="next-btn" disabled>Next &gt;</button>
     </footer>
+    <!-- v1.0.8 audit WARNING ui B9: in-app confirm modal replaces window.confirm
+         which paused the WebView2 message pump for the modal's lifetime.
+         Hidden by default; shown by app.js's showUpdateConfirmModal(). -->
+    <div id="update-confirm-modal" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="update-confirm-title">
+        <div class="modal-content">
+            <h2 id="update-confirm-title">Install tiny11options update?</h2>
+            <p id="update-confirm-version" class="modal-version"></p>
+            <pre id="update-confirm-notes" class="modal-notes"></pre>
+            <div class="modal-actions">
+                <button id="update-confirm-cancel" type="button">Cancel</button>
+                <button id="update-confirm-install" type="button" class="primary">Install</button>
+            </div>
+        </div>
+    </div>
     <script src="app.js"></script>
 </body>
 </html>

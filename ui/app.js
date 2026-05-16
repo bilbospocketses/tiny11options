@@ -3,6 +3,36 @@
 const ps   = (msg) => window.chrome.webview.postMessage(msg);
 const onPs = (cb)  => window.chrome.webview.addEventListener('message', e => cb(JSON.parse(e.data)));
 
+// v1.0.8 audit WARNING ui B9: in-app modal replaces window.confirm. The
+// native confirm pauses the WebView2 message pump for the modal's lifetime,
+// blocking incoming chrome.webview messages from C# (build progress, cleanup
+// progress, etc.). Custom overlay maintains same UX without the pause.
+function showUpdateConfirmModal(pending, onInstall) {
+    const modal = document.getElementById('update-confirm-modal');
+    if (!modal) return;
+    const versionEl = document.getElementById('update-confirm-version');
+    const notesEl = document.getElementById('update-confirm-notes');
+    const cancelBtn = document.getElementById('update-confirm-cancel');
+    const installBtn = document.getElementById('update-confirm-install');
+    if (!versionEl || !notesEl || !cancelBtn || !installBtn) return;
+
+    versionEl.textContent = `Version ${pending.version}`;
+    const notes = (pending.changelog || '').slice(0, 400);
+    const trail = pending.changelog && pending.changelog.length > 400 ? '\n...' : '';
+    notesEl.textContent = notes + trail;
+
+    const hide = () => {
+        modal.hidden = true;
+        cancelBtn.onclick = null;
+        installBtn.onclick = null;
+    };
+    cancelBtn.onclick = hide;
+    installBtn.onclick = () => { hide(); onInstall(); };
+
+    modal.hidden = false;
+    installBtn.focus();
+}
+
 // Theme — stored in localStorage (key 'tiny11-theme'). On first run, read system preference.
 // Persistence lives in the WebView2 userdata folder under %LOCALAPPDATA%\tiny11options\webview2-userdata\.
 function detectSystemTheme() {
@@ -1256,7 +1286,7 @@ onPs(msg => {
 
 // Velopack update indicator — Task 25.
 // update-available -> stash {version, changelog}, un-hide pulsing dot.
-// Click -> confirm() with version + truncated changelog -> ps({type:'apply-update'}).
+// Click -> showUpdateConfirmModal() (v1.0.8 B9: replaces confirm()) -> ps({type:'apply-update'}).
 // update-applying -> log + disable badge while Velopack downloads.
 // update-error    -> log + re-show badge so the user can retry.
 let pendingUpdate = null;
@@ -1297,11 +1327,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (badge) {
         badge.addEventListener('click', () => {
             if (!pendingUpdate) return;
-            const notes = (pendingUpdate.changelog || '').slice(0, 400);
-            const trail = pendingUpdate.changelog && pendingUpdate.changelog.length > 400 ? '\n...' : '';
-            if (confirm(`Install tiny11options v${pendingUpdate.version}?\n\n${notes}${trail}`)) {
+            // v1.0.8 audit WARNING ui B9: in-app modal replaces window.confirm
+            // (which paused the WebView2 message pump for the modal's lifetime).
+            showUpdateConfirmModal(pendingUpdate, () => {
                 ps({ type: 'apply-update', payload: {} });
-            }
+            });
         });
     }
 
