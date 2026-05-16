@@ -1089,6 +1089,11 @@ onPs(msg => {
     } else if (msg.type === 'profile-loaded') {
         state.selections = {};
         for (const [k, v] of Object.entries(p.selections || {})) state.selections[k] = v;
+        // v1.0.8 audit WARNING ui B5: reset drill + search so the loaded
+        // profile shows the category overview, not a stale drilled-in/search
+        // view from before the load.
+        state.search = '';
+        state.drilledCategory = null;
         renderStep();
     }
 });
