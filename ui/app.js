@@ -1487,6 +1487,16 @@ onPs(msg => {
 // Click -> showUpdateConfirmModal() (v1.0.8 B9: replaces confirm()) -> ps({type:'apply-update'}).
 // update-applying -> log + disable badge while Velopack downloads.
 // update-error    -> log + re-show badge so the user can retry.
+//
+// v1.0.13: re-check on window focus (was launch-only). The browser fires
+// `focus` on the window only when the WHOLE WINDOW gains focus (alt-tab back
+// from another app, restore from minimized, click the taskbar icon) — clicking
+// within the already-focused WebView does NOT refire it, so there's no
+// thrashing from in-app interaction. Cost vs. a 30-min setInterval: zero idle
+// CPU wakeups, no timer handle, no background HTTPS calls. The throttle below
+// caps actual checks at one per 5 minutes even if the user alt-tab-thrashes.
+const UPDATE_CHECK_MIN_INTERVAL_MS = 5 * 60 * 1000;
+let lastUpdateCheckMs = 0;
 let pendingUpdate = null;
 onPs(msg => {
     const p = msg.payload || {};
@@ -1547,5 +1557,30 @@ document.addEventListener('DOMContentLoaded', () => {
     // (or update-error) through the bridge. This guarantees the JS-side listener
     // is wired before C# sends, eliminating the post-Navigation race that hid
     // the badge in the prior smoke session.
+    // v1.0.13: stamp lastUpdateCheckMs BEFORE dispatching so the focus-event
+    // listener below (registered immediately after this) doesn't immediately
+    // refire a redundant second check if the user happens to alt-tab right
+    // after boot. The 5-min throttle uses this timestamp as its baseline.
+    lastUpdateCheckMs = Date.now();
     ps({ type: 'request-update-check', payload: {} });
+
+    // v1.0.13: re-check on window focus (was launch-only). See
+    // UPDATE_CHECK_MIN_INTERVAL_MS comment block above for the rationale +
+    // throttle design + why this is strictly lighter than a setInterval timer.
+    window.addEventListener('focus', () => {
+        // Skip while a previously-detected update is mid-download/apply
+        // (badge.disabled === true while update-applying). UpdateNotifier +
+        // UpdateManager share a single Velopack instance; racing CheckAsync
+        // against an in-flight ApplyAndRestartAsync could cause spurious
+        // HTTP traffic or transient errors during the brief window before
+        // ApplyUpdatesAndRestart tears the process down.
+        const focusBadge = document.getElementById('update-badge');
+        if (focusBadge && focusBadge.disabled) return;
+        // Throttle: never fire more than once per UPDATE_CHECK_MIN_INTERVAL_MS,
+        // even if the user alt-tab-thrashes. lastUpdateCheckMs is stamped at
+        // boot (above) and updated below before each dispatch.
+        if (Date.now() - lastUpdateCheckMs < UPDATE_CHECK_MIN_INTERVAL_MS) return;
+        lastUpdateCheckMs = Date.now();
+        ps({ type: 'request-update-check', payload: {} });
+    });
 });

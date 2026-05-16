@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-05-16
+
+**Update-check fires on window focus, not just at app launch.** Previously the only way to discover a newer release was to close and reopen the app — the boot-time `request-update-check` handshake fired exactly once during `DOMContentLoaded` and there was no timer or refresh anywhere. v1.0.13 adds a `window.focus` listener that re-fires the same handshake when the whole window regains focus (alt-tab back from another app, restore from minimized, click the taskbar icon). Clicking within the already-focused WebView does NOT refire the event so there's no thrashing from in-app interaction. A 5-minute `UPDATE_CHECK_MIN_INTERVAL_MS` throttle caps actual network calls even during alt-tab thrash.
+
+### Added
+
+- **`ui/app.js` — `window.focus` listener inside `DOMContentLoaded`.** Registered immediately after the boot-time `request-update-check`, so the listener exists for the lifetime of the app. The handler runs three guards before dispatching:
+  1. `if (focusBadge && focusBadge.disabled) return;` — skip while a previously-detected update is mid-download/apply (badge gets `disabled = true` on `update-applying`). `UpdateNotifier` + `UpdateManager` share a single Velopack instance; racing `CheckAsync` against an in-flight `ApplyAndRestartAsync` could cause spurious HTTP traffic or transient errors during the brief window before `ApplyUpdatesAndRestart` tears the process down.
+  2. `if (Date.now() - lastUpdateCheckMs < UPDATE_CHECK_MIN_INTERVAL_MS) return;` — throttle to one check per 5 minutes regardless of focus event frequency. `lastUpdateCheckMs` is stamped at boot before the first `request-update-check` dispatch (so the listener doesn't immediately refire a redundant check on the first post-boot focus event).
+  3. `lastUpdateCheckMs = Date.now();` BEFORE `ps({ type: 'request-update-check', payload: {} })` — stamp-then-dispatch order ensures the throttle baseline advances even if the bridge call fails, so we don't retry hot.
+- **`UPDATE_CHECK_MIN_INTERVAL_MS = 5 * 60 * 1000;`** const + `let lastUpdateCheckMs = 0;` declared at module scope near the existing `pendingUpdate` declaration.
+- **`tests/Tiny11.UiApp.RefocusUpdateCheck.Tests.ps1`** — new Pester file with 8 assertions covering the constant, the timestamp init, the boot-time stamp-before-dispatch order, the focus listener registration, all three guard clauses, and the dispatch-shape match against the existing boot-time handshake.
+
+### Note (design rationale)
+
+- **Focus event chosen over `setInterval` timer.** A 30-minute `setInterval` would fire ~48 background HTTPS calls per day regardless of user presence (idle CPU wakeups, network traffic, battery drain on a laptop). The `focus` event has zero idle cost — it fires synchronously on the JS event loop only when window focus changes. Tradeoff: a user who keeps the app focused indefinitely without ever alt-tabbing won't see new updates until they switch contexts (or restart). In practice users always switch windows, so this is a fringe case; the next session start fires the boot-time check anyway.
+- **Reuses the proven `request-update-check` handshake.** No new C# code. The C# `UpdateHandlers` comment explicitly calls out that the async-push path (`Task.Run` → `SendToJs` → `MessageToJs` → `Dispatcher.Invoke` → `PostWebMessageAsString`) had silently dropped `update-available` in a prior smoke session; the JS-initiated request-response path through `DispatchJsonAsync` is the only proven delivery channel. The focus listener stays on this proven path.
+- **v1.0.14 = inert "trigger release"** so v1.0.13-installed clients see a newer release published while the app is open + can manually smoke the focus re-check end-to-end (alt-tab away → alt-tab back → badge appears with the v1.0.12 fix's theme-aware color + tooltip). Pure version bump, no behavior change.
+- **v1.0.15 = Microsoft Trusted Signing** (deferred yet again — now v1.0.8 → v1.0.9 → v1.0.10 → v1.0.11 → v1.0.12 → v1.0.13 → v1.0.14 → v1.0.15).
+
 ## [1.0.12] - 2026-05-16
 
 **Update-available badge fix.** Two paired fixes to the small pulsing dot in the nav (visible when a newer release is detected): (1) the dot was rendered in Microsoft blue (`--accent`, a `:root` variable that wasn't theme-scoped) and is now theme-scoped — white in dark mode, dark grey (`#3a3a3a`) in light mode — to match the rest of the wizard's flat-styling palette and to stay legible on the nav background of either theme; (2) hovering the dot used to freeze the pulse animation mid-keyframe (`animation-play-state: paused`), which could leave the badge stuck at a shrunken-or-transparent frame and visually "disappear" under the cursor — the hover state now stops the animation entirely (`animation: none`), pins the dot to full scale + full opacity, and shows a static colored halo as the click affordance.
