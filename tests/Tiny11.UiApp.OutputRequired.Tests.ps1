@@ -1,17 +1,38 @@
-# Structural / contract tests for ui/app.js -- output-required guard.
+# Structural / contract tests for ui/app.js -- Output ISO required-field gate.
 #
-# When the user leaves the scratch directory blank on Step 1, the auto-populate-
-# from-scratch path never fires for the output ISO, so state.outputPath stays null.
-# Pre-fix, the Build ISO button enabled regardless and pwsh bombed at parameter
-# binding with ParameterArgumentValidationErrorEmptyStringNotAllowed on -OutputIso
-# (build scripts ValidateNotNullOrEmpty the param). Post-fix, the Build ISO button
-# is disabled until outputPath is non-empty, an inline warning surfaces above the
-# button, and the C# handler refuses to spawn pwsh on an empty path as a backstop.
+# Pre-v1.0.9 (v1.0.0 cycle, commit a93aaab): the output-required guard lived on
+# Step 3. When the user reached Step 3 with state.outputPath empty, app.js
+# computed an `outputMissing` predicate, folded it into `buildDisabled`,
+# disabled the Build ISO button, and rendered a `.output-required-warning`
+# block above the button explaining the user needed to set the output path.
 #
-# This file is a sibling to Tiny11.UiApp.Cleanup.Tests.ps1 -- same regex-against-
-# source-text discipline, no JS framework wired up.
+# v1.0.9 redesign (2026-05-16) moved the gate from Step 3 to Step 1: Output ISO
+# became a required Step 1 left-column field with its own `.req-asterisk` label
+# decoration, `aria-required="true"` input, and reserved `.error-slot` below.
+# Forward navigation past Step 1 is now blocked by a shared `canMoveForward()`
+# predicate that requires all four Source & paths fields filled AND clean (no
+# validation errors, no validations in flight). Step 3 became a pure read-only
+# confirmation screen -- the `outputMissing` / `outputWarning` / Build ISO
+# tooltip block was removed entirely; Step 3 never sees an empty output path.
+#
+# This file was rewritten in v1.0.10 to assert the v1.0.9+ Step 1 gating
+# surface instead of the deleted Step 3 inline warning. Eight assertions
+# against the removed UI were pruned; the surviving `calls renderStep() after
+# assigning outputPath` test was kept but had its regex relaxed to match the
+# v1.0.9 onchange handler shape (trims input + clears outputError +
+# dispatches validation). The buildDisabled regression guard from the deleted
+# `renderBuildStep -- buildDisabled predicate` Context was preserved here
+# even though the same assertion now lives in Tiny11.UiApp.Cleanup.Tests.ps1
+# under renderIdleCtaCard -- it acts as a behavior-level regression guard for
+# this file's scope (output-related gating) without coupling to function name.
+#
+# The three .output-required-warning style.css rule tests pass because the
+# v1.0.9 redesign removed the markup but did NOT prune the corresponding CSS
+# rules. They are dead CSS. Flagged as a v1.0.11 follow-up; these three tests
+# will start failing once the dead CSS is pruned and should be removed in the
+# same change.
 
-Describe 'ui/app.js -- output-required guard' {
+Describe 'ui/app.js -- Output ISO required-field gate (v1.0.9+ Step 1 surface)' {
     BeforeAll {
         $script:appJsPath = (Resolve-Path (Join-Path $PSScriptRoot '..\ui\app.js')).Path
         $script:content   = Get-Content $script:appJsPath -Raw
@@ -19,63 +40,72 @@ Describe 'ui/app.js -- output-required guard' {
         $script:css       = Get-Content $script:cssPath -Raw
     }
 
-    Context 'renderBuildStep -- buildDisabled predicate' {
-        It 'computes outputMissing from empty/whitespace outputPath' {
-            $script:content | Should -Match 'outputMissing\s*=\s*!state\.outputPath\s*\|\|\s*!state\.outputPath\.trim\(\)'
+    Context 'state model -- error fields survive renderStep' {
+        It 'declares state.outputError (mirrors sourceError + scratchError pattern)' {
+            $script:content | Should -Match 'outputError\s*:\s*'''''
+        }
+    }
+
+    Context 'canMoveForward -- forward-nav predicate' {
+        It 'defines canMoveForward' {
+            $script:content | Should -Match 'function canMoveForward\s*\('
         }
 
-        It 'folds outputMissing into buildDisabled' {
-            $script:content | Should -Match 'buildDisabled\s*=[^;]*outputMissing'
+        It 'gates on outputFilled (outputPath non-empty trimmed)' {
+            $script:content | Should -Match 'function canMoveForward[\s\S]{0,800}outputFilled\s*=\s*!!\(\s*state\.outputPath[\s\S]{0,80}state\.outputPath\.trim\(\)\s*\)'
         }
 
+        It 'gates on outputClean (no outputError, not validatingOutput)' {
+            $script:content | Should -Match 'function canMoveForward[\s\S]{0,800}outputClean\s*=\s*!state\.outputError\s*&&\s*!state\.validatingOutput'
+        }
+    }
+
+    Context 'renderSourceStep -- Output ISO field markup' {
+        It 'renders the Output ISO label with required asterisk' {
+            # Label string + .req-asterisk span. Both sit on the same el(...) call.
+            $script:content | Should -Match "el\('label',\s*\{\s*for:\s*'out-input'[^}]*\}\s*,\s*'Output ISO[\s\S]{0,200}class:\s*'req-asterisk'"
+        }
+
+        It 'sets aria-required on the output input' {
+            $script:content | Should -Match "id:\s*'out-input'[\s\S]{0,300}'aria-required':\s*'true'"
+        }
+
+        It 'renders a reserved error-slot bound to state.outputError' {
+            # Mirrors the source + scratch error-slot pattern. The slot is always
+            # in the DOM so column height doesn't jump when an error appears.
+            $script:content | Should -Match "class:\s*'error-slot'[\s\S]{0,150}state\.outputError"
+        }
+    }
+
+    Context 'out-input onchange -- re-render trigger' {
+        It 'calls renderStep() after assigning outputPath so downstream nav gating re-evaluates' {
+            # v1.0.10: the v1.0.9 onchange handler trims input, clears
+            # state.outputError, dispatches validation, then calls renderStep().
+            # Pre-v1.0.9 the handler was a bare two-statement assignment +
+            # renderStep call; the regex now spans the wider handler body
+            # while still anchoring on the load-bearing renderStep() call.
+            $script:content | Should -Match "id:\s*'out-input'[\s\S]{0,800}onchange:[\s\S]{0,600}state\.outputPath\s*=[\s\S]{0,400}renderStep\(\)"
+        }
+    }
+
+    Context 'renderIdleCtaCard regression -- buildDisabled still gates on cleanup state' {
+        # v1.0.10: moved here from the deleted 'renderBuildStep -- buildDisabled
+        # predicate' Context (the predicate moved from renderBuildStep into
+        # renderIdleCtaCard during the v1.0.9 Step 3 redesign; the output-
+        # missing branch was removed entirely since Step 1 now gates first).
+        # The cleanup-state gate survives unchanged; this is its regression guard.
         It 'still gates on cleaning + cleanupStatus error (regression guard for prior wiring)' {
             $script:content | Should -Match 'buildDisabled\s*=\s*state\.cleaning\s*\|\|\s*\(state\.cleanupStatus\s*&&\s*state\.cleanupStatus\.kind\s*===\s*''error''\)'
         }
     }
 
-    Context 'renderBuildStep -- inline warning' {
-        It 'renders an output-required-warning element when outputMissing' {
-            $script:content | Should -Match "output-required-warning"
-        }
-
-        It 'warning includes user-actionable copy mentioning the output ISO path' {
-            $script:content | Should -Match 'Choose an output location for the ISO file'
-        }
-
-        It 'warning mentions %TEMP% so users understand scratch can stay blank' {
-            $script:content | Should -Match '%TEMP%'
-        }
-
-        It 'warning is omitted when outputPath is set (null branch present)' {
-            # Conditional `outputWarning = outputMissing ? el('div', ...) : null;` -- the
-            # el(...) body holds the user-facing warning copy (~300 chars), so window
-            # generously to accommodate future copy edits.
-            $script:content | Should -Match 'outputWarning\s*=\s*outputMissing[\s\S]{0,800}:\s*null'
-        }
-
-        It 'warning is rendered into the build section above the Build ISO button' {
-            # Section structure: el('section', { class: 'build' }, ..., outputWarning, el('button', {...lots of onclick code...}, 'Build ISO')).
-            # The button body holds the full onclick handler (multi-line state mutation
-            # + ps() post + ~16 payload fields), so window generously here too.
-            $script:content | Should -Match "outputWarning,\s*el\('button',\s*\{[\s\S]{0,2000}'Build ISO'"
-        }
-    }
-
-    Context 'renderBuildStep -- Build ISO button' {
-        It 'has a tooltip explaining the disabled state when output is missing' {
-            $script:content | Should -Match "title:\s*outputMissing\s*\?\s*'Set the Output ISO path first\.'\s*:\s*null"
-        }
-    }
-
-    Context 'out-input onchange -- re-render trigger' {
-        It 'calls renderStep() after assigning outputPath so the gate reactively re-evaluates' {
-            # Pre-fix, onchange was a bare assignment; the warning + disabled-state never
-            # updated until something else triggered a render.
-            $script:content | Should -Match 'onchange:\s*e\s*=>\s*\{\s*state\.outputPath\s*=\s*e\.target\.value;\s*renderStep\(\);\s*\}'
-        }
-    }
-
-    Context 'style.css -- output-required-warning rule' {
+    Context 'style.css -- .output-required-warning rule (DEAD CSS, v1.0.11 follow-up)' {
+        # v1.0.10 NOTE: these three rules are no longer referenced by any
+        # rendered markup -- the .output-required-warning element was removed
+        # entirely in the v1.0.9 redesign. The CSS rules remain in style.css
+        # and should be pruned in a v1.0.11 cleanup pass. These tests pass
+        # for now; they will start failing once the dead CSS is removed.
+        # Delete this Context in the same change that prunes the CSS.
         It 'declares the .output-required-warning class' {
             $script:css | Should -Match '\.output-required-warning\s*\{'
         }

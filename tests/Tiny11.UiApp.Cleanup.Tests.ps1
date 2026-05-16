@@ -107,17 +107,27 @@ Describe 'ui/app.js -- cleanup wiring' {
         }
     }
 
-    Context 'renderBuildStep -- inline cleanup status row + Build ISO disable' {
+    Context 'renderBuildStep -- inline cleanup status banner' {
         It 'invokes renderInlineCleanupStatus at the top of the Step 3 layout' {
             $script:content | Should -Match 'function renderBuildStep[\s\S]{0,3000}renderInlineCleanupStatus\(\)'
         }
+    }
 
+    # v1.0.10: the buildDisabled flag + Build ISO disable wiring moved from
+    # renderBuildStep into renderIdleCtaCard during the v1.0.9 Step 3 segmented-
+    # cards redesign (renderBuildStep now just dispatches one of four card
+    # renderers; the idle CTA card carries the Build ISO button + its disable
+    # logic). Anchors updated to match the post-redesign function scope.
+    Context 'renderIdleCtaCard -- buildDisabled flag + Build ISO disable' {
         It 'computes a buildDisabled flag from state.cleaning + cleanupStatus.kind === error' {
-            $script:content | Should -Match "function renderBuildStep[\s\S]{0,3000}const buildDisabled\s*=\s*state\.cleaning[\s\S]{0,200}kind\s*===\s*'error'"
+            $script:content | Should -Match "function renderIdleCtaCard[\s\S]{0,500}const buildDisabled\s*=\s*state\.cleaning[\s\S]{0,200}kind\s*===\s*'error'"
         }
 
         It 'binds disabled: buildDisabled on the Build ISO primary button' {
-            $script:content | Should -Match "function renderBuildStep[\s\S]{0,4000}class:\s*'primary'[\s\S]{0,200}disabled:\s*buildDisabled"
+            # v1.0.10: button class is now 'primary step3-cta-button' (combined
+            # token), so the regex allows additional whitespace-separated tokens
+            # after `primary` instead of requiring an immediate closing quote.
+            $script:content | Should -Match "function renderIdleCtaCard[\s\S]{0,1000}class:\s*'primary[^']*'[\s\S]{0,200}disabled:\s*buildDisabled"
         }
     }
 
@@ -144,8 +154,14 @@ Describe 'ui/app.js -- cleanup wiring' {
     }
 
     Context 'renderCleanupBlock -- build-failed screen button' {
-        It 'is invoked from the build-error handler (so cancel/error screen still surfaces it)' {
-            $script:content | Should -Match "msg\.type === 'build-error'[\s\S]{0,3000}renderCleanupBlock\(\)"
+        It 'is invoked from the build-error path (so cancel/error screen still surfaces it)' {
+            # v1.0.10: v1.0.9's Step 3 redesign stashes build-error info on state
+            # and re-renders -- the build-error handler no longer calls
+            # renderCleanupBlock directly. The connection now runs through
+            # renderErrorCard (dispatched by renderBuildStep when state.buildError
+            # is set), which is the canonical surface for the build-failed card
+            # and the only legitimate caller of renderCleanupBlock at error time.
+            $script:content | Should -Match 'function renderErrorCard[\s\S]{0,400}renderCleanupBlock\(\)'
         }
 
         It 'button onclick routes through startCleanupFlow (not direct start-cleanup post)' {
@@ -181,7 +197,13 @@ Describe 'ui/app.js -- cleanup wiring' {
         }
 
         It 'omits the duplicate message paragraph when cancelled (header already says it)' {
-            $script:content | Should -Match 'if\s*\(\s*!wasCancelled\s*\)\s*\{[\s\S]{0,200}p\.message'
+            # v1.0.10: v1.0.9 moved the error render path from inline build-error
+            # handler code into renderErrorCard which reads state.buildError
+            # (aliased `const e = state.buildError`). The gating became
+            # `if (!e.wasCancelled && e.message) { ... el('p', null, e.message) }`.
+            # Behaviour is preserved; regex updated to match `<identifier>.message`
+            # rather than the pre-v1.0.9 `p.message` literal.
+            $script:content | Should -Match 'if\s*\(\s*!\w+\.wasCancelled[^)]*\)\s*\{[\s\S]{0,200}\.message'
         }
     }
 
