@@ -66,15 +66,27 @@ foreach ($mod in @('Tiny11.Catalog','Tiny11.Selections','Tiny11.Hives','Tiny11.A
 function Build-RelaunchArgs {
     [CmdletBinding()]
     param([Parameter(Mandatory)] $Bound, [Parameter(Mandatory)][string]$ScriptPath)
-    $parts = @("-NoProfile","-File","`"$ScriptPath`"")
+    # v1.0.8 audit WARNING scripts A2: type-aware serialization. Pre-fix used
+    # naive "$val" interpolation -- arrays would flatten to a space-joined
+    # single string, paths with embedded " would break parsing. Latent today
+    # (all params are scalar [string]/[int]/[switch]) but a defensive fix for
+    # future param growth.
+    $parts = @("-NoProfile", "-File", "`"$($ScriptPath -replace '"', '""')`"")
     foreach ($entry in $Bound.GetEnumerator()) {
         if ($entry.Key -eq 'Internal') { continue }
         $val = $entry.Value
         if ($val -is [switch]) {
             if ($val.IsPresent) { $parts += "-$($entry.Key)" }
+        } elseif ($val -is [array]) {
+            # Repeat the param name per array element so consumers parse
+            # them as multiple values for the same parameter.
+            foreach ($item in $val) {
+                $parts += "-$($entry.Key)"
+                $parts += "`"$($item -replace '"', '""')`""
+            }
         } else {
             $parts += "-$($entry.Key)"
-            $parts += "`"$val`""
+            $parts += "`"$($val -replace '"', '""')`""
         }
     }
     $parts -join ' '

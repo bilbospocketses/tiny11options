@@ -12,6 +12,20 @@ Describe "Build-RelaunchArgs" {
         $argString | Should -Match '-NonInteractive'
         $argString | Should -Match '-File "C:\\foo\\tiny11maker.ps1"'
     }
+    It "serializes array params by repeating the param name (v1.0.8 audit A2)" {
+        . "$PSScriptRoot/../tiny11maker.ps1" -Internal
+        $bound = @{ Editions = @('Pro', 'Home') }
+        $args = Build-RelaunchArgs -Bound $bound -ScriptPath 'x.ps1'
+        $args | Should -Match '-Editions "Pro"'
+        $args | Should -Match '-Editions "Home"'
+    }
+    It "escapes embedded double-quote in scalar string values (v1.0.8 audit A2)" {
+        . "$PSScriptRoot/../tiny11maker.ps1" -Internal
+        $bound = @{ Source = 'C:\path\with"quote.iso' }
+        $args = Build-RelaunchArgs -Bound $bound -ScriptPath 'x.ps1'
+        # Embedded " is doubled (PS convention for embedded " in "..." strings)
+        $args | Should -Match '"C:\\path\\with""quote\.iso"'
+    }
 }
 
 Describe "Invoke-SelfElevate (v1.0.8 audit A1)" {
