@@ -291,7 +291,7 @@ Four profiles are provided in [`config/examples/`](config/examples/):
 | `keep-edge-and-clipchamp.json` | Demonstrates pinning multiple keep-list items at once (used by smoke testing) |
 | `minimal-removal.json` | Conservative — removes only obvious bloat (Xbox, Solitaire, Teams chat icon), keeps everything else |
 
-A profile JSON has shape `{ "version": 1, "selections": { "<item-id>": "apply"|"skip", ... } }` and only needs to list items that diverge from the catalog defaults.
+A profile JSON has shape `{ "version": 1, "selections": { "<item-id>": "apply"|"skip", ... } }` and only needs to list items that diverge from the catalog defaults. The `minimal-removal.json` profile leverages this asymmetrically: it lists ~64 items as `skip` (to override the default-apply for items you want to KEEP) and omits the ~10 items it wants to remove (Xbox category + chat-icon tweak) so they take the catalog's default `apply` state.
 
 ## System requirements
 
