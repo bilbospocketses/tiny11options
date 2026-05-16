@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-05-16
+
+**Default scratch + output ISO paths relocated from `%TEMP%` to `<UserDocuments>\tiny11_outputs`.** Single small surface change: the launcher's auto-populated defaults for Scratch directory + Output ISO now anchor on the user's Documents folder instead of `%TEMP%`, so build artifacts are predictable and user-visible regardless of how UAC resolved `%TEMP%` during elevation. The launcher requires elevation (manifest `requireAdministrator`) and `%TEMP%` under elevated context can resolve in surprising ways depending on which user accepted the UAC consent. `Environment.GetFolderPath(SpecialFolder.MyDocuments)` is anchored to the user SID, stable across elevation under the same account.
+
+### Changed
+
+- **`launcher/Gui/AutoScratchPath.Generate()`** — base directory `Path.GetTempPath()` → `Path.Combine(Environment.GetFolderPath(SpecialFolder.MyDocuments), "tiny11_outputs")`. Hex-suffix leaf (`tiny11-<8charhex>`) is unchanged — concurrent / repeated builds still get unique scratch subfolders. New public const `AutoScratchPath.DefaultParentFolderName = "tiny11_outputs"` so tests + future callers can reference the constant rather than hardcode the string. Helper still does NOT create the directory; the build pipeline creates the full chain at build time (`New-Item -ItemType Directory -Force` creates intermediate parents, so the `tiny11_outputs` parent folder is provisioned on first build).
+- **`ui/app.js buildAutoOutputPath()`** — output ISO now lands in the PARENT of `scratchDir`, not INSIDE it. Previously: `<scratchDir>\tiny11.iso`. Now: `<parent-of-scratchDir>\tiny11.iso` (or `tiny11core.iso`). Default scratch `<Documents>\tiny11_outputs\tiny11-<hex>` now yields output `<Documents>\tiny11_outputs\tiny11.iso` directly under the durable outputs folder — matching the user-visible "outputs folder" mental model. Customized scratch `<X>\my-scratch` yields output `<X>\tiny11.iso`. Degenerate leaf-only `scratchDir` (no separator) falls back to colocating output with scratch as the v1.0.10 logic did, so the helper never emits a filesystem-root output path. Drive-root scratch (`D:`) emits `D:\tiny11.iso` rather than collapsing to `\tiny11.iso` on the current drive.
+- **Auto-restore behavior on empty scratch field.** Existing JS auto-restore (clearing the scratch field re-fills from `window.__autoScratchPath`) carries the new default automatically — same mechanism, new target folder. Output ISO recomputes from the restored scratch via the existing `autofillOutputPath()` chain.
+
+### Tests
+
+- **xUnit `AutoScratchPathTests`** — rewrote to assert paths under `<UserDocuments>\<DefaultParentFolderName>` rather than under `%TEMP%`. Added two new tests: `Generate_ParentDirectoryIsExactlyTiny11Outputs` (parent must be the `tiny11_outputs` leaf, not an arbitrary subfolder of Documents) and `Generate_LeafFolderUsesTiny11HexSuffixPattern` (leaf is `tiny11-` + 8 hex digits). Existing `Generate_TwoConsecutiveCallsProduceDifferentSuffixes` + `Generate_DoesNotCreateDirectoryOnDisk` retained unchanged.
+
+### Note
+
+- **v1.0.12 = Microsoft Trusted Signing** (the 3 signing items deferred from v1.0.8 → v1.0.9 → v1.0.10 → v1.0.11 → v1.0.12: ci B2 narrow-secret-scope + ci B3 action-rename bump + 5 GitHub Action secrets). Signing got bumped one more cycle because this v1.0.11 path-default tweak was a quick, isolated UX fix that didn't benefit from being bundled with the multi-step signing setup.
+
 ## [1.0.10] - 2026-05-16
 
 **Step 1 polish + CI silent-fail repair + stale-test cleanup.** Four small Step 1 UX/copy tweaks layered on the v1.0.9 two-column redesign, plus two infrastructure repairs that surfaced while validating those tweaks: the CI Pester step was silently swallowing failures via a `pwsh -File` exit-code quirk (v1.0.9 actually shipped with 14 hidden Pester failures behind a green workflow), and 14 stale Pester assertions targeted UI patterns the v1.0.9 redesign had removed. None of this changes build behavior; all surface, CI, and test changes only.

@@ -238,19 +238,38 @@ function updateValidationSpinnerText() {
 // v1.0.9: pure helper that computes the auto-derived Output ISO path from
 // scratchDir + coreMode. Returns null when scratchDir is empty (caller
 // should handle / skip). Used by autofillOutputPath + syncOutputFilenameToMode.
+//
+// v1.0.11: output now lands in the PARENT of scratchDir, not inside it. This
+// pairs with AutoScratchPath.Generate() — the default scratch
+// "<Documents>\tiny11_outputs\tiny11-<hex>" yields output
+// "<Documents>\tiny11_outputs\tiny11.iso" (or tiny11core.iso). Customized scratch
+// "<X>\my-scratch" yields "<X>\tiny11.iso". The scratch parent is the durable
+// "outputs folder" the user thinks in; the hex-suffixed leaf is build-instance
+// scratch that gets cleaned up post-build.
 function buildAutoOutputPath() {
     if (!state.scratchDir) return null;
     const trimmed = state.scratchDir.replace(/[\\/]+$/, '');
-    const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
     const filename = state.coreMode ? 'tiny11core.iso' : 'tiny11.iso';
-    return trimmed + sep + filename;
+    // Use whichever separator the scratchDir already uses; default to backslash on Windows.
+    const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
+    const lastSep = Math.max(trimmed.lastIndexOf('\\'), trimmed.lastIndexOf('/'));
+    // No separator means scratchDir is a leaf-only path (degenerate); fall back to
+    // colocating output with scratch as the v1.0.10 logic did, rather than dropping
+    // the ISO at filesystem root.
+    if (lastSep < 0) return trimmed + sep + filename;
+    const parent = trimmed.substring(0, lastSep);
+    // Drive-root edge case ("D:") → emit "D:\filename" to avoid an empty parent
+    // collapsing to "\filename" which would resolve to current-drive root.
+    if (parent.length === 0 || /^[A-Za-z]:$/.test(parent)) return parent + sep + filename;
+    return parent + sep + filename;
 }
 
 // When the user picks or types a scratch directory, fill the output ISO path with
-// "<scratchDir>\tiny11.iso" (or tiny11core.iso in Core mode) — but only when
-// outputPathIsAuto is true so we never clobber a custom value. Output goes alongside
-// scratchDir's tiny11/ source folder, not inside it, so oscdimg never sees its own
-// output as input.
+// "<parent-of-scratchDir>\tiny11.iso" (or tiny11core.iso in Core mode) — but only
+// when outputPathIsAuto is true so we never clobber a custom value. v1.0.11: output
+// is in scratchDir's PARENT (the durable outputs folder), not inside scratchDir
+// (which is a per-build temp). The build pipeline writes via oscdimg using the
+// resolved output path, so this relocation is transparent to packing.
 // v1.0.9: renamed from prefillOutputIfEmpty (post-Task-2 the guard is
 // state.outputPathIsAuto, not state.outputPath emptiness — name now matches).
 function autofillOutputPath() {
