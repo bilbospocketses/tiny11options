@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-05-16
+
+**UI redesign cycle.** Step 1 (source/build-options) rewrites the flat vertical stack as a two-column CSS Grid: required Source & paths fields on the left in a bordered card, build option toggles on the right in a parallel card. Core mode toggle relocates to the bottom of the right card so its conditional drawer (warning + .NET 3.5 checkbox) expands within the right column only — the required-inputs column on the left never reflows. Step 3 (build / progress / complete / error) replaces the `<dl>` summary with four bordered cards (Paths / Build mode / Customizations / Ready to build) with header-level "Edit in Step X" buttons that navigate back and focus the relevant field. Cards 1-3 stay visible during build / complete / error with only Card 4 transforming in place. Wizard breadcrumb steps become interactive `<button>` elements gated by a shared `canMoveForward` predicate. All four Step 1 left-column fields (ISO source, Edition, Scratch directory, Output ISO) are now required; scratch directory auto-populates at boot via a new C# `AutoScratchPath.Generate()` helper. Path validation via a new C# bridge handler catches format errors, missing parent directories, and non-writable destinations before build time. Step 2 (customize) deliberately unchanged.
+
+Design + implementation plan + smoke evidence at `docs/superpowers/{specs,plans,smoke}/2026-05-16-v1.0.9-*`.
+
+### Added
+
+- **`launcher/Gui/AutoScratchPath.cs`** — pure static helper returning `%TEMP%\tiny11-<8charhex>` as a candidate scratch-directory path. Does NOT create the directory; the build pipeline creates it at build time. Injected into the WebView2 via `MainWindow.xaml.cs AddScriptToExecuteOnDocumentCreatedAsync` as `window.__autoScratchPath`, parallel to the existing `__appVersion` and `__tinyCatalog` injections.
+
+- **`launcher/Gui/Handlers/PathValidationHandlers.cs`** — IBridgeHandler that handles `validate-scratch` + `validate-output` messages. Pure `internal static ValidateScratchPath` + `ValidateOutputPath` methods (testable without bridge plumbing). Validation chain: non-empty → Windows path format (drive-letter or UNC) → parent directory exists → not-a-file (scratch) / not-a-directory (output) → writability probe (creates + deletes a guid-suffixed `.tmp` probe file). Returns `(bool Valid, string Message)`; bridge handler wraps in `validated-scratch` / `validated-output` response with `{ path, valid, message }` payload. JS-side filtering on echoed `path` prevents stale-response clobber (mirrors `iso-validated` pattern from v1.0.8 audit `ui B4`).
+
+- **`state.outputPathIsAuto` JS flag** (default `true`) — replaces the brittle filename-string-matching heuristic in `syncOutputFilenameToMode`. Flips `false` on user input to `#out-input`, Browse-result for output context, or `profile-loaded` (profile path values are explicit user choices). `autofillOutputPath` (renamed from `prefillOutputIfEmpty`) and `syncOutputFilenameToMode` only write to `state.outputPath` when this flag is true.
+
+- **`state.sourceError` / `state.scratchError` / `state.outputError`** — error messages for the three path fields, stored in state so they survive `renderStep()` across unrelated re-render triggers. Replaces the prior `src-error` DOM-textContent approach which got wiped whenever any other field validated.
+
+- **`canMoveForward()` JS predicate** — single source of truth for the forward-nav gating check, shared between Next button (via `canAdvance`) and the interactive breadcrumb (via `goToStep`). Returns true only when all four Step 1 required fields are filled AND no path-validation errors are present AND no validation is in flight.
+
+- **`renderStep3SummaryCards()` JS helper** — extracts Cards 1-3 (Paths / Build mode / Customizations) so all four Step 3 states (idle / building / complete / error) share the same surface; only Card 4 transforms. During `state.building`, edit-link buttons inside the cards are disabled (`navLocked`) so users can't navigate away mid-build. Breadcrumb buttons gate on `state.building` too (smoke pass refinement) for the same reason.
+
+- **`buildAutoOutputPath()` JS helper** — pure path-computation function returning the auto-derived Output ISO path (`<scratchDir>\tiny11.iso` or `tiny11core.iso`) or null when scratchDir is empty. Replaces duplicated 4-line blocks in `autofillOutputPath` and `syncOutputFilenameToMode`.
+
+- **`.error-slot` CSS pattern** — reserved 30px slot below each path field that's always present in the DOM. When empty (no error), slot is invisible blank space. When populated, slot fills with error styling. Prevents column-jump when an error appears.
+
+- **Required-field visual indicators** — red `*` (`aria-hidden="true"`) after the label text + `aria-required="true"` on the input for all four Step 1 left-column fields. Screen readers announce as "edit, required."
+
+- **`.superpowers/` to `.gitignore`** — superpowers brainstorm session files (mockups + state in `.superpowers/brainstorm/`) shouldn't be tracked.
+
+### Changed
+
+- **Step 1 layout: vertical stack → two-column CSS Grid.** `renderSourceStep` returns `<section class="form step1-grid">` with a left `.step1-card` ("Source & paths") and right `.step1-card` ("Build options"). Grid uses `grid-template-columns: 1fr 1fr; gap: 16px; align-items: start`. Responsive collapse to single column at `@media (max-width: 800px)` as defense in depth (WebView2 minimum window width sits above the breakpoint on Windows; rule is in place if defaults change).
+
+- **Step 1 right-column order: Core mode relocated to bottom.** Was higher in the options list; now last so its conditional drawer (left-accent-bordered `.core-drawer` with warning paragraph + .NET 3.5 checkbox + hint) expands at the bottom of the right card, never displacing other options. Core mode unchecked → drawer not rendered.
+
+- **Step 3 layout: `<dl>` summary → four bordered cards.** Paths / Build mode / Customizations / Ready to build, vertically stacked with `gap: 12px`. Each summary card carries a header-level "Edit in Step X" `<button>` that calls `goToStep(targetStep, { focusSelector })`. Focus-on-edit targets: Paths → `#src-input`, Build mode → `#unmount-source`, Customizations → `#search`.
+
+- **Step 3 state transformations: shared card frame.** `renderBuildStep` now ALWAYS renders cleanup banner + Cards 1-3 + Card 4 dispatched by state:
+  - `state.building` → `renderProgressCard()` — progress bar / Phase / Step / Cancel buttons / build-details accordion (with cleanup recipe inline)
+  - `state.completed` → `renderCompleteCard()` — output path + Open folder + Close + completion-cleanup block
+  - `state.buildError` → `renderErrorCard()` — heading (cancelled vs failed) + message + log path + cleanup block + Close
+  - else → `renderIdleCtaCard()` — estimated time + "Build ISO" primary button + output footnote
+  Cards 1-3 are frozen at click-time values during build. Build-error onPs branch refactored to stash state (`state.buildError = { message, wasCancelled, logPath }`) and re-render instead of imperatively clearing `#content` and appending a different `<section class="error">`.
+
+- **Wizard breadcrumb: `<span>` → `<button>` with click handlers.** Three visual states: `.active` (`aria-current="step"`; accent background, non-interactive); reachable (accent text, underline-on-hover); gated (`aria-disabled="true"`; muted text, not-allowed cursor). Gating sources: forward navigation from `source` step before `canMoveForward` is true; Customize step skipped in Core mode; mid-build (`state.building`). Backward nav always allowed. Markup change: `<header class="breadcrumb">` → `<nav class="breadcrumb" aria-label="Wizard progress">`. New visually-hidden `#forward-nav-gate-reason` carries the describedby text "Fill in all required Source & paths fields first." Next button gets matching `aria-describedby`.
+
+- **Shared `goToStep(target, opts)` JS helper** — single nav entry point used by Back/Next buttons and breadcrumb clicks. Optional `focusSelector` hook focuses a specific field after render commits (used by Step 3 edit-link buttons).
+
+- **Scratch directory auto-restore on empty.** Clearing the field then blurring auto-restores from `window.__autoScratchPath` instead of leaving the required field empty + Next button gated. Placeholder copy reflects required-but-prefilled semantics: `"Required. Pre-filled with an auto-generated path you can replace."`
+
+- **Light mode contrast.** `--card-bg` `#ffffff` → `#f6f8fa` (cards visibly separate from white body); `--fg-muted` `#6b6b6b` → `#525252` (hint text + dt labels meet ~7:1 AAA contrast against white body).
+
+- **CSS class consolidation.** Step 3 classes renamed from `.s3-*` → `.step3-*` to match Task 4's `.step1-*` convention. 11 classes touched.
+
+- **CSS rules rescoped from `section.progress` / `section.complete` to `.step3-card--progress` / `.step3-card--complete`.** `renderProgressCard` and `renderCompleteCard` return `<div class="step3-card step3-card--progress">` (or `--complete`) instead of `<section class="progress">` — the old element-selector CSS rules were dead post-rewrite; rescoped to the new class modifiers so the styling (centered progress text, cancel-row layout, h2 accent color) follows.
+
+- **`section.form` `max-width: 720px` removed.** Old constraint capped Step 1 width regardless of window size. Removing it lets the two-column grid fill available space (with `#content`'s `var(--gap-lg)` padding providing edge breathing room) and also unblocks the responsive collapse rule which previously couldn't fire.
+
+- **`window.__autoScratchPath` C# injection.** Added at WebView2 launch alongside `__appVersion` and `__tinyCatalog`. JS reads it at boot init for `state.scratchDir`.
+
+### Fixed
+
+- **(smoke pass 5) ISO source error persistence across re-renders.** Previously the iso-error message was set via direct DOM `textContent` on the `src-error` banner — any `renderStep()` triggered by an unrelated field's validation (validated-scratch / validated-output) recreated the banner element fresh with empty content, wiping the visible error. Moved into `state.sourceError`; `renderSourceStep` populates the banner from state; `iso-error` stashes the message; `iso-validated`, source `onchange`, and source Browse-result all clear it.
+
+- **(smoke pass 5) Error slot empty-when-empty.** Previously the scratch + output error slots were rendered with `state.*Error || ''` as their `el()` child, which created an empty text node — making the slot match `.error-slot:not(:empty)` and render a visible bordered empty box even when no error existed. Changed to `|| null` so empty-error case has zero children, matching `:empty` correctly. All three slots (source / scratch / output) now behave identically.
+
+### Removed
+
+- **Output ISO `<input>` from Step 3.** Field moved to Step 1 (Source & paths card, below Scratch directory). Step 3 is now a pure read-only confirmation screen.
+
+- **`outputWarning` block from Step 3's idle state.** The exclamation-glyph banner that warned when output path was empty is gone — Step 1's required-field gate catches it before the user can reach Step 3.
+
+- **Log / Append hint paragraph from Step 1 right card.** User judged unnecessary; checkbox labels are self-explanatory.
+
+- **Brittle filename-string-matching heuristic in `syncOutputFilenameToMode`.** Replaced by explicit `state.outputPathIsAuto` boolean check.
+
+- **`.path-validation-error` CSS rule.** Superseded by `.error-slot:not(:empty)`.
+
+### Tests
+
+- **xUnit: 121 / 0 → 138 / 0 (+17 net).**
+  - `AutoScratchPathTests` +3 (happy path under `%TEMP%`, unique suffix on consecutive calls, does-not-create-directory).
+  - `PathValidationHandlersTests` +14 (7 ValidateScratchPath: empty / whitespace / garbage / valid under temp / missing parent / existing-file / UNC format; 5 ValidateOutputPath: empty / garbage / valid / existing-directory / missing-parent; 2 writable-probe smoke tests with implicit cleanup verification).
+- **Pester: 512 / 0 (unchanged).** No PowerShell module changes this cycle.
+- **Manual smoke matrix:** `docs/superpowers/smoke/2026-05-16-v1.0.9-ui-redesign-smoke.md`. 18 scenarios; 17 ✅ + 1 N/A (S17 reclassified — profile JSON contains only catalog selections, not paths; the `outputPathIsAuto` reset is internal-state defense, not user-observable).
+
+### Documentation
+
+- **Design spec:** `docs/superpowers/specs/2026-05-16-v1.0.9-ui-redesign-design.md` — 7-section design covering Step 1 + Step 3 structure, breadcrumb navigation, output auto-fill behavior, cleanup banner placement, accessibility, theming, responsive, testing, implementation phasing.
+- **Implementation plan:** `docs/superpowers/plans/2026-05-16-v1.0.9-ui-redesign-steps-1-3.md` — 10 tasks across 5 phases with verbatim file:line citations + complete code blocks.
+- **Smoke evidence:** `docs/superpowers/smoke/2026-05-16-v1.0.9-ui-redesign-smoke.md` — matrix results + iterative smoke pass history.
+
 ## [1.0.8] - 2026-05-15
 
 **Audit-cleanup release.** Implements all in-scope findings from the v1.0.8-cycle thorough audit (`docs/superpowers/audits/2026-05-15-v1.0.8-cycle-audit/`): 1 BLOCKER, 19 cheap WARNINGs, and 16 medium WARNINGs across launcher (C#), ps-modules (PowerShell), scripts, ui (WebView2 JS/HTML/CSS), ci (GitHub Actions), and docs scopes. Microsoft Trusted Signing deferred to v1.0.9 to keep the audit cleanup isolated from signing-pipeline work. Plan + per-scope audit findings co-committed for posterity.
