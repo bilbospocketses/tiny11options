@@ -253,8 +253,14 @@ function renderStep() {
 
     const root = document.getElementById('content');
     clear(root);
-    // v1.0.9: query .crumb-btn (was span) since breadcrumb steps are now buttons.
+    // v1.0.9: breadcrumb steps are now <button> elements; query .crumb-btn class.
+    // Three gate sources for the disabled state:
+    //   (a) forward navigation from source step before canMoveForward is true
+    //   (b) Customize step skipped in Core mode (Step 2 doesn't apply)
+    //   (c) mid-build navigation locked (state.building) — prevents user from
+    //       walking away from the progress screen
     const forwardOk = canMoveForward();
+    const buildLocked = state.building;
     document.querySelectorAll('.breadcrumb .crumb-btn').forEach(btn => {
         const target = btn.dataset.step;
         const isActive = target === state.step;
@@ -262,17 +268,17 @@ function renderStep() {
         if (isActive) btn.setAttribute('aria-current', 'step');
         else btn.removeAttribute('aria-current');
 
-        // Gated state: a forward step is gated when current is 'source' AND
-        // !canMoveForward. Customize is ALSO gated (skipped) when coreMode is on.
         const isForward = STEP_ORDER.indexOf(target) > STEP_ORDER.indexOf(state.step);
         const customizeSkipped = (target === 'customize' && state.coreMode);
-        const isGated = (isForward && state.step === 'source' && !forwardOk) || customizeSkipped;
+        const isGated = (isForward && state.step === 'source' && !forwardOk) || customizeSkipped || buildLocked;
         if (isGated && !isActive) {
             btn.setAttribute('aria-disabled', 'true');
-            if (customizeSkipped) {
-                btn.removeAttribute('aria-describedby');
-            } else {
+            // describedby points to a real id only for the forward-nav gate (a);
+            // buildLocked + customizeSkipped have no describedby (no useful text).
+            if (!customizeSkipped && !buildLocked) {
                 btn.setAttribute('aria-describedby', 'forward-nav-gate-reason');
+            } else {
+                btn.removeAttribute('aria-describedby');
             }
         } else {
             btn.removeAttribute('aria-disabled');
@@ -344,7 +350,12 @@ document.getElementById('next-btn').addEventListener('click', () => {
     else if (state.step === 'customize') goToStep('build');
 });
 
-// v1.0.9: wire interactive breadcrumb buttons.
+// v1.0.9: wire interactive breadcrumb buttons. Click handler guards on
+// aria-disabled (the gate state set by renderStep) AND on the click hitting
+// the current step (no-op self-click). Both are needed: aria-disabled covers
+// the gated forward / customize-skipped / mid-build cases; the same-step
+// check covers user clicks on the active button (which is not aria-disabled
+// per the .active styling).
 document.querySelectorAll('.crumb-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         if (btn.getAttribute('aria-disabled') === 'true') return;
@@ -1076,7 +1087,7 @@ function renderSourceStep() {
     // Core drawer (renders only when coreMode is on; expands inside right column).
     const coreDrawer = state.coreMode
         ? el('div', { class: 'core-drawer' },
-            el('p', { style: 'margin: 0 0 8px 0;' },
+            el('p', { class: 'core-drawer-warning' },
                 'tiny11 Core builds a significantly smaller image, but the output is not serviceable: ' +
                 'you cannot install Windows Updates, add languages, or enable Windows features after install. ' +
                 'Suitable for VM testing or short-lived development environments — not as a daily-driver Windows install.'),
@@ -1136,6 +1147,7 @@ function renderSourceStep() {
             el('input', {
                 id: 'scratch-input', type: 'text', value: state.scratchDir || '',
                 'aria-required': 'true',
+                placeholder: 'Leave as-is to use auto-generated path; replace with your own location if desired.',
                 onchange: e => { state.scratchDir = e.target.value; autofillOutputPath(); renderStep(); }
             }),
             el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')

@@ -918,6 +918,9 @@ section.build button.primary {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
+.crumb-btn.active:focus-visible {
+    outline-color: var(--accent-fg);
+}
 
 .visually-hidden {
     position: absolute;
@@ -962,6 +965,9 @@ section.build button.primary {
     margin-top: 8px;
     border-radius: 0 4px 4px 0;
 }
+.core-drawer-warning {
+    margin: 0 0 8px 0;
+}
 
 /* v1.0.9: Step 3 segmented summary cards */
 .step3-stack { display: flex; flex-direction: column; gap: 12px; }
@@ -974,7 +980,7 @@ section.build button.primary {
 .step3-card-header {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
     margin: 0 0 10px 0;
 }
 .step3-card-header h4 {
@@ -1019,6 +1025,12 @@ section.build button.primary {
     font-weight: 600;
 }
 .step3-cta-footnote { font-size: 12px; color: var(--section-heading-color); margin: 12px 0 0; }
+
+/* v1.0.9 fix #9: when .error is combined with .step3-card (renderErrorCard),
+   preserve the card's 6px radius instead of letting .error's 4px override. */
+.step3-card.error {
+    border-radius: var(--card-radius);
+}
 
 /* v1.0.9: collapse Step 1 two-column to single column on narrow windows.
    Defense in depth -- WebView2 default is 1100x750 per MainWindow.xaml,
