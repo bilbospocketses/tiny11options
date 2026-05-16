@@ -1264,12 +1264,6 @@ function renderSourceStep() {
             }),
             'Append to existing log'
         ),
-        el('p', { class: 'hint' },
-            'Writes the build progress to tiny11build.log alongside your scratch directory ' +
-            '(or under %TEMP% when scratch is left blank). With "Append to existing log" off, ' +
-            'each build overwrites the previous log; with it on, builds accumulate in one file.'
-        ),
-
         // Core mode toggle relocated to bottom of right column. Drawer (warning +
         // .NET 3.5 + hint) expands within this card so left column never reflows.
         el('label', { class: 'checkbox-label' },

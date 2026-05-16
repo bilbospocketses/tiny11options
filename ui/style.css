@@ -1052,7 +1052,7 @@ section.build button.primary {
    column closer to equal height. Excludes .checkbox-label so the right
    card's vertically-stacked checkboxes don't get extra gaps. */
 .step1-card > label:not(.checkbox-label) {
-    margin-top: 12px;
+    margin-top: 20px;
     display: block;
 }
 .step1-card > label:not(.checkbox-label):first-of-type {
