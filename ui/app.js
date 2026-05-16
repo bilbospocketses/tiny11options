@@ -588,11 +588,14 @@ function renderCompletionCleanupBlock() {
     const cleanupButton = el('button', {
         class: 'cleanup-button',
         title: tooltip,
-        disabled: state.cleanupRequested,
-        style: 'padding: 8px 16px; border-radius: 4px; cursor: ' + (state.cleanupRequested ? 'not-allowed' : 'pointer') + ';' + (state.cleanupRequested ? ' opacity: 0.55;' : ''),
+        // v1.0.8 audit WARNING ui B3: use state.cleaning instead of the dead
+        // state.cleanupRequested latch (never declared in state initializer;
+        // never reset). state.cleaning is already managed by the cleanup flow.
+        disabled: state.cleaning,
+        style: 'padding: 8px 16px; border-radius: 4px; cursor: ' + (state.cleaning ? 'not-allowed' : 'pointer') + ';' + (state.cleaning ? ' opacity: 0.55;' : ''),
         onclick: () => {
-            if (state.cleanupRequested) return;
-            state.cleanupRequested = true;
+            if (state.cleaning) return;
+            state.cleaning = true;
             state.cleanupStatus = { kind: 'progress', message: 'Starting cleanup...' };
             ps({ type: 'start-cleanup', payload: {
                 mountDir: mount,
