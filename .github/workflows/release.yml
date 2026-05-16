@@ -64,10 +64,14 @@ jobs:
           global-json-file: global.json
 
       - name: Restore
-        run: dotnet restore launcher/Tiny11Options.Launcher.csproj
+        # v1.0.8 audit WARNING ci B4: solution-level restore covers both
+        # launcher and Tests projects in one pass; downstream steps use
+        # --no-restore to skip re-restoring. Also fixes path-case drift
+        # (was Tiny11Options.Launcher.csproj; actual on-disk is lowercase).
+        run: dotnet restore tiny11options.sln
 
       - name: Test (xUnit)
-        run: dotnet test launcher/Tests/tiny11options.Launcher.Tests.csproj -c Release --logger "trx"
+        run: dotnet test launcher/Tests/tiny11options.Launcher.Tests.csproj -c Release --no-restore --logger "trx"
 
       - name: Test (Pester)
         shell: pwsh
@@ -79,8 +83,8 @@ jobs:
 
       - name: Publish (single-file, self-contained)
         run: |
-          dotnet publish launcher/Tiny11Options.Launcher.csproj `
-            -c Release -r win-x64 `
+          dotnet publish launcher/tiny11options.Launcher.csproj `
+            -c Release -r win-x64 --no-restore `
             -p:PublishSingleFile=true -p:SelfContained=true -p:IncludeAllContentForSelfExtract=true `
             -o dist/raw/
 
