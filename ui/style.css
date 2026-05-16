@@ -1063,9 +1063,10 @@ section.build button.primary {
    Always present in the DOM so the column doesn't jump when an error appears.
    When the slot has content (non-empty), shows error styling. When empty,
    just holds the reserved space invisibly.
-   48px handles up to ~2 lines of 12px error text + 6px+6px padding + margin. */
+   38px handles 1 line of 12px error text + 6px+6px padding + margin; longer
+   error messages will wrap and very-long ones may still nudge the layout. */
 .error-slot {
-    min-height: 48px;
+    min-height: 38px;
     margin-top: 4px;
     box-sizing: border-box;
 }
