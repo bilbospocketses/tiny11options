@@ -309,7 +309,7 @@ The build process self-elevates via UAC; no need to launch as admin manually.
 
 **Both x64 (amd64) and arm64 source ISOs are supported.** Microsoft distributes Windows 11 arm64 ISOs at https://www.microsoft.com/en-us/software-download/windows11arm64 (separate page from the x64 download — the standard Media Creation Tool cannot create arm64 installation media).
 
-Core mode auto-detects the source architecture via `dism /Get-WimInfo` and selects the right WinSxS keep-list (29 entries for amd64, 28 for arm64). Standard (Worker) mode is architecture-neutral — the catalog actions operate on language- and arch-agnostic paths (appx package families, registry paths, filesystem locations) so it just works on either source.
+Core mode auto-detects the source architecture via `dism /Get-WimInfo` and selects the right WinSxS keep-list (31 entries for amd64, 33 for arm64). Standard (Worker) mode is architecture-neutral — the catalog actions operate on language- and arch-agnostic paths (appx package families, registry paths, filesystem locations) so it just works on either source.
 
 ### Host architecture (what RUNS the build)
 

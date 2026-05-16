@@ -173,7 +173,7 @@ function Get-Tiny11CoreScheduledTaskTargets {
 }
 
 # WinSxS subdirs preserved during Core's destructive WinSxS wipe.
-# Per architecture: amd64 (29 entries) or arm64 (28 entries).
+# Per architecture: amd64 (31 entries) or arm64 (33 entries).
 # Patterns are Get-ChildItem -Filter wildcards — most end in `_*` to match
 # version-suffixed dirs. Non-wildcarded entries (Catalogs, Manifests, etc.)
 # are exact directory names that exist verbatim under WinSxS.
