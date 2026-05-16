@@ -275,7 +275,7 @@ Each item has:
 - `category` — one of the 10 categories (`store-apps`, `xbox-and-gaming`, `communication`, `edge-and-webview`, `onedrive`, `telemetry`, `sponsored`, `copilot-ai`, `hardware-bypass`, `oobe`)
 - `displayName` / `description`
 - `default` — `apply` (remove/tweak) or `skip` (keep)
-- `actions` — one or more typed action records (`registry`, `provisioned-appx`, `filesystem`, `scheduled-task`)
+- `actions` — one or more typed action records (`registry`, `registry-pattern-zero`, `provisioned-appx`, `filesystem`, `scheduled-task`)
 - `runtimeDepsOn` — array of other item ids this item *requires* to also be applied (locks them when the parent is kept)
 
 To add a new removal: append a new item to `catalog.json` matching the schema, run `pwsh -File tests/Run-Tests.ps1` (the catalog-loader tests will validate the schema), and submit a PR or just commit on your own fork.
