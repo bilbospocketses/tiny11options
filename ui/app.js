@@ -1053,6 +1053,14 @@ document.addEventListener('DOMContentLoaded', () => {
 onPs(msg => {
     const p = msg.payload || {};
     if (msg.type === 'iso-validated') {
+        // v1.0.8 audit WARNING ui B4: drop stale validate-iso reply. User
+        // retyped the path before this reply arrived; this is for an old
+        // request. Filtering on p.path !== state.source uses the C#-side
+        // path echo (IsoHandlers.cs:61) without needing a request-ID round-
+        // trip. Residual edge case: typing A -> B -> A would re-accept A's
+        // first reply, but the spinner-elapsed counter gives the user a
+        // visual hint that something is off.
+        if (p.path && p.path !== state.source) return;
         stopValidationSpinner();
         state.editions = p.editions;
         state.edition = (p.editions && p.editions[0] && p.editions[0].index) || null;
