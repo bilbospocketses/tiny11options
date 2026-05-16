@@ -105,6 +105,12 @@ const state = {
     editions: null,
     scratchDir: null,
     outputPath: null,
+    // v1.0.9: tracks whether outputPath is still the auto-derived value
+    // (<scratchDir>\tiny11.iso or tiny11core.iso) vs a user-customized one.
+    // prefillOutputIfEmpty + syncOutputFilenameToMode only write to outputPath
+    // when this is true. User input or Browse-result flips it false; profile
+    // load also flips false (profile values are explicit user choices).
+    outputPathIsAuto: true,
     unmountSource: true,
     fastBuild: true,
     installPostBootCleanup: true,
@@ -213,7 +219,8 @@ function updateValidationSpinnerText() {
 // empty so we never clobber a custom value. Output goes alongside scratchDir's tiny11/
 // source folder, not inside it, so oscdimg never sees its own output as input.
 function prefillOutputIfEmpty() {
-    if (state.outputPath || !state.scratchDir) return;
+    if (!state.scratchDir) return;
+    if (!state.outputPathIsAuto) return;
     const trimmed = state.scratchDir.replace(/[\\/]+$/, '');
     const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
     const filename = state.coreMode ? 'tiny11core.iso' : 'tiny11.iso';
@@ -222,14 +229,14 @@ function prefillOutputIfEmpty() {
 
 // When coreMode toggles, swap the default ISO filename if the user hasn't customized it.
 function syncOutputFilenameToMode() {
-    if (!state.scratchDir || !state.outputPath) return;
+    if (!state.scratchDir) return;
+    if (!state.outputPathIsAuto) return;
+    // Recompute the auto path under the new mode and overwrite. The flag check
+    // above already gates this so we never clobber a user-customized path.
     const trimmed = state.scratchDir.replace(/[\\/]+$/, '');
     const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
-    const prev = trimmed + sep + (state.coreMode ? 'tiny11.iso' : 'tiny11core.iso');
-    if (state.outputPath === prev) {
-        state.outputPath = null;
-        prefillOutputIfEmpty();
-    }
+    const filename = state.coreMode ? 'tiny11core.iso' : 'tiny11.iso';
+    state.outputPath = trimmed + sep + filename;
 }
 
 function renderStep() {
@@ -276,13 +283,25 @@ function renderStep() {
     }
 }
 
+// v1.0.9: forward-nav predicate. Shared between Next button (canAdvance) and
+// the interactive breadcrumb (goToStep, added in Task 3). All four Source & paths
+// fields are required on Step 1; once on Step 2 or Step 3 the user reached them
+// via canMoveForward and forward-nav from there doesn't re-check (by construction).
+function canMoveForward() {
+    const sourceFilled  = !!(state.source  && state.source.trim());
+    const editionFilled = state.edition !== null;
+    const scratchFilled = !!(state.scratchDir && state.scratchDir.trim());
+    const outputFilled  = !!(state.outputPath  && state.outputPath.trim());
+    return sourceFilled && editionFilled && scratchFilled && outputFilled;
+}
+
 function updateNav() {
     document.getElementById('back-btn').disabled = state.step === 'source' || state.building || !!state.completed;
     document.getElementById('next-btn').disabled = !canAdvance() || state.building || !!state.completed;
 }
 
 function canAdvance() {
-    if (state.step === 'source')    return !!state.source && state.edition !== null;
+    if (state.step === 'source')    return canMoveForward();
     if (state.step === 'customize') return true;
     return false;
 }
@@ -348,7 +367,7 @@ function renderBuildStep() {
             el('dd', { class: 'row' },
                 el('input', {
                     id: 'out-input', type: 'text', value: state.outputPath || '',
-                    onchange: e => { state.outputPath = e.target.value; renderStep(); }
+                    onchange: e => { state.outputPath = e.target.value; state.outputPathIsAuto = false; renderStep(); }
                 }),
                 el('button', { onclick: () => ps({ type: 'browse-save-file', payload: { context: 'output', title: 'Save tiny11 ISO as...', filter: 'ISO files|*.iso|All files|*.*', defaultName: state.coreMode ? 'tiny11core.iso' : 'tiny11.iso' } }) }, 'Browse...')
             ),
@@ -1160,7 +1179,7 @@ onPs(msg => {
         if (!p.path) return; // user cancelled the dialog
         if (p.context === 'source')  { state.source = p.path; ps({ type: 'validate-iso', payload: { path: p.path } }); startValidationSpinner(); }
         else if (p.context === 'scratch') { state.scratchDir = p.path; prefillOutputIfEmpty(); renderStep(); }
-        else if (p.context === 'output')  { state.outputPath = p.path; renderStep(); }
+        else if (p.context === 'output')  { state.outputPath = p.path; state.outputPathIsAuto = false; renderStep(); }
         else if (p.context === 'profile-save') {
             ps({ type: 'save-profile', payload: { path: p.path, selections: pendingSaveProfileSelections } });
             pendingSaveProfileSelections = null;
@@ -1176,6 +1195,9 @@ onPs(msg => {
         // view from before the load.
         state.search = '';
         state.drilledCategory = null;
+        // v1.0.9: profile values for paths are explicit user choices —
+        // future mode/scratch changes must NOT overwrite them.
+        state.outputPathIsAuto = false;
         renderStep();
     }
 });
