@@ -367,21 +367,21 @@ function renderStep3SummaryCards() {
 
     const editLink = (label, target, selector) => el('button', {
         type: 'button',
-        class: 's3-edit-link',
+        class: 'step3-edit-link',
         'aria-label': label,
         disabled: navLocked,
         onclick: () => { if (!navLocked) goToStep(target, { focusSelector: selector }); }
     }, label);
 
-    const pathsCard = el('div', { class: 's3-card' },
-        el('div', { class: 's3-card-header' },
+    const pathsCard = el('div', { class: 'step3-card' },
+        el('div', { class: 'step3-card-header' },
             el('h4', null, 'Paths'),
             editLink('Edit in Step 1', 'source', '#src-input')
         ),
-        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Source'),      el('span', { class: 'val' }, state.source || '—')),
-        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Edition'),     el('span', { class: 'val' }, editionLabel ? `${editionLabel.name} (index ${editionLabel.index})` : '—')),
-        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Scratch'),     el('span', { class: 'val' }, state.scratchDir || '—')),
-        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Output ISO'),  el('span', { class: 'val' }, state.outputPath || '—'))
+        el('div', { class: 'step3-row' }, el('span', { class: 'lbl' }, 'Source'),      el('span', { class: 'val' }, state.source || '—')),
+        el('div', { class: 'step3-row' }, el('span', { class: 'lbl' }, 'Edition'),     el('span', { class: 'val' }, editionLabel ? `${editionLabel.name} (index ${editionLabel.index})` : '—')),
+        el('div', { class: 'step3-row' }, el('span', { class: 'lbl' }, 'Scratch'),     el('span', { class: 'val' }, state.scratchDir || '—')),
+        el('div', { class: 'step3-row' }, el('span', { class: 'lbl' }, 'Output ISO'),  el('span', { class: 'val' }, state.outputPath || '—'))
     );
 
     const optionChips = [
@@ -390,26 +390,26 @@ function renderStep3SummaryCards() {
         state.installPostBootCleanup ? 'Post-boot cleanup' : null,
         state.logBuildOutput ? (state.appendLog ? 'Log (append)' : 'Log') : null,
     ].filter(Boolean).join(' · ') || '(none)';
-    const modeCard = el('div', { class: 's3-card' },
-        el('div', { class: 's3-card-header' },
+    const modeCard = el('div', { class: 'step3-card' },
+        el('div', { class: 'step3-card-header' },
             el('h4', null, 'Build mode'),
             editLink('Edit in Step 1', 'source', '#unmount-source')
         ),
-        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Mode'),    el('span', { class: 'val' }, state.coreMode ? 'Core' : 'Standard')),
-        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Options'), el('span', { class: 'val' }, optionChips)),
+        el('div', { class: 'step3-row' }, el('span', { class: 'lbl' }, 'Mode'),    el('span', { class: 'val' }, state.coreMode ? 'Core' : 'Standard')),
+        el('div', { class: 'step3-row' }, el('span', { class: 'lbl' }, 'Options'), el('span', { class: 'val' }, optionChips)),
         state.coreMode
-            ? el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, '.NET 3.5'), el('span', { class: 'val' }, state.enableNet35 ? 'Enabled' : 'Disabled'))
+            ? el('div', { class: 'step3-row' }, el('span', { class: 'lbl' }, '.NET 3.5'), el('span', { class: 'val' }, state.enableNet35 ? 'Enabled' : 'Disabled'))
             : null
     );
 
-    const customCard = el('div', { class: 's3-card' },
-        el('div', { class: 's3-card-header' },
+    const customCard = el('div', { class: 'step3-card' },
+        el('div', { class: 'step3-card-header' },
             el('h4', null, 'Customizations'),
             editLink('Edit in Step 2', 'customize', '#search')
         ),
         state.coreMode
-            ? el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Note'), el('span', { class: 'val' }, "Customizations don't apply to Core builds — Core builds a fixed minimal image."))
-            : el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Applied'), el('span', { class: 'val' }, `${totalApplied} items (out of ${state.catalog.items.length})`))
+            ? el('div', { class: 'step3-row' }, el('span', { class: 'lbl' }, 'Note'), el('span', { class: 'val' }, "Customizations don't apply to Core builds — Core builds a fixed minimal image."))
+            : el('div', { class: 'step3-row' }, el('span', { class: 'lbl' }, 'Applied'), el('span', { class: 'val' }, `${totalApplied} items (out of ${state.catalog.items.length})`))
     );
 
     return [pathsCard, modeCard, customCard];
@@ -421,10 +421,10 @@ function renderIdleCtaCard() {
         ? (state.fastBuild ? 'Core + Fast build' : 'Core')
         : (state.fastBuild ? 'Standard + Fast build' : 'Standard');
     const estHint = `Estimated 20–40 min for a ${buildMode} build.`;
-    return el('div', { class: 's3-card s3-cta-card' },
-        el('p', { class: 's3-cta-hint' }, estHint),
+    return el('div', { class: 'step3-card step3-cta-card' },
+        el('p', { class: 'step3-cta-hint' }, estHint),
         el('button', {
-            class: 'primary s3-cta-button',
+            class: 'primary step3-cta-button',
             disabled: buildDisabled,
             onclick: () => {
                 if (buildDisabled) return;
@@ -454,7 +454,7 @@ function renderIdleCtaCard() {
                 });
             }
         }, 'Build ISO'),
-        el('p', { class: 's3-cta-footnote' }, 'Output lands at ', el('code', null, state.outputPath || '—'))
+        el('p', { class: 'step3-cta-footnote' }, 'Output lands at ', el('code', null, state.outputPath || '—'))
     );
 }
 
@@ -657,7 +657,7 @@ function renderProgressCard() {
             renderCleanupRecipe(),
           ];
 
-    return el('div', { class: 's3-card s3-card--progress' },
+    return el('div', { class: 'step3-card step3-card--progress' },
         el('h2', null, 'Building tiny11 image...'),
         progressBar,
         el('p', null, `Phase: ${p.phase || '—'}`),
@@ -744,7 +744,7 @@ function renderCompletionCleanupBlock() {
 
 function renderCompleteCard() {
     const c = state.completed;
-    return el('div', { class: 's3-card s3-card--complete' },
+    return el('div', { class: 'step3-card step3-card--complete' },
         el('h2', null, 'Build complete'),
         el('p', null, `Output: ${c.outputPath}`),
         el('div', { class: 'row' },
@@ -769,7 +769,7 @@ function renderErrorCard() {
     }
     if (cleanupBlock) children.push(cleanupBlock);
     children.push(el('button', { onclick: () => { state.buildError = null; ps({ type: 'close', payload: {} }); } }, 'Close'));
-    return el('div', { class: 's3-card error' }, ...children);
+    return el('div', { class: 'step3-card error' }, ...children);
 }
 
 function renderBuildStep() {
@@ -787,7 +787,7 @@ function renderBuildStep() {
         card4 = renderIdleCtaCard();
     }
 
-    return el('section', { class: 'build s3-stack' },
+    return el('section', { class: 'build step3-stack' },
         banner,
         pathsCard,
         modeCard,
