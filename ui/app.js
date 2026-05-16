@@ -725,7 +725,17 @@ function renderCustomizeStep() {
         return el('div', {
             class: 'card',
             data: { cat: c.id },
-            onclick: () => { state.drilledCategory = c.id; renderStep(); }
+            tabindex: '0',
+            role: 'button',
+            onclick: () => { state.drilledCategory = c.id; renderStep(); },
+            onkeydown: (ev) => {
+                // v1.0.8 audit WARNING ui B1: Enter/Space activates focused card.
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    state.drilledCategory = c.id;
+                    renderStep();
+                }
+            }
         },
             el('h3', null, c.displayName),
             el('p',  null, c.description),
@@ -782,7 +792,22 @@ function renderSearchResults(term, resolved) {
         if (r.locked) {
             liChildren.push(el('p', { class: 'lock' }, `🔒 Locked — kept because: ${r.lockedBy.join(', ')}`));
         }
-        const liOpts = r.locked ? { class: 'locked' } : { class: 'clickable', onclick: rowClickHandler };
+        // v1.0.8 audit WARNING ui B1: keyboard accessibility for clickable rows.
+        // Locked rows remain mouse-only (no interaction anyway -- checkbox is
+        // disabled). Clickable rows get tabindex/role/onkeydown to mirror the
+        // existing onclick behavior under Enter/Space activation.
+        const liOpts = r.locked ? { class: 'locked' } : {
+            class: 'clickable',
+            tabindex: '0',
+            role: 'button',
+            onclick: rowClickHandler,
+            onkeydown: (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    rowClickHandler();
+                }
+            }
+        };
         return el('li', liOpts, ...liChildren);
     });
 
@@ -837,7 +862,22 @@ function renderDrillin(catId, resolved) {
         if (r.locked) {
             liChildren.push(el('p', { class: 'lock' }, `🔒 Locked — kept because: ${r.lockedBy.join(', ')}`));
         }
-        const liOpts = r.locked ? { class: 'locked' } : { class: 'clickable', onclick: rowClickHandler };
+        // v1.0.8 audit WARNING ui B1: keyboard accessibility for clickable rows.
+        // Locked rows remain mouse-only (no interaction anyway -- checkbox is
+        // disabled). Clickable rows get tabindex/role/onkeydown to mirror the
+        // existing onclick behavior under Enter/Space activation.
+        const liOpts = r.locked ? { class: 'locked' } : {
+            class: 'clickable',
+            tabindex: '0',
+            role: 'button',
+            onclick: rowClickHandler,
+            onkeydown: (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    rowClickHandler();
+                }
+            }
+        };
         return el('li', liOpts, ...liChildren);
     });
 
