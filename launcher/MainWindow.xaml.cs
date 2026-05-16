@@ -137,6 +137,17 @@ public partial class MainWindow : Window
             await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 $"window.__appVersion = {appVersionJs};");
 
+            // Inject a candidate scratch-directory path so ui/app.js can initialize
+            // state.scratchDir at boot. v1.0.9 makes scratch a required field on
+            // Step 1; auto-populating with %TEMP%\tiny11-<random8hex> satisfies
+            // the required-field gate without breaking today's no-typing convenience
+            // (user can overwrite, and the build pipeline still creates the dir at
+            // build time). Pattern parallels __appVersion above.
+            var autoScratchPathJs = System.Text.Json.JsonSerializer.Serialize(
+                Tiny11Options.Launcher.Gui.AutoScratchPath.Generate());
+            await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                $"window.__autoScratchPath = {autoScratchPathJs};");
+
             WebView.Source = new Uri("http://app.local/index.html");
             // No post-navigation update-check fire here — JS sends `request-update-check`
             // on its DOMContentLoaded, UpdateHandlers receives that and triggers
