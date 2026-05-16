@@ -36,9 +36,11 @@
     --section-heading-color: #57606a;
     --section-heading-tracking: 0.04em;
     --req-asterisk-color: #d1242f;
-    /* v1.0.12: theme-scoped update-badge color. Dark-grey dot on light bg. */
-    --badge-color: #3a3a3a;
-    --badge-color-hover: #1c1c1c;
+    /* v1.0.15: badge resting state is always blue (var(--accent), same in both
+       themes); ONLY the hover color is theme-scoped. v1.0.12 inverted this and
+       made the resting state theme-scoped, which the user flagged as wrong.
+       Light theme: hover swaps blue dot to dark grey. */
+    --badge-hover-color: #3a3a3a;
 }
 
 [data-theme="dark"] {
@@ -66,9 +68,10 @@
     --section-heading-color: #8d96a0;
     --section-heading-tracking: 0.04em;
     --req-asterisk-color: #ff7b72;
-    /* v1.0.12: theme-scoped update-badge color. White dot on dark bg. */
-    --badge-color: #ffffff;
-    --badge-color-hover: #e0e0e0;
+    /* v1.0.15: badge resting state is always blue (var(--accent), same in both
+       themes); ONLY the hover color is theme-scoped. Dark theme: hover swaps
+       blue dot to white. */
+    --badge-hover-color: #ffffff;
 }
 
 * { box-sizing: border-box; }
@@ -128,15 +131,19 @@ body {
 /* Update-available indicator. Sits left-of theme-toggle when visible, takes
    the right-anchor margin-left:auto. When hidden (display:none) the sibling
    rule below puts the auto back on theme-toggle so it stays right-aligned.
-   v1.0.12: theme-scoped (white in dark / dark-grey in light) via --badge-color
-   instead of the Microsoft-blue --accent. Hover state stops the pulse entirely
-   (animation: none) and pins scale/opacity to a clearly-visible resting state
-   so the cursor never lands on a paused mid-keyframe that looked invisible. */
+   v1.0.15: resting state is always blue (var(--accent), unchanged across themes
+   — Microsoft blue is the universal "update available" cue). On hover the dot
+   swaps to var(--badge-hover-color), which is theme-scoped: white in dark mode,
+   #3a3a3a (dark grey) in light mode. Hover does NOT stop the pulse; only the
+   background color changes, the scale + opacity keyframes keep running so the
+   "flashing dot" character is preserved on hover. v1.0.12 had stopped the pulse
+   + pinned scale + added a halo, which the user reported as visually unreadable
+   ("can't tell what the hell it's doing when mouse is hovered"). */
 .update-badge {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: var(--badge-color);
+    background: var(--accent);
     border: none;
     margin-left: auto;
     margin-right: 12px;
@@ -155,16 +162,11 @@ body {
 .update-badge.hidden { display: none; }
 .update-badge:hover,
 .update-badge:focus-visible {
-    background: var(--badge-color-hover);
-    /* v1.0.12: stop the pulse entirely (not just `animation-play-state: paused`,
-       which froze the badge on whatever mid-pulse frame happened to be active
-       and could look like the dot vanished). Pin to full-size + full-opacity
-       so the dot is unambiguously present while the user has their cursor on
-       it; the static halo replaces the animated ring for the click affordance. */
-    animation: none;
-    transform: scale(1);
-    opacity: 1;
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--badge-color-hover) 30%, transparent);
+    /* v1.0.15: PURE color swap on hover. No animation override, no transform
+       override, no opacity override, no static halo. The pulse keeps running
+       at the same cadence; only the dot's background color changes. The CSS
+       tooltip (::after rule below) still triggers on the same :hover selector. */
+    background: var(--badge-hover-color);
 }
 .update-badge.hidden ~ .theme-toggle { margin-left: auto; }
 
@@ -196,7 +198,11 @@ body {
 .update-badge:focus-visible::after { opacity: 1; }
 
 @keyframes badge-pulse {
-    0%   { transform: scale(0.85); box-shadow: 0 0 0 0   var(--badge-color); opacity: 1; }
+    /* v1.0.15: ring color back to var(--accent) (blue) to match the resting
+       dot. On hover the dot swaps to var(--badge-hover-color); the expanding
+       ring still flashes blue, which provides a subtle "look — there's still
+       an update here" cue without needing the inner dot to itself be blue. */
+    0%   { transform: scale(0.85); box-shadow: 0 0 0 0   var(--accent); opacity: 1; }
     50%  { transform: scale(1.35); box-shadow: 0 0 0 10px transparent; opacity: 0.85; }
     100% { transform: scale(0.85); box-shadow: 0 0 0 0   transparent; opacity: 1; }
 }

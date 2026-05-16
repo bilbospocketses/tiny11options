@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.15] - 2026-05-16
+
+**Update-badge color correction.** v1.0.12 inverted what the user actually wanted: it made the RESTING state theme-scoped (white in dark / dark-grey in light) and tried to "fix" the hover-disappear bug by stopping the pulse + adding a static halo. User feedback after smoking v1.0.13: "the coloring is completely off. the update notification is supposed to be blue (dark and light mode). on hover, changes to white pulsing dot in dark mode and dark grey pulsing dot in light mode" + "dot stops pulsing when mouse is hovered on it. and it doesn't appear to color change. in fact, i can't tell what the hell it's doing when mouse is hovered." v1.0.15 reverses both decisions: resting is always blue (Microsoft `var(--accent)`, both themes), hover swaps the dot to white (dark theme) or dark-grey (light theme) while the pulse keeps running uninterrupted.
+
+### Changed
+
+- **`ui/style.css` `.update-badge` resting state back to `var(--accent)` (blue) in both themes.** v1.0.12's resting bg `var(--badge-color)` (theme-scoped white/dark-grey) is reverted. The "update available" cue is universally blue across themes, matching the user's clarified spec.
+- **`ui/style.css` `.update-badge:hover` is now a pure color swap.** Dropped all four overrides v1.0.12 added (`animation: none`, `transform: scale(1)`, `opacity: 1`, `box-shadow` halo). Only the `background` changes — to `var(--badge-hover-color)`, which is `#ffffff` in dark theme and `#3a3a3a` in light theme. The pulse keeps running at the same cadence so the "flashing dot" character is preserved while hovered. CSS tooltip (`::after`) still triggers on the same `:hover` / `:focus-visible` selector — unchanged.
+- **Theme blocks:** `[data-theme="light"]` `--badge-color: #3a3a3a` + `--badge-color-hover: #1c1c1c` → single `--badge-hover-color: #3a3a3a`. `[data-theme="dark"]` `--badge-color: #ffffff` + `--badge-color-hover: #e0e0e0` → single `--badge-hover-color: #ffffff`. The simpler model: one theme-scoped var (hover-only); resting is `var(--accent)` regardless.
+- **`@keyframes badge-pulse` ring color back to `var(--accent)`.** v1.0.12 had keyframed `box-shadow: 0 0 0 0 var(--badge-color)` so the ring tracked the (theme-scoped) resting color. Now that resting is blue, the ring is blue too — matches the dot at rest. On hover the inner dot swaps to white/dark-grey, the ring keeps flashing blue, providing a subtle "look — there's still an update here" cue without requiring the inner dot itself to remain blue.
+
+### Note
+
+- **Why v1.0.12's hover-disappear "fix" was wrong.** The original v1.0.11 complaint ("when mouse is on dot, it disappears completely") had me believe the pulse animation needed to stop on hover to make the dot stably visible. The real issue was simpler: the v1.0.11 `:hover` rule swapped `--accent` (`#0078d4`) → `--accent-hover` (`#106ebe`), which is a *barely-perceptible* darker shade of the same blue — combined with the cursor sitting over the small 14 px dot, the user couldn't see meaningful change. The fix was always a *higher-contrast* color swap (blue → white in dark / blue → dark-grey in light), not killing the animation.
+- **v1.0.16 = inert smoke-trigger release** so v1.0.15-installed clients can detect a newer release via the v1.0.13 focus re-check + see the corrected badge colors end-to-end. v1.0.16 ships ~5 minutes after v1.0.15 publishes so the v1.0.15 client's first-boot 5-min throttle window (initialized at `DOMContentLoaded` via `lastUpdateCheckMs = Date.now()`) elapses before v1.0.16 lands, allowing the next focus event to actually fire `request-update-check` rather than being throttled.
+- **v1.0.17 = Microsoft Trusted Signing** (deferred — now v1.0.8 → ... → v1.0.17).
+
 ## [1.0.14] - 2026-05-16
 
 **No-op smoke-trigger release.** This release contains zero behavior change relative to v1.0.13 — its sole purpose is to serve as the "newer release" that a v1.0.13-installed launcher detects via its new `window.focus` re-check (added in v1.0.13). The user installs v1.0.13, alt-tabs to another app, alt-tabs back, and the focus event handler fires `request-update-check` which discovers this v1.0.14 release on GitHub. Validates the end-to-end loop in seconds rather than requiring a 30-minute idle wait that a timer-based approach would have imposed.
