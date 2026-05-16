@@ -282,12 +282,13 @@ To add a new removal: append a new item to `catalog.json` matching the schema, r
 
 ## Profile examples
 
-Three profiles are provided in [`config/examples/`](config/examples/):
+Four profiles are provided in [`config/examples/`](config/examples/):
 
 | Profile | Purpose |
 |---|---|
 | `tiny11-classic.json` | Mirrors the upstream tiny11builder removal list — the closest analog to "what tiny11builder produces" |
 | `keep-edge.json` | Like classic, but keeps Microsoft Edge (still removes everything else) |
+| `keep-edge-and-clipchamp.json` | Demonstrates pinning multiple keep-list items at once (used by smoke testing) |
 | `minimal-removal.json` | Conservative — removes only obvious bloat (Xbox, Solitaire, Teams chat icon), keeps everything else |
 
 A profile JSON has shape `{ "version": 1, "selections": { "<item-id>": "apply"|"skip", ... } }` and only needs to list items that diverge from the catalog defaults.
