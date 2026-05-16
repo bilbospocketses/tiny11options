@@ -1110,9 +1110,9 @@ function renderSourceStep() {
     const coreDrawer = state.coreMode
         ? el('div', { class: 'core-drawer' },
             el('p', { class: 'core-drawer-warning' },
-                'tiny11 Core builds a significantly smaller image, but the output is not serviceable: ' +
-                'you cannot install Windows Updates, add languages, or enable Windows features after install. ' +
-                'Suitable for VM testing or short-lived development environments — not as a daily-driver Windows install.'),
+                'tiny11 Core builds a smaller image, but the output is not serviceable: ' +
+                'no Windows Updates, adding languages, or enabling Windows features after install. ' +
+                'Suitable for VM testing or temporary dev environments — not a daily-driver.'),
             el('label', { class: 'checkbox-label' },
                 el('input', {
                     id: 'enable-net35', type: 'checkbox',
@@ -1128,7 +1128,14 @@ function renderSourceStep() {
 
     // Left column: Source & paths card.
     const leftCard = el('div', { class: 'step1-card' },
-        el('h4', null, 'Source & paths'),
+        el('div', { class: 'step1-card-header' },
+            el('h4', null, 'Source & paths'),
+            el('span', { class: 'required-notice' },
+                'Fields marked with ',
+                el('span', { class: 'req-asterisk', 'aria-hidden': 'true' }, '*'),
+                ' are required'
+            )
+        ),
 
         el('label', { for: 'src-input' }, 'Windows 11 ISO/DVD ', el('span', { class: 'req-asterisk', 'aria-hidden': 'true' }, '*')),
         el('div', { class: 'row' },
@@ -1164,6 +1171,11 @@ function renderSourceStep() {
             state.validating ? el('span', { class: 'wizard-spinner', 'aria-hidden': 'true' }) : null,
             el('span', { id: 'iso-status-text', class: 'iso-status-value' }, computeIsoStatusText())
         ),
+        // v1.0.10: visual spacer so Edition's bottom-gap matches the reserved
+        // .error-slot beneath Source / Scratch / Output. Edition has no error
+        // surface of its own (the select is gated by ISO validation), so this
+        // empty div just preserves column rhythm.
+        el('div', { class: 'edition-spacer', 'aria-hidden': 'true' }),
 
         el('label', { for: 'scratch-input' }, 'Scratch directory ', el('span', { class: 'req-asterisk', 'aria-hidden': 'true' }, '*')),
         el('div', { class: 'row' },
@@ -1264,6 +1276,10 @@ function renderSourceStep() {
                 onchange: e => state.appendLog = e.target.checked
             }),
             'Append to existing log'
+        ),
+        el('p', { class: 'hint', style: 'margin-left: calc(24px + 1.75em);' },
+            'Preserves entries from earlier builds; new output is appended to the end of the log file. ' +
+            'Unchecked overwrites the log at the start of each build.'
         ),
         // Core mode toggle relocated to bottom of right column. Drawer (warning +
         // .NET 3.5 + hint) expands within this card so left column never reflows.

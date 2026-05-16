@@ -963,6 +963,32 @@ section.build button.primary {
     margin-left: 2px;
     font-weight: 700;
 }
+/* v1.0.10: Step 1 left-card header layout — h4 on the left, right-aligned
+   required-fields notice on the right. Mirrors the .step3-card-header
+   pattern. The notice carries its own .req-asterisk span so the legend
+   colour matches the field-level asterisks pixel-for-pixel. */
+.step1-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin: 0 0 10px 0;
+    gap: 12px;
+}
+.step1-card-header h4 {
+    margin: 0;
+}
+.required-notice {
+    font-size: 11px;
+    color: var(--fg-muted);
+    text-align: right;
+}
+/* v1.0.10: Edition has no error surface of its own (the select is gated by
+   ISO validation that surfaces via #src-error / .iso-status-line). This
+   spacer preserves the column's vertical rhythm so the gap below Edition
+   roughly matches the reserved .error-slot beneath Source/Scratch/Output. */
+.edition-spacer {
+    height: 18px;
+}
 .core-drawer {
     background: var(--bg, transparent);
     border-left: 3px solid var(--warn-fg, #d97706);
