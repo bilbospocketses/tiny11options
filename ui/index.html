@@ -15,7 +15,11 @@
     </header>
     <main id="content"></main>
     <footer class="actions">
-        <span class="app-version" id="app-version" aria-label="Application version"></span>
+        <!-- v1.0.8 audit WARNING ui B8: aria-label on a span without role OVERRIDES
+             textContent for screen readers; v1.0.7 added the label and accidentally
+             hid the version number from assistive tech. title= provides tooltip for
+             sighted users without the override; screen readers read textContent. -->
+        <span class="app-version" id="app-version" title="Application version"></span>
         <button id="back-btn" disabled>&lt; Back</button>
         <button id="next-btn" disabled>Next &gt;</button>
     </footer>
