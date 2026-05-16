@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.14] - 2026-05-16
+
+**No-op smoke-trigger release.** This release contains zero behavior change relative to v1.0.13 — its sole purpose is to serve as the "newer release" that a v1.0.13-installed launcher detects via its new `window.focus` re-check (added in v1.0.13). The user installs v1.0.13, alt-tabs to another app, alt-tabs back, and the focus event handler fires `request-update-check` which discovers this v1.0.14 release on GitHub. Validates the end-to-end loop in seconds rather than requiring a 30-minute idle wait that a timer-based approach would have imposed.
+
+### Changed
+
+- **`launcher/tiny11options.Launcher.csproj`** — `<Version>1.0.13</Version>` → `<Version>1.0.14</Version>`.
+- **`launcher/app.manifest`** — `assemblyIdentity version="1.0.13.0"` → `"1.0.14.0"`.
+
+No code, resource, or test changes. Pester 516/0 + xUnit 140/0 both expected to match v1.0.13 ship.
+
+### Note
+
+- **v1.0.15 = Microsoft Trusted Signing** (deferred yet again — now v1.0.8 → v1.0.9 → v1.0.10 → v1.0.11 → v1.0.12 → v1.0.13 → v1.0.14 → v1.0.15). Signing has slipped through four post-v1.0.10 cycles of small UX repairs surfaced during successive smokes; v1.0.15 is the first cycle since v1.0.11 where signing is the only planned work.
+
 ## [1.0.13] - 2026-05-16
 
 **Update-check fires on window focus, not just at app launch.** Previously the only way to discover a newer release was to close and reopen the app — the boot-time `request-update-check` handshake fired exactly once during `DOMContentLoaded` and there was no timer or refresh anywhere. v1.0.13 adds a `window.focus` listener that re-fires the same handshake when the whole window regains focus (alt-tab back from another app, restore from minimized, click the taskbar icon). Clicking within the already-focused WebView does NOT refire the event so there's no thrashing from in-app interaction. A 5-minute `UPDATE_CHECK_MIN_INTERVAL_MS` throttle caps actual network calls even during alt-tab thrash.
