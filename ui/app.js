@@ -246,27 +246,30 @@ function renderStep() {
 
     const root = document.getElementById('content');
     clear(root);
-    document.querySelectorAll('.breadcrumb span').forEach(s => {
-        const isActive = s.dataset.step === state.step;
-        s.classList.toggle('active', isActive);
-        // v1.0.8 audit WARNING ui B2: ARIA semantics for the breadcrumb step
-        // indicator. aria-current='step' marks the active step for screen
-        // readers; aria-disabled='true' on the Core-skipped Customize step
-        // (data-disabled already drives the CSS dim). Without these, the
-        // three spans are orphan text runs to assistive tech.
-        if (isActive) {
-            s.setAttribute('aria-current', 'step');
-        } else {
-            s.removeAttribute('aria-current');
-        }
-        if (s.dataset.step === 'customize') {
-            if (state.coreMode) {
-                s.setAttribute('data-disabled', 'true');
-                s.setAttribute('aria-disabled', 'true');
+    // v1.0.9: query .crumb-btn (was span) since breadcrumb steps are now buttons.
+    const forwardOk = canMoveForward();
+    document.querySelectorAll('.breadcrumb .crumb-btn').forEach(btn => {
+        const target = btn.dataset.step;
+        const isActive = target === state.step;
+        btn.classList.toggle('active', isActive);
+        if (isActive) btn.setAttribute('aria-current', 'step');
+        else btn.removeAttribute('aria-current');
+
+        // Gated state: a forward step is gated when current is 'source' AND
+        // !canMoveForward. Customize is ALSO gated (skipped) when coreMode is on.
+        const isForward = STEP_ORDER.indexOf(target) > STEP_ORDER.indexOf(state.step);
+        const customizeSkipped = (target === 'customize' && state.coreMode);
+        const isGated = (isForward && state.step === 'source' && !forwardOk) || customizeSkipped;
+        if (isGated && !isActive) {
+            btn.setAttribute('aria-disabled', 'true');
+            if (customizeSkipped) {
+                btn.removeAttribute('aria-describedby');
             } else {
-                s.removeAttribute('data-disabled');
-                s.removeAttribute('aria-disabled');
+                btn.setAttribute('aria-describedby', 'forward-nav-gate-reason');
             }
+        } else {
+            btn.removeAttribute('aria-disabled');
+            btn.removeAttribute('aria-describedby');
         }
     });
     if (state.step === 'source')    root.appendChild(renderSourceStep());
@@ -306,16 +309,42 @@ function canAdvance() {
     return false;
 }
 
-document.getElementById('back-btn').addEventListener('click', () => {
-    if (state.step === 'customize') state.step = 'source';
-    else if (state.step === 'build') state.step = state.coreMode ? 'source' : 'customize';
+// v1.0.9: shared step-navigation entry point. Used by Back/Next buttons and
+// interactive breadcrumb. forwardOnly callers (Next + forward breadcrumb)
+// pass through canMoveForward; backward callers always succeed.
+function goToStep(target, opts) {
+    const isForward = STEP_ORDER.indexOf(target) > STEP_ORDER.indexOf(state.step);
+    if (isForward && state.step === 'source' && !canMoveForward()) return;
+    if (target === 'customize' && state.coreMode) return; // Customize is skipped in Core mode
+    state.step = target;
     state.drilledCategory = null;
     renderStep();
+    if (opts && opts.focusSelector) {
+        // After render commits, focus the target field for edit-link UX (Task 5).
+        const el = document.querySelector(opts.focusSelector);
+        if (el && typeof el.focus === 'function') el.focus();
+    }
+}
+
+const STEP_ORDER = ['source', 'customize', 'build'];
+
+document.getElementById('back-btn').addEventListener('click', () => {
+    if (state.step === 'customize') goToStep('source');
+    else if (state.step === 'build') goToStep(state.coreMode ? 'source' : 'customize');
 });
 document.getElementById('next-btn').addEventListener('click', () => {
-    if (state.step === 'source') state.step = state.coreMode ? 'build' : 'customize';
-    else if (state.step === 'customize') state.step = 'build';
-    renderStep();
+    if (state.step === 'source') goToStep(state.coreMode ? 'build' : 'customize');
+    else if (state.step === 'customize') goToStep('build');
+});
+
+// v1.0.9: wire interactive breadcrumb buttons.
+document.querySelectorAll('.crumb-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (btn.getAttribute('aria-disabled') === 'true') return;
+        const target = btn.dataset.step;
+        if (target === state.step) return;
+        goToStep(target);
+    });
 });
 
 function renderBuildStep() {

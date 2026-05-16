@@ -28,6 +28,8 @@
     --warn-fg: #826b1c;
     --lock-fg: #826b1c;
     --disabled-fg: #a8a8a8;
+    --link-disabled-color: #8a929b;
+    --accent-fg: #ffffff;
 }
 
 [data-theme="dark"] {
@@ -47,6 +49,8 @@
     --warn-fg: #f5d97c;
     --lock-fg: #f5d97c;
     --disabled-fg: #6a6a6a;
+    --link-disabled-color: #5d6470;
+    --accent-fg: #ffffff;
 }
 
 * { box-sizing: border-box; }
@@ -868,4 +872,47 @@ section.progress .cancel-row {
 .modal-actions button.primary:hover {
     background: var(--accent-hover);
     border-color: var(--accent-hover);
+}
+
+/* v1.0.9: interactive breadcrumb buttons. Three visual states:
+   - .active  (aria-current="step"): accent background, non-interactive
+   - default  (reachable):           accent text, underline-on-hover
+   - [aria-disabled="true"]:         muted text, not-allowed cursor */
+.crumb-btn {
+    background: transparent;
+    border: 0;
+    padding: 4px 10px;
+    margin: 0;
+    font: inherit;
+    cursor: pointer;
+    color: var(--accent);
+    border-radius: 4px;
+}
+.crumb-btn:not(.active):not([aria-disabled="true"]):hover {
+    text-decoration: underline;
+}
+.crumb-btn.active {
+    background: var(--accent);
+    color: var(--accent-fg, #fff);
+    cursor: default;
+    font-weight: 600;
+}
+.crumb-btn[aria-disabled="true"] {
+    color: var(--link-disabled-color, #8a929b);
+    cursor: not-allowed;
+    text-decoration: none;
+}
+.crumb-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
