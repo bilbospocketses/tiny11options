@@ -210,6 +210,7 @@ public partial class MainWindow : Window
         // was scaffolded with inverted (apply-cascade) semantics and never
         // wired from JS. Audit 2026-05-08 confirmed dead code; deleted.
         bridge.Register(new IsoHandlers(pwshRunner, _resourcesDir!));
+        bridge.Register(new PathValidationHandlers());
         // ThemeHandlers + apply-theme/get-theme types intentionally not
         // registered — JS owns theme via localStorage. Audit 2026-05-08.
         bridge.Register(new BuildHandlers(bridge, _resourcesDir!));

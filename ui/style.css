@@ -1045,3 +1045,25 @@ section.build button.primary {
         grid-template-columns: 1fr;
     }
 }
+
+/* v1.0.9 smoke pass 2: more vertical breathing room between Source & paths
+   sections in the left card. Right card has more content (5 checkboxes +
+   hint paragraphs + Core drawer) so it's taller; this brings the left
+   column closer to equal height. Excludes .checkbox-label so the right
+   card's vertically-stacked checkboxes don't get extra gaps. */
+.step1-card > label:not(.checkbox-label) {
+    margin-top: 12px;
+    display: block;
+}
+.step1-card > label:not(.checkbox-label):first-of-type {
+    margin-top: 0;
+}
+
+/* v1.0.9 smoke 2: inline path-validation error below scratch/output inputs.
+   Uses existing .error rule for color/background; .path-validation-error
+   adds spacing scoped to this v1.0.9 use. */
+.path-validation-error {
+    margin: 4px 0 0 0;
+    padding: 6px 10px;
+    font-size: 12px;
+}

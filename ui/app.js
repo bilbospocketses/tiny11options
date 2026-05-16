@@ -128,6 +128,12 @@ const state = {
     search: '',
     building: false,
     validating: false,         // true while we're awaiting iso-validated / iso-error
+    // v1.0.9 smoke 2: path validation (parallels iso-validated pattern).
+    // Empty string = OK; non-empty = error message.
+    scratchError: '',
+    outputError: '',
+    validatingScratch: false,
+    validatingOutput: false,
     validatingStart: 0,        // Date.now() when validation kicked off — drives the elapsed counter
     completed: null,
     progress: null,
@@ -207,6 +213,16 @@ function startValidationSpinner() {
 function stopValidationSpinner() {
     state.validating = false;
     if (validationTimerId) { clearInterval(validationTimerId); validationTimerId = null; }
+}
+
+function dispatchScratchValidation(path) {
+    state.validatingScratch = true;
+    ps({ type: 'validate-scratch', payload: { path } });
+}
+
+function dispatchOutputValidation(path) {
+    state.validatingOutput = true;
+    ps({ type: 'validate-output', payload: { path } });
 }
 
 function updateValidationSpinnerText() {
@@ -308,7 +324,9 @@ function canMoveForward() {
     const editionFilled = state.edition !== null;
     const scratchFilled = !!(state.scratchDir && state.scratchDir.trim());
     const outputFilled  = !!(state.outputPath  && state.outputPath.trim());
-    return sourceFilled && editionFilled && scratchFilled && outputFilled;
+    const scratchClean  = !state.scratchError && !state.validatingScratch;
+    const outputClean   = !state.outputError && !state.validatingOutput;
+    return sourceFilled && editionFilled && scratchFilled && outputFilled && scratchClean && outputClean;
 }
 
 function updateNav() {
@@ -1148,20 +1166,48 @@ function renderSourceStep() {
                 id: 'scratch-input', type: 'text', value: state.scratchDir || '',
                 'aria-required': 'true',
                 placeholder: 'Required. Pre-filled with an auto-generated path you can replace.',
-                onchange: e => { state.scratchDir = e.target.value; autofillOutputPath(); renderStep(); }
+                onchange: e => {
+                    const val = (e.target.value || '').trim();
+                    if (val === '' && window.__autoScratchPath) {
+                        // Auto-restore: empty field -> default. No validation needed (boot path is trusted).
+                        state.scratchDir = window.__autoScratchPath;
+                        state.scratchError = '';
+                        autofillOutputPath();
+                        renderStep();
+                        return;
+                    }
+                    state.scratchDir = val;
+                    state.scratchError = '';  // clear prior error while validating
+                    autofillOutputPath();
+                    dispatchScratchValidation(val);
+                    renderStep();
+                }
             }),
             el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
         ),
+        state.scratchError
+            ? el('div', { class: 'error path-validation-error', role: 'alert' }, state.scratchError)
+            : null,
 
         el('label', { for: 'out-input' }, 'Output ISO ', el('span', { class: 'req-asterisk', 'aria-hidden': 'true' }, '*')),
         el('div', { class: 'row' },
             el('input', {
                 id: 'out-input', type: 'text', value: state.outputPath || '',
                 'aria-required': 'true',
-                onchange: e => { state.outputPath = e.target.value; state.outputPathIsAuto = false; renderStep(); }
+                onchange: e => {
+                    const val = (e.target.value || '').trim();
+                    state.outputPath = val;
+                    state.outputPathIsAuto = false;
+                    state.outputError = '';
+                    dispatchOutputValidation(val);
+                    renderStep();
+                }
             }),
             el('button', { onclick: () => ps({ type: 'browse-save-file', payload: { context: 'output', title: 'Save tiny11 ISO as...', filter: 'ISO files|*.iso|All files|*.*', defaultName: state.coreMode ? 'tiny11core.iso' : 'tiny11.iso' } }) }, 'Browse...')
-        )
+        ),
+        state.outputError
+            ? el('div', { class: 'error path-validation-error', role: 'alert' }, state.outputError)
+            : null
     );
 
     // Right column: Build options card.
@@ -1268,11 +1314,33 @@ onPs(msg => {
             banner.classList.remove('hidden');
             banner.textContent = p.message;
         }
+    } else if (msg.type === 'validated-scratch') {
+        if (p.path && p.path !== state.scratchDir) return;  // stale response
+        state.validatingScratch = false;
+        state.scratchError = p.valid ? '' : (p.message || 'Validation failed.');
+        renderStep();
+    } else if (msg.type === 'validated-output') {
+        if (p.path && p.path !== state.outputPath) return;  // stale response
+        state.validatingOutput = false;
+        state.outputError = p.valid ? '' : (p.message || 'Validation failed.');
+        renderStep();
     } else if (msg.type === 'browse-result') {
         if (!p.path) return; // user cancelled the dialog
         if (p.context === 'source')  { state.source = p.path; ps({ type: 'validate-iso', payload: { path: p.path } }); startValidationSpinner(); }
-        else if (p.context === 'scratch') { state.scratchDir = p.path; autofillOutputPath(); renderStep(); }
-        else if (p.context === 'output')  { state.outputPath = p.path; state.outputPathIsAuto = false; renderStep(); }
+        else if (p.context === 'scratch') {
+            state.scratchDir = p.path;
+            state.scratchError = '';
+            autofillOutputPath();
+            dispatchScratchValidation(p.path);
+            renderStep();
+        }
+        else if (p.context === 'output')  {
+            state.outputPath = p.path;
+            state.outputPathIsAuto = false;
+            state.outputError = '';
+            dispatchOutputValidation(p.path);
+            renderStep();
+        }
         else if (p.context === 'profile-save') {
             ps({ type: 'save-profile', payload: { path: p.path, selections: pendingSaveProfileSelections } });
             pendingSaveProfileSelections = null;
