@@ -15,3 +15,6 @@ dist/
 *.userprefs
 .vs/
 launcher/.claude/settings.local.json
+
+# superpowers brainstorm sessions (mockups + state)
+.superpowers/
