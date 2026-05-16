@@ -17,7 +17,7 @@
     --bg-card: #fafafa;
     --bg-input: #ffffff;
     --fg: #1c1c1c;
-    --fg-muted: #6b6b6b;
+    --fg-muted: #525252;
     --border: #e0e0e0;
     --border-hover: #c8c8c8;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.04);
@@ -30,7 +30,7 @@
     --disabled-fg: #a8a8a8;
     --link-disabled-color: #8a929b;
     --accent-fg: #ffffff;
-    --card-bg: #ffffff;
+    --card-bg: #f6f8fa;
     --card-border: #d0d7de;
     --card-radius: 6px;
     --section-heading-color: #57606a;
@@ -267,8 +267,13 @@ label.checkbox-label {
 }
 
 /* Form-style sections (Step 1) */
+/* v1.0.9 smoke: removed max-width: 720px constraint. The new step1-grid
+   two-column layout (Task 4) fills the available width; #content's
+   padding: var(--gap-lg) provides the edge breathing room. Removing the
+   cap also unblocks the @media (max-width: 800px) collapse rule which
+   previously couldn't trigger (rendered width was always <= 720px). */
 section.form {
-    max-width: 720px;
+    /* no max-width — see comment above */
 }
 
 /* Hidden Browse-style button placeholder, sits next to the Edition select

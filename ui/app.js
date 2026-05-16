@@ -1147,7 +1147,7 @@ function renderSourceStep() {
             el('input', {
                 id: 'scratch-input', type: 'text', value: state.scratchDir || '',
                 'aria-required': 'true',
-                placeholder: 'Leave as-is to use auto-generated path; replace with your own location if desired.',
+                placeholder: 'Required. Pre-filled with an auto-generated path you can replace.',
                 onchange: e => { state.scratchDir = e.target.value; autofillOutputPath(); renderStep(); }
             }),
             el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
