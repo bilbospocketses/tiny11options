@@ -962,3 +962,60 @@ section.progress .cancel-row {
     margin-top: 8px;
     border-radius: 0 4px 4px 0;
 }
+
+/* v1.0.9: Step 3 segmented summary cards */
+.s3-stack { display: flex; flex-direction: column; gap: 12px; }
+.s3-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    padding: 14px 18px;
+}
+.s3-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin: 0 0 10px 0;
+}
+.s3-card-header h4 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--section-heading-color);
+    text-transform: uppercase;
+    letter-spacing: var(--section-heading-tracking);
+}
+.s3-edit-link {
+    background: transparent;
+    border: 0;
+    padding: 2px 4px;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 11px;
+    text-decoration: none;
+}
+.s3-edit-link:hover { text-decoration: underline; }
+.s3-edit-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.s3-row {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 10px;
+    padding: 5px 0;
+    font-size: 13px;
+    align-items: baseline;
+}
+.s3-row .lbl { color: var(--section-heading-color); }
+.s3-row .val {
+    font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+    word-break: break-all;
+}
+
+.s3-cta-card { text-align: center; padding: 20px; }
+.s3-cta-hint { font-size: 12px; color: var(--section-heading-color); margin: 0 0 12px; }
+.s3-cta-button {
+    padding: 12px 28px;
+    font-size: 15px;
+    font-weight: 600;
+}
+.s3-cta-footnote { font-size: 12px; color: var(--section-heading-color); margin: 12px 0 0; }

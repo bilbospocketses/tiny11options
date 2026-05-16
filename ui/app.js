@@ -355,64 +355,65 @@ function renderBuildStep() {
     const totalApplied = state.catalog.items.filter(i => resolved[i.id].effective === 'apply').length;
     const editionLabel = (state.editions || []).find(e => e.index === state.edition);
 
-    // Summary rows differ between Core and standard mode.
-    const modeSummaryRows = state.coreMode
-        ? [
-            el('dt', null, 'Mode'),    el('dd', null, 'Core'),
-            el('dt', null, '.NET 3.5'), el('dd', null, state.enableNet35 ? 'Enabled' : 'Disabled'),
-          ]
-        : [
-            el('dt', null, 'Changes'), el('dd', null, `${totalApplied} items applied`),
-          ];
+    // Cleanup banner (full-width above cards) — same three states as before.
+    const banner = renderInlineCleanupStatus();
 
-    const inlineStatus = renderInlineCleanupStatus();
-    const outputMissing = !state.outputPath || !state.outputPath.trim();
-    const buildDisabled = state.cleaning || (state.cleanupStatus && state.cleanupStatus.kind === 'error') || outputMissing;
-
-    // When the user leaves the scratch directory blank on Step 1, scratchDir is null
-    // and prefillOutputIfEmpty() never fires, leaving outputPath null. The Build ISO
-    // script param -OutputIso has [ValidateNotNullOrEmpty()] and the pwsh subprocess
-    // bombs at parameter binding with a confusing
-    // ParameterArgumentValidationErrorEmptyStringNotAllowed before any UI feedback
-    // surfaces. Guard the button + show an actionable warning so users know to fill
-    // the output field in (we deliberately avoid silently auto-defaulting into the
-    // user's Documents folder because dropping a multi-GB ISO there without intent
-    // would be a worse surprise).
-    const outputWarning = outputMissing
-        ? el('div', { class: 'output-required-warning' },
-            el('span', { class: 'output-required-glyph' }, '!'),
-            el('span', { class: 'output-required-message' }, 'Choose an output location for the ISO file before building. (Scratch directory left blank is fine -- it lands in %TEMP% automatically -- but the output ISO needs an explicit path so you do not lose it.)')
-          )
-        : null;
-
-    return el('section', { class: 'build' },
-        el('h2', null, 'Ready to build'),
-        inlineStatus,
-        el('dl', null,
-            el('dt', null, 'Source'),     el('dd', null, state.source || ''),
-            el('dt', null, 'Edition'),    el('dd', null, editionLabel ? editionLabel.name : String(state.edition || '')),
-            el('dt', null, 'Scratch'),    el('dd', null, state.scratchDir || ''),
-            el('dt', null, 'Output ISO'),
-            el('dd', { class: 'row' },
-                el('input', {
-                    id: 'out-input', type: 'text', value: state.outputPath || '',
-                    onchange: e => { state.outputPath = e.target.value; state.outputPathIsAuto = false; renderStep(); }
-                }),
-                el('button', { onclick: () => ps({ type: 'browse-save-file', payload: { context: 'output', title: 'Save tiny11 ISO as...', filter: 'ISO files|*.iso|All files|*.*', defaultName: state.coreMode ? 'tiny11core.iso' : 'tiny11.iso' } }) }, 'Browse...')
-            ),
-            ...modeSummaryRows
+    // Card 1: Paths
+    const pathsCard = el('div', { class: 's3-card' },
+        el('div', { class: 's3-card-header' },
+            el('h4', null, 'Paths'),
+            renderEditLink('Edit in Step 1', 'source', '#src-input')
         ),
-        outputWarning,
+        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Source'),      el('span', { class: 'val' }, state.source || '—')),
+        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Edition'),     el('span', { class: 'val' }, editionLabel ? `${editionLabel.name} (index ${editionLabel.index})` : '—')),
+        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Scratch'),     el('span', { class: 'val' }, state.scratchDir || '—')),
+        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Output ISO'),  el('span', { class: 'val' }, state.outputPath || '—'))
+    );
+
+    // Card 2: Build mode
+    const optionChips = [
+        state.unmountSource ? 'Unmount source' : null,
+        state.fastBuild ? 'Fast build' : null,
+        state.installPostBootCleanup ? 'Post-boot cleanup' : null,
+        state.logBuildOutput ? (state.appendLog ? 'Log (append)' : 'Log') : null,
+    ].filter(Boolean).join(' · ') || '(none)';
+    const modeCard = el('div', { class: 's3-card' },
+        el('div', { class: 's3-card-header' },
+            el('h4', null, 'Build mode'),
+            renderEditLink('Edit in Step 1', 'source', '#unmount-source')
+        ),
+        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Mode'),    el('span', { class: 'val' }, state.coreMode ? 'Core' : 'Standard')),
+        el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Options'), el('span', { class: 'val' }, optionChips)),
+        state.coreMode
+            ? el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, '.NET 3.5'), el('span', { class: 'val' }, state.enableNet35 ? 'Enabled' : 'Disabled'))
+            : null
+    );
+
+    // Card 3: Customizations
+    const customCard = el('div', { class: 's3-card' },
+        el('div', { class: 's3-card-header' },
+            el('h4', null, 'Customizations'),
+            renderEditLink('Edit in Step 2', 'customize', '#search')
+        ),
+        state.coreMode
+            ? el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Note'), el('span', { class: 'val' }, "Customizations don't apply to Core builds — Core builds a fixed minimal image."))
+            : el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Applied'), el('span', { class: 'val' }, `${totalApplied} items (out of ${state.catalog.items.length})`))
+    );
+
+    // Card 4: Ready to build (CTA)
+    const buildDisabled = state.cleaning || (state.cleanupStatus && state.cleanupStatus.kind === 'error');
+    const buildMode = state.coreMode
+        ? (state.fastBuild ? 'Core + Fast build' : 'Core')
+        : (state.fastBuild ? 'Standard + Fast build' : 'Standard');
+    const estHint = `Estimated 20–40 min for a ${buildMode} build.`;
+    const ctaCard = el('div', { class: 's3-card s3-cta-card' },
+        el('p', { class: 's3-cta-hint' }, estHint),
         el('button', {
-            class: 'primary',
+            class: 'primary s3-cta-button',
             disabled: buildDisabled,
-            title: outputMissing ? 'Set the Output ISO path first.' : null,
             onclick: () => {
                 if (buildDisabled) return;
                 state.building = true;
-                // Reset cleanup state so a new run starts fresh. Mount/source
-                // dirs get refreshed by the mount-state marker when install.wim
-                // mounts in the new build.
                 state.cleaning = false;
                 state.cleanupStatus = null;
                 state.pendingCleanupAfterCancel = false;
@@ -436,8 +437,29 @@ function renderBuildStep() {
                     },
                 });
             }
-        }, 'Build ISO')
+        }, 'Build ISO'),
+        el('p', { class: 's3-cta-footnote' }, 'Output lands at ', el('code', null, state.outputPath || '—'))
     );
+
+    return el('section', { class: 'build s3-stack' },
+        banner,
+        pathsCard,
+        modeCard,
+        customCard,
+        ctaCard
+    );
+}
+
+// v1.0.9: helper to render a Step 3 edit-link header button. Click jumps to
+// the target step + focuses the specified selector via goToStep's focus hook.
+function renderEditLink(label, targetStep, focusSelector) {
+    return el('button', {
+        type: 'button',
+        class: 's3-edit-link',
+        'aria-label': label,
+        'data-edit-target': focusSelector,
+        onclick: () => goToStep(targetStep, { focusSelector })
+    }, label);
 }
 
 // Common cleanup command list, surfaced both in the recipe block (in-progress
