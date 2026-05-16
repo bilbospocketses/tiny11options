@@ -1099,13 +1099,6 @@ function renderSourceStep() {
     return section;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    initTheme();
-    renderStep();
-    const ver = document.getElementById('app-version');
-    if (ver && typeof window.__appVersion === 'string') ver.textContent = window.__appVersion;
-});
-
 onPs(msg => {
     const p = msg.payload || {};
     if (msg.type === 'iso-validated') {
@@ -1287,16 +1280,32 @@ onPs(msg => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+    // v1.0.8 audit WARNING ui B6: single consolidated boot handler. Pre-fix
+    // there were TWO DOMContentLoaded handlers (one near line 1102 doing
+    // initTheme/renderStep/__appVersion, one here wiring the update badge +
+    // request-update-check). Both fired on the same event; boot order
+    // depended on registration order. Now: explicit ordered sequence.
+    initTheme();
+
+    // Wire update-badge click. Defensive: if the badge element is missing
+    // (HTML refactor), skip badge wiring but still continue with renderStep
+    // and request-update-check below.
     const badge = document.getElementById('update-badge');
-    if (!badge) return;
-    badge.addEventListener('click', () => {
-        if (!pendingUpdate) return;
-        const notes = (pendingUpdate.changelog || '').slice(0, 400);
-        const trail = pendingUpdate.changelog && pendingUpdate.changelog.length > 400 ? '\n...' : '';
-        if (confirm(`Install tiny11options v${pendingUpdate.version}?\n\n${notes}${trail}`)) {
-            ps({ type: 'apply-update', payload: {} });
-        }
-    });
+    if (badge) {
+        badge.addEventListener('click', () => {
+            if (!pendingUpdate) return;
+            const notes = (pendingUpdate.changelog || '').slice(0, 400);
+            const trail = pendingUpdate.changelog && pendingUpdate.changelog.length > 400 ? '\n...' : '';
+            if (confirm(`Install tiny11options v${pendingUpdate.version}?\n\n${notes}${trail}`)) {
+                ps({ type: 'apply-update', payload: {} });
+            }
+        });
+    }
+
+    renderStep();
+
+    const ver = document.getElementById('app-version');
+    if (ver && typeof window.__appVersion === 'string') ver.textContent = window.__appVersion;
 
     // JS-initiated update-check handshake. C# UpdateHandlers receives this and
     // fires UpdateNotifier.CheckAsync; the response comes back as update-available
