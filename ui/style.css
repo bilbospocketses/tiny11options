@@ -1052,7 +1052,7 @@ section.build button.primary {
    column closer to equal height. Excludes .checkbox-label so the right
    card's vertically-stacked checkboxes don't get extra gaps. */
 .step1-card > label:not(.checkbox-label) {
-    margin-top: 20px;
+    margin-top: 14px;
     display: block;
 }
 .step1-card > label:not(.checkbox-label):first-of-type {
@@ -1067,7 +1067,7 @@ section.build button.primary {
    error messages will wrap and very-long ones may still nudge the layout. */
 .error-slot {
     min-height: 38px;
-    margin-top: 4px;
+    margin-top: 2px;
     box-sizing: border-box;
 }
 .error-slot:not(:empty) {
