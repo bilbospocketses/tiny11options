@@ -71,7 +71,12 @@ function Build-RelaunchArgs {
     # single string, paths with embedded " would break parsing. Latent today
     # (all params are scalar [string]/[int]/[switch]) but a defensive fix for
     # future param growth.
-    $parts = @("-NoProfile", "-File", "`"$($ScriptPath -replace '"', '""')`"")
+    # Note: use string concatenation ('"' + ... + '"') rather than backtick-
+    # quote wrapping (`"...$(...)`"`). The backtick form loses the doubled ""
+    # from -replace because the outer double-quoted string re-parses the
+    # subexpression result, eating one of the two quotes.
+    $q = '"'
+    $parts = @("-NoProfile", "-File", ($q + ($ScriptPath -replace '"', '""') + $q))
     foreach ($entry in $Bound.GetEnumerator()) {
         if ($entry.Key -eq 'Internal') { continue }
         $val = $entry.Value
@@ -82,11 +87,11 @@ function Build-RelaunchArgs {
             # them as multiple values for the same parameter.
             foreach ($item in $val) {
                 $parts += "-$($entry.Key)"
-                $parts += "`"$($item -replace '"', '""')`""
+                $parts += $q + ($item -replace '"', '""') + $q
             }
         } else {
             $parts += "-$($entry.Key)"
-            $parts += "`"$($val -replace '"', '""')`""
+            $parts += $q + ($val -replace '"', '""') + $q
         }
     }
     $parts -join ' '
