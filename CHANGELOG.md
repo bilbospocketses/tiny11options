@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.18] - 2026-05-16
+
+**No-op smoke-trigger release.** Zero behavior change vs v1.0.17. Sole purpose: serve as the "newer release" that a v1.0.17-installed launcher detects via its (v1.0.13-added) `window.focus` re-check, so the v1.0.17 unified-pulse-color + non-pulsing-tooltip corrections can be smoked end-to-end. Resting blue dot (both themes); hover swap to a fully-white pulse in dark mode or a fully-`#3a3a3a` pulse in light mode (dot + wave matched); tooltip "Update available, click to install..." renders steadily (no longer pulses with the wave).
+
+### Changed
+
+- **`launcher/tiny11options.Launcher.csproj`** — `<Version>1.0.17</Version>` → `<Version>1.0.18</Version>`.
+- **`launcher/app.manifest`** — `assemblyIdentity version="1.0.17.0"` → `"1.0.18.0"`.
+
+No code, resource, or test changes. Pester 516/0 + xUnit 140/0 both expected to match v1.0.17 ship.
+
+### Note
+
+- **v1.1.0 = Microsoft Trusted Signing** (per user direction: "we'll keep with semver for this round until we get this finalized. Code signing step will now subver to 1.1.0 when we get there"). Signing has slipped through six post-v1.0.10 patch cycles of UX repairs; promoting to a minor-version bump signals the step-change in release maturity once it lands.
+
 ## [1.0.17] - 2026-05-16
 
 **Update-badge — unified pulse color + tooltip stops pulsing with the wave.** Two corrections from v1.0.15 smoke:
