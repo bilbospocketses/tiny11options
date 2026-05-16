@@ -88,10 +88,22 @@ function Test-IsAdmin {
 
 function Invoke-SelfElevate {
     param([Parameter(Mandatory)] $Bound)
+    # v1.0.8 audit WARNING scripts A1: refuse self-elevation in -NonInteractive
+    # mode. CI / headless callers MUST pre-elevate; self-elevation across the
+    # UAC boundary can't propagate the elevated child's exit code back to the
+    # original parent, silently breaking the documented exit-code contract.
+    if ($Bound.ContainsKey('NonInteractive') -and $Bound['NonInteractive']) {
+        throw "tiny11maker.ps1: -NonInteractive requires a pre-elevated session. Self-elevation across UAC cannot propagate exit codes back to the caller. Re-launch as administrator."
+    }
+
     $argString = Build-RelaunchArgs -Bound $Bound -ScriptPath $PSCommandPath
     $pwshPath = (Get-Process -Id $PID).Path
     Write-Output "Restarting tiny11options as admin..."
-    Start-Process -FilePath $pwshPath -ArgumentList $argString -Verb RunAs
+    # v1.0.8 audit WARNING scripts A1: -Wait -PassThru captures the elevated
+    # child's ExitCode so the caller (e.g. tiny11options.exe HeadlessRunner)
+    # sees the actual build outcome, not a misleading 0.
+    $proc = Start-Process -FilePath $pwshPath -ArgumentList $argString -Verb RunAs -Wait -PassThru
+    exit $proc.ExitCode
 }
 
 if ($Internal) { return }
@@ -123,6 +135,10 @@ Path C (post-v1.0.0) will eliminate this caveat via a bundled .exe launcher.
 
 if (-not (Test-IsAdmin)) {
     Invoke-SelfElevate -Bound $PSBoundParameters
+    # Invoke-SelfElevate always exits (either by throw on -NonInteractive or
+    # by `exit $proc.ExitCode` post-elevation). The line below is unreachable
+    # but kept defensively in case a future refactor makes the function
+    # return-only.
     exit
 }
 

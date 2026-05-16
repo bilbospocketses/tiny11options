@@ -13,3 +13,11 @@ Describe "Build-RelaunchArgs" {
         $argString | Should -Match '-File "C:\\foo\\tiny11maker.ps1"'
     }
 }
+
+Describe "Invoke-SelfElevate (v1.0.8 audit A1)" {
+    BeforeAll { . "$PSScriptRoot/../tiny11maker.ps1" -Internal }
+    It "throws on -NonInteractive self-elevation attempt" {
+        $bound = @{ NonInteractive = $true; Source = 'C:\fake.iso' }
+        { Invoke-SelfElevate -Bound $bound } | Should -Throw "*requires a pre-elevated session*"
+    }
+}
