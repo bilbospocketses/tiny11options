@@ -36,6 +36,9 @@
     --section-heading-color: #57606a;
     --section-heading-tracking: 0.04em;
     --req-asterisk-color: #d1242f;
+    /* v1.0.12: theme-scoped update-badge color. Dark-grey dot on light bg. */
+    --badge-color: #3a3a3a;
+    --badge-color-hover: #1c1c1c;
 }
 
 [data-theme="dark"] {
@@ -63,6 +66,9 @@
     --section-heading-color: #8d96a0;
     --section-heading-tracking: 0.04em;
     --req-asterisk-color: #ff7b72;
+    /* v1.0.12: theme-scoped update-badge color. White dot on dark bg. */
+    --badge-color: #ffffff;
+    --badge-color-hover: #e0e0e0;
 }
 
 * { box-sizing: border-box; }
@@ -121,28 +127,76 @@ body {
 
 /* Update-available indicator. Sits left-of theme-toggle when visible, takes
    the right-anchor margin-left:auto. When hidden (display:none) the sibling
-   rule below puts the auto back on theme-toggle so it stays right-aligned. */
+   rule below puts the auto back on theme-toggle so it stays right-aligned.
+   v1.0.12: theme-scoped (white in dark / dark-grey in light) via --badge-color
+   instead of the Microsoft-blue --accent. Hover state stops the pulse entirely
+   (animation: none) and pins scale/opacity to a clearly-visible resting state
+   so the cursor never lands on a paused mid-keyframe that looked invisible. */
 .update-badge {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--badge-color);
     border: none;
     margin-left: auto;
     margin-right: 12px;
     padding: 0;
     cursor: pointer;
+    position: relative;
+    /* Suppress native button UA styling that can otherwise re-skin the bg on
+       hover/active in some WebView2 builds. */
+    appearance: none;
+    -webkit-appearance: none;
     /* Intentionally NOT gated on prefers-reduced-motion. This is a notification
        indicator the user needs to discover; the entire feature is "movement that
        grabs your eye". Subtle scale + ring pulse, not a strobe. */
     animation: badge-pulse 1.6s ease-in-out infinite;
 }
 .update-badge.hidden { display: none; }
-.update-badge:hover { background: var(--accent-hover); animation-play-state: paused; }
+.update-badge:hover,
+.update-badge:focus-visible {
+    background: var(--badge-color-hover);
+    /* v1.0.12: stop the pulse entirely (not just `animation-play-state: paused`,
+       which froze the badge on whatever mid-pulse frame happened to be active
+       and could look like the dot vanished). Pin to full-size + full-opacity
+       so the dot is unambiguously present while the user has their cursor on
+       it; the static halo replaces the animated ring for the click affordance. */
+    animation: none;
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--badge-color-hover) 30%, transparent);
+}
 .update-badge.hidden ~ .theme-toggle { margin-left: auto; }
 
+/* v1.0.12: CSS-based tooltip via ::after + data-tooltip. Native title-attr
+   tooltips are inconsistently rendered in WebView2 (often delayed / suppressed
+   when an animation is active). data-tooltip is set in index.html and the
+   title attr is kept for screen-reader fallback / aria-tree consistency. */
+.update-badge::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: var(--bg-card);
+    color: var(--fg);
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12px;
+    font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+    line-height: 1.3;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease-in-out;
+    z-index: 1000;
+    box-shadow: var(--shadow);
+}
+.update-badge:hover::after,
+.update-badge:focus-visible::after { opacity: 1; }
+
 @keyframes badge-pulse {
-    0%   { transform: scale(0.85); box-shadow: 0 0 0 0   var(--accent); opacity: 1; }
+    0%   { transform: scale(0.85); box-shadow: 0 0 0 0   var(--badge-color); opacity: 1; }
     50%  { transform: scale(1.35); box-shadow: 0 0 0 10px transparent; opacity: 0.85; }
     100% { transform: scale(0.85); box-shadow: 0 0 0 0   transparent; opacity: 1; }
 }

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.12] - 2026-05-16
+
+**Update-available badge fix.** Two paired fixes to the small pulsing dot in the nav (visible when a newer release is detected): (1) the dot was rendered in Microsoft blue (`--accent`, a `:root` variable that wasn't theme-scoped) and is now theme-scoped — white in dark mode, dark grey (`#3a3a3a`) in light mode — to match the rest of the wizard's flat-styling palette and to stay legible on the nav background of either theme; (2) hovering the dot used to freeze the pulse animation mid-keyframe (`animation-play-state: paused`), which could leave the badge stuck at a shrunken-or-transparent frame and visually "disappear" under the cursor — the hover state now stops the animation entirely (`animation: none`), pins the dot to full scale + full opacity, and shows a static colored halo as the click affordance.
+
+### Changed
+
+- **`ui/style.css` — `.update-badge` color is now theme-scoped.** New CSS custom properties `--badge-color` (resting) + `--badge-color-hover` defined in both `[data-theme="light"]` and `[data-theme="dark"]` blocks: light mode = `#3a3a3a` resting / `#1c1c1c` hover (dark grey on white nav); dark mode = `#ffffff` resting / `#e0e0e0` hover (white on dark nav). The previous `var(--accent)` blue (`#0078d4`) was a single `:root` value with no theme variant. `@keyframes badge-pulse` ring-shadow color also moved from `var(--accent)` to `var(--badge-color)` so the expanding ring matches the dot under both themes.
+- **`ui/style.css` — `.update-badge:hover` now stops the pulse entirely.** Replaced `animation-play-state: paused` (which froze the dot on whatever mid-pulse frame happened to be active when the cursor entered) with `animation: none; transform: scale(1); opacity: 1;` plus a static `box-shadow` halo. The dot is unambiguously visible at full size while the cursor is on it. `:focus-visible` shares the same rule for keyboard nav. Added `appearance: none` + `-webkit-appearance: none` to suppress any native UA button styling that could otherwise re-skin the bg on hover/active in some WebView2 builds.
+
+### Added
+
+- **`ui/style.css` — CSS-based tooltip via `::after` + `data-tooltip` attr.** Native `title` attribute tooltips are inconsistent in WebView2 (often delayed or suppressed while a CSS animation is active). The new tooltip is positioned `top: calc(100% + 8px); right: 0` below the dot, uses `var(--bg-card)` + `var(--fg)` + `var(--border)` so it auto-adapts to theme, and fades in over 120 ms on `:hover` or `:focus-visible`. `pointer-events: none` ensures the tooltip itself never intercepts clicks targeting the badge.
+- **`ui/index.html` — `data-tooltip="Update available, click to install..."`** added to `#update-badge`. The `title` attribute is also updated to the same text for screen-reader fallback / aria-tree consistency, and `aria-label` is widened from `"Update available"` to `"Update available, click to install"` so assistive tech reads the action in addition to the state.
+
+### Note
+
+- **v1.0.13 = Microsoft Trusted Signing** (the 3 signing items deferred from v1.0.8 → v1.0.9 → v1.0.10 → v1.0.11 → v1.0.12 → v1.0.13: ci B2 narrow-secret-scope + ci B3 action-rename bump + 5 GitHub Action secrets). Signing got bumped one more cycle because this badge fix surfaced during v1.0.11 smoke and is a quick, isolated UX repair that benefits from landing isolated from the multi-step signing setup.
+
 ## [1.0.11] - 2026-05-16
 
 **Default scratch + output ISO paths relocated from `%TEMP%` to `<UserDocuments>\tiny11_outputs`.** Single small surface change: the launcher's auto-populated defaults for Scratch directory + Output ISO now anchor on the user's Documents folder instead of `%TEMP%`, so build artifacts are predictable and user-visible regardless of how UAC resolved `%TEMP%` during elevation. The launcher requires elevation (manifest `requireAdministrator`) and `%TEMP%` under elevated context can resolve in surprising ways depending on which user accepted the UAC consent. `Environment.GetFolderPath(SpecialFolder.MyDocuments)` is anchored to the user SID, stable across elevation under the same account.
