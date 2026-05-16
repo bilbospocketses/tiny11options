@@ -35,7 +35,13 @@ try {
             # the post-validate dismount. Critical for clean retry: without it,
             # the source ISO can remain mount-locked when the user re-validates
             # the same path immediately.
-            Dismount-Tiny11Source -IsoPath $IsoPath -MountedByUs:$true -ForceUnmount:$true
+            # v1.0.8 audit WARNING scripts A4: forward from $mountResult to
+            # match the GUI handler pattern (tiny11maker.ps1:191). Functionally
+            # equivalent today (outer if-guard makes -MountedByUs:$true safe;
+            # $IsoPath == $mountResult.IsoPath for .iso file inputs) but the
+            # symmetry prevents a future loosening of the outer guard from
+            # surfacing as a contract violation.
+            Dismount-Tiny11Source -IsoPath $mountResult.IsoPath -MountedByUs:$mountResult.MountedByUs -ForceUnmount:$true
         }
     }
 }
