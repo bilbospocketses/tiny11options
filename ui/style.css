@@ -1019,3 +1019,12 @@ section.build button.primary {
     font-weight: 600;
 }
 .s3-cta-footnote { font-size: 12px; color: var(--section-heading-color); margin: 12px 0 0; }
+
+/* v1.0.9: collapse Step 1 two-column to single column on narrow windows.
+   Defense in depth -- WebView2 default is 1100x750 per MainWindow.xaml,
+   so users normally won't hit this. */
+@media (max-width: 800px) {
+    .form.step1-grid {
+        grid-template-columns: 1fr;
+    }
+}
