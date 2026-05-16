@@ -71,13 +71,11 @@ jobs:
 
       - name: Test (Pester)
         shell: pwsh
-        run: |
-          Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
-          $config = New-PesterConfiguration
-          $config.Run.Path = 'tests/'
-          $config.Run.Exit = $true
-          $config.Output.Verbosity = 'Detailed'
-          Invoke-Pester -Configuration $config
+        # v1.0.8 audit WARNING ci B1: use Run-Tests.ps1 so the
+        # #Requires Pester 5.3.1/5.99.99 pin from v1.0.2 A6 W4 is honored.
+        # Inline config previously bypassed the pin; would silently regress
+        # against Pester 6.x when PSGallery rolls it as latest.
+        run: pwsh -NoProfile -File tests/Run-Tests.ps1
 
       - name: Publish (single-file, self-contained)
         run: |
