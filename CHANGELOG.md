@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.16] - 2026-05-16
+
+**No-op smoke-trigger release.** Zero behavior change vs v1.0.15. Sole purpose: serve as the "newer release" that a v1.0.15-installed launcher detects via its (v1.0.13-added) `window.focus` re-check, so the corrected v1.0.15 badge colors can be smoked end-to-end:
+1. Resting blue dot (both themes).
+2. Hover swap to white (dark theme) or `#3a3a3a` dark-grey (light theme), pulse still running.
+3. CSS tooltip "Update available, click to install..." fades in below.
+
+Published ~5 minutes after v1.0.15 specifically so the v1.0.15 client's first-boot 5-min throttle window (initialized at `DOMContentLoaded` via `lastUpdateCheckMs = Date.now()`) has elapsed before this release lands, allowing the next focus event the user fires (alt-tab away → alt-tab back) to actually dispatch `request-update-check` rather than being throttled.
+
+### Changed
+
+- **`launcher/tiny11options.Launcher.csproj`** — `<Version>1.0.15</Version>` → `<Version>1.0.16</Version>`.
+- **`launcher/app.manifest`** — `assemblyIdentity version="1.0.15.0"` → `"1.0.16.0"`.
+
+No code, resource, or test changes. Pester 516/0 + xUnit 140/0 both expected to match v1.0.15 ship.
+
+### Note
+
+- **v1.0.17 = Microsoft Trusted Signing** (deferred — now v1.0.8 → v1.0.9 → v1.0.10 → v1.0.11 → v1.0.12 → v1.0.13 → v1.0.14 → v1.0.15 → v1.0.16 → v1.0.17). Signing slipped through five post-v1.0.10 cycles of UX repairs surfaced from successive smokes (v1.0.10 polish + CI silent-fail / v1.0.11 path defaults / v1.0.12 first-pass badge fix / v1.0.13 focus re-check / v1.0.15 badge color correction). v1.0.17 will be the first signing-only cycle since v1.0.11.
+
 ## [1.0.15] - 2026-05-16
 
 **Update-badge color correction.** v1.0.12 inverted what the user actually wanted: it made the RESTING state theme-scoped (white in dark / dark-grey in light) and tried to "fix" the hover-disappear bug by stopping the pulse + adding a static halo. User feedback after smoking v1.0.13: "the coloring is completely off. the update notification is supposed to be blue (dark and light mode). on hover, changes to white pulsing dot in dark mode and dark grey pulsing dot in light mode" + "dot stops pulsing when mouse is hovered on it. and it doesn't appear to color change. in fact, i can't tell what the hell it's doing when mouse is hovered." v1.0.15 reverses both decisions: resting is always blue (Microsoft `var(--accent)`, both themes), hover swaps the dot to white (dark theme) or dark-grey (light theme) while the pulse keeps running uninterrupted.
