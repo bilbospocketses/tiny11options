@@ -1086,7 +1086,7 @@ function renderSourceStep() {
         el('option', { value: e.index, selected: state.edition === e.index }, `${e.name} (index ${e.index})`)
     );
 
-    const errorBanner = el('div', { id: 'src-error', class: 'error hidden' });
+    const errorBanner = el('div', { id: 'src-error', class: 'error-slot', role: 'alert' });
 
     // Fast-build hint (mode-aware copy preserved verbatim from v1.0.8).
     const fastBuildHint = state.coreMode
@@ -1185,9 +1185,7 @@ function renderSourceStep() {
             }),
             el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
         ),
-        state.scratchError
-            ? el('div', { class: 'error path-validation-error', role: 'alert' }, state.scratchError)
-            : null,
+        el('div', { class: 'error-slot', role: 'alert' }, state.scratchError || ''),
 
         el('label', { for: 'out-input' }, 'Output ISO ', el('span', { class: 'req-asterisk', 'aria-hidden': 'true' }, '*')),
         el('div', { class: 'row' },
@@ -1205,9 +1203,7 @@ function renderSourceStep() {
             }),
             el('button', { onclick: () => ps({ type: 'browse-save-file', payload: { context: 'output', title: 'Save tiny11 ISO as...', filter: 'ISO files|*.iso|All files|*.*', defaultName: state.coreMode ? 'tiny11core.iso' : 'tiny11.iso' } }) }, 'Browse...')
         ),
-        state.outputError
-            ? el('div', { class: 'error path-validation-error', role: 'alert' }, state.outputError)
-            : null
+        el('div', { class: 'error-slot', role: 'alert' }, state.outputError || '')
     );
 
     // Right column: Build options card.
@@ -1305,8 +1301,7 @@ onPs(msg => {
         renderStep();   // re-render to drop the spinner before the banner shows
         const banner = document.getElementById('src-error');
         if (banner) {
-            banner.classList.remove('hidden');
-            banner.textContent = p.message;
+            banner.textContent = p.message || '';
         }
     } else if (msg.type === 'validated-scratch') {
         if (p.path && p.path !== state.scratchDir) return;  // stale response

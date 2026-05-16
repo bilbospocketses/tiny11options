@@ -1059,11 +1059,21 @@ section.build button.primary {
     margin-top: 0;
 }
 
-/* v1.0.9 smoke 2: inline path-validation error below scratch/output inputs.
-   Uses existing .error rule for color/background; .path-validation-error
-   adds spacing scoped to this v1.0.9 use. */
-.path-validation-error {
-    margin: 4px 0 0 0;
+/* v1.0.9 smoke pass 4: reserved error slot below path fields in Step 1 left card.
+   Always present in the DOM so the column doesn't jump when an error appears.
+   When the slot has content (non-empty), shows error styling. When empty,
+   just holds the reserved space invisibly.
+   48px handles up to ~2 lines of 12px error text + 6px+6px padding + margin. */
+.error-slot {
+    min-height: 48px;
+    margin-top: 4px;
+    box-sizing: border-box;
+}
+.error-slot:not(:empty) {
     padding: 6px 10px;
     font-size: 12px;
+    color: var(--error-fg);
+    background: var(--error-bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--error-fg);
 }
