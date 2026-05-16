@@ -130,6 +130,10 @@ const state = {
     validating: false,         // true while we're awaiting iso-validated / iso-error
     // v1.0.9 smoke 2: path validation (parallels iso-validated pattern).
     // Empty string = OK; non-empty = error message.
+    // v1.0.9 smoke 5: sourceError moved from DOM textContent into state so it
+    // survives renderStep() calls triggered by validated-scratch / validated-output
+    // (otherwise the ISO source error vanishes when an unrelated field validates).
+    sourceError: '',
     scratchError: '',
     outputError: '',
     validatingScratch: false,
@@ -1086,7 +1090,7 @@ function renderSourceStep() {
         el('option', { value: e.index, selected: state.edition === e.index }, `${e.name} (index ${e.index})`)
     );
 
-    const errorBanner = el('div', { id: 'src-error', class: 'error-slot', role: 'alert' });
+    const errorBanner = el('div', { id: 'src-error', class: 'error-slot', role: 'alert' }, state.sourceError || null);
 
     // Fast-build hint (mode-aware copy preserved verbatim from v1.0.8).
     const fastBuildHint = state.coreMode
@@ -1136,6 +1140,7 @@ function renderSourceStep() {
                     state.source = e.target.value;
                     state.editions = null;
                     state.edition = null;
+                    state.sourceError = '';   // v1.0.9 smoke 5: clear stale error while new validation runs
                     ps({ type: 'validate-iso', payload: { path: state.source } });
                     startValidationSpinner();
                 }
@@ -1185,7 +1190,7 @@ function renderSourceStep() {
             }),
             el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
         ),
-        el('div', { class: 'error-slot', role: 'alert' }, state.scratchError || ''),
+        el('div', { class: 'error-slot', role: 'alert' }, state.scratchError || null),
 
         el('label', { for: 'out-input' }, 'Output ISO ', el('span', { class: 'req-asterisk', 'aria-hidden': 'true' }, '*')),
         el('div', { class: 'row' },
@@ -1203,7 +1208,7 @@ function renderSourceStep() {
             }),
             el('button', { onclick: () => ps({ type: 'browse-save-file', payload: { context: 'output', title: 'Save tiny11 ISO as...', filter: 'ISO files|*.iso|All files|*.*', defaultName: state.coreMode ? 'tiny11core.iso' : 'tiny11.iso' } }) }, 'Browse...')
         ),
-        el('div', { class: 'error-slot', role: 'alert' }, state.outputError || '')
+        el('div', { class: 'error-slot', role: 'alert' }, state.outputError || null)
     );
 
     // Right column: Build options card.
@@ -1295,14 +1300,18 @@ onPs(msg => {
         state.editions = p.editions;
         state.edition = (p.editions && p.editions[0] && p.editions[0].index) || null;
         state.source = p.path || state.source;
+        // v1.0.9 smoke 5: clear sourceError on successful validation. Previously
+        // the error lived on the DOM banner and was cleared by re-render; now it
+        // lives in state and must be explicitly cleared.
+        state.sourceError = '';
         renderStep();
     } else if (msg.type === 'iso-error') {
         stopValidationSpinner();
-        renderStep();   // re-render to drop the spinner before the banner shows
-        const banner = document.getElementById('src-error');
-        if (banner) {
-            banner.textContent = p.message || '';
-        }
+        // v1.0.9 smoke 5: stash error in state so it survives re-renders triggered
+        // by unrelated field validations. renderSourceStep reads state.sourceError
+        // when constructing the errorBanner.
+        state.sourceError = p.message || '';
+        renderStep();
     } else if (msg.type === 'validated-scratch') {
         if (p.path && p.path !== state.scratchDir) return;  // stale response
         state.validatingScratch = false;
@@ -1315,7 +1324,7 @@ onPs(msg => {
         renderStep();
     } else if (msg.type === 'browse-result') {
         if (!p.path) return; // user cancelled the dialog
-        if (p.context === 'source')  { state.source = p.path; ps({ type: 'validate-iso', payload: { path: p.path } }); startValidationSpinner(); }
+        if (p.context === 'source')  { state.source = p.path; state.sourceError = ''; ps({ type: 'validate-iso', payload: { path: p.path } }); startValidationSpinner(); }
         else if (p.context === 'scratch') {
             state.scratchDir = p.path;
             state.scratchError = '';
