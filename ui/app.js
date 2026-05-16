@@ -475,10 +475,9 @@ function renderCleanupBlock() {
     const tooltip = 'Runs the six cleanup commands automatically. WARNING: dism /cleanup-mountpoints clears the system-wide DISM mount-point cache — only click this if no other DISM operations are running on this machine.';
 
     const cleanupButton = el('button', {
-        class: 'cleanup-button',
+        class: 'cleanup-warn-button',
         title: tooltip,
         disabled: state.cleaning,
-        style: 'border: 2px solid #f4c430; background-color: #fff8e1; color: #5d4e00; padding: 8px 16px; font-weight: 600; border-radius: 4px; cursor: ' + (state.cleaning ? 'not-allowed' : 'pointer') + '; font-size: 1em;' + (state.cleaning ? ' opacity: 0.55;' : ''),
         onclick: () => { if (!state.cleaning) startCleanupFlow(); },
     }, '⚠ Run cleanup automatically');
 
@@ -624,12 +623,16 @@ function renderCompletionCleanupBlock() {
 
     let statusEl = null;
     if (state.cleanupStatus) {
+        // v1.0.8 audit WARNING ui B7: reuse theme-aware CSS classes instead
+        // of duplicating colors with hardcoded hex. Layout-only properties
+        // (margin-top, font-family, font-size) remain inline; colors and
+        // font-weight come from .cleanup-status-success/-error (style.css).
         if (state.cleanupStatus.kind === 'progress') {
             statusEl = el('div', { class: 'cleanup-status', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em;' }, state.cleanupStatus.message);
         } else if (state.cleanupStatus.kind === 'success') {
-            statusEl = el('div', { class: 'cleanup-status cleanup-status-success', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em; color: #2e7d32; font-weight: 600;' }, '✓ ' + state.cleanupStatus.message);
+            statusEl = el('div', { class: 'cleanup-status cleanup-status-success', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em;' }, '✓ ' + state.cleanupStatus.message);
         } else {
-            statusEl = el('div', { class: 'cleanup-status cleanup-status-error', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em; color: #c62828; font-weight: 600;' }, '✗ Cleanup failed: ' + state.cleanupStatus.message);
+            statusEl = el('div', { class: 'cleanup-status cleanup-status-error', style: 'margin-top: 10px; font-family: monospace; font-size: 0.9em;' }, '✗ Cleanup failed: ' + state.cleanupStatus.message);
         }
     }
 

@@ -23,6 +23,7 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.04);
     --error-bg: #fde7e9;
     --error-fg: #a4262c;
+    --warn-border: #f4c430;
     --warn-bg: #fff4ce;
     --warn-fg: #826b1c;
     --lock-fg: #826b1c;
@@ -41,6 +42,7 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
     --error-bg: #5c1f24;
     --error-fg: #f5a8ad;
+    --warn-border: #c8a020;
     --warn-bg: #4a3a0c;
     --warn-fg: #f5d97c;
     --lock-fg: #f5d97c;
@@ -718,6 +720,39 @@ section.progress .cancel-row {
     margin: var(--gap) 0 6px 0;
     font-size: 13px;
     line-height: 1.4;
+}
+
+/* v1.0.8 audit WARNING ui B7: theme-aware cleanup warn button.
+   Replaces inline hex (#f4c430/#fff8e1/#5d4e00) on the cancel/error
+   screen's "Run cleanup automatically" button. Disabled state is handled
+   by the :disabled pseudo-class below. */
+.cleanup-warn-button {
+    border: 2px solid var(--warn-border);
+    background-color: var(--warn-bg);
+    color: var(--warn-fg);
+    padding: 8px 16px;
+    font-weight: 600;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 1em;
+}
+.cleanup-warn-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+/* v1.0.8 audit WARNING ui B7: theme-aware text-color rules for the
+   completion-block status row (one-line variant; the cleanup-inline-*
+   classes above were designed for a bordered-box layout with nested
+   glyph/message children). */
+.cleanup-status-success {
+    color: #2e7d32;
+    font-weight: 600;
+}
+[data-theme="dark"] .cleanup-status-success { color: #8fd394; }
+.cleanup-status-error {
+    color: var(--error-fg);
+    font-weight: 600;
 }
 
 /* ISO/DVD validation status line — permanent row beneath the editions dropdown.
