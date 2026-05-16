@@ -30,6 +30,12 @@
     --disabled-fg: #a8a8a8;
     --link-disabled-color: #8a929b;
     --accent-fg: #ffffff;
+    --card-bg: #ffffff;
+    --card-border: #d0d7de;
+    --card-radius: 6px;
+    --section-heading-color: #57606a;
+    --section-heading-tracking: 0.04em;
+    --req-asterisk-color: #d1242f;
 }
 
 [data-theme="dark"] {
@@ -51,6 +57,12 @@
     --disabled-fg: #6a6a6a;
     --link-disabled-color: #5d6470;
     --accent-fg: #ffffff;
+    --card-bg: #161b22;
+    --card-border: #30363d;
+    --card-radius: 6px;
+    --section-heading-color: #8d96a0;
+    --section-heading-tracking: 0.04em;
+    --req-asterisk-color: #ff7b72;
 }
 
 * { box-sizing: border-box; }
@@ -915,4 +927,38 @@ section.progress .cancel-row {
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+}
+
+/* v1.0.9: Step 1 two-column layout */
+.form.step1-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+}
+.step1-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    padding: 14px 18px;
+}
+.step1-card h4 {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--section-heading-color);
+    text-transform: uppercase;
+    letter-spacing: var(--section-heading-tracking);
+}
+.req-asterisk {
+    color: var(--req-asterisk-color);
+    margin-left: 2px;
+    font-weight: 700;
+}
+.core-drawer {
+    background: var(--bg, transparent);
+    border-left: 3px solid var(--warn-fg, #d97706);
+    padding: 10px 14px;
+    margin-top: 8px;
+    border-radius: 0 4px 4px 0;
 }

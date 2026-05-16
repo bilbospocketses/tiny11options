@@ -103,7 +103,7 @@ const state = {
     source: null,
     edition: null,
     editions: null,
-    scratchDir: null,
+    scratchDir: window.__autoScratchPath || null,
     outputPath: null,
     // v1.0.9: tracks whether outputPath is still the auto-derived value
     // (<scratchDir>\tiny11.iso or tiny11core.iso) vs a user-customized one.
@@ -999,11 +999,7 @@ function renderSourceStep() {
 
     const errorBanner = el('div', { id: 'src-error', class: 'error hidden' });
 
-    // Fast-build row + hint. Applies to both standard and Core builds (as of 2026-05-11):
-    // - Standard mode: skips /Cleanup-Image + /Compress:recovery (Tiny11.Worker.psm1).
-    // - Core mode:    skips Phase 20 /Compress:max + Phase 22 /Compress:recovery
-    //   (Tiny11.Core.psm1). Hint copy is mode-aware so the user knows what's getting
-    //   skipped in their current mode.
+    // Fast-build hint (mode-aware copy preserved verbatim from v1.0.8).
     const fastBuildHint = state.coreMode
         ? 'In Core mode, swaps DISM /Export-Image /Compress:max for the much faster ' +
           '/Compress:fast (XPRESS) in Phase 20, and skips the /Compress:recovery esd ' +
@@ -1016,7 +1012,99 @@ function renderSourceStep() {
           '7–8 GB; leaving fast build off enables recovery compression and shrinks the ' +
           'ISO by roughly 2 GB. Both produce functionally identical installs. Recommended ' +
           'for VM testing or iterative builds where ISO size doesn\'t matter.';
-    const fastBuildRow = [
+
+    // Core drawer (renders only when coreMode is on; expands inside right column).
+    const coreDrawer = state.coreMode
+        ? el('div', { class: 'core-drawer' },
+            el('p', { style: 'margin: 0 0 8px 0;' },
+                'tiny11 Core builds a significantly smaller image, but the output is not serviceable: ' +
+                'you cannot install Windows Updates, add languages, or enable Windows features after install. ' +
+                'Suitable for VM testing or short-lived development environments — not as a daily-driver Windows install.'),
+            el('label', { class: 'checkbox-label' },
+                el('input', {
+                    id: 'enable-net35', type: 'checkbox',
+                    checked: state.enableNet35,
+                    onchange: e => { state.enableNet35 = e.target.checked; }
+                }),
+                'Enable .NET 3.5 (legacy app compatibility)'
+            ),
+            el('p', { class: 'hint' },
+                '.NET 3.5 must be enabled at build time — cannot be added after install. Adds ~100 MB.'
+            ))
+        : null;
+
+    // Left column: Source & paths card.
+    const leftCard = el('div', { class: 'step1-card' },
+        el('h4', null, 'Source & paths'),
+
+        el('label', { for: 'src-input' }, 'Windows 11 ISO/DVD ', el('span', { class: 'req-asterisk', 'aria-hidden': 'true' }, '*')),
+        el('div', { class: 'row' },
+            el('input', {
+                id: 'src-input', type: 'text', value: state.source || '',
+                'aria-required': 'true',
+                placeholder: 'ISO or drive letter where Windows 11 media is located (ex - E: or C:\\path\\win11.iso)',
+                onchange: e => {
+                    state.source = e.target.value;
+                    state.editions = null;
+                    state.edition = null;
+                    ps({ type: 'validate-iso', payload: { path: state.source } });
+                    startValidationSpinner();
+                }
+            }),
+            el('button', { id: 'src-browse', onclick: () => ps({ type: 'browse-file', payload: { context: 'source', title: 'Select Win11 ISO', filter: 'ISO files|*.iso|All files|*.*' } }) }, 'Browse...')
+        ),
+        errorBanner,
+
+        el('label', { for: 'edition-select' }, 'Edition ', el('span', { class: 'req-asterisk', 'aria-hidden': 'true' }, '*')),
+        el('div', { class: 'row' },
+            el('select', {
+                id: 'edition-select',
+                'aria-required': 'true',
+                disabled: !state.editions,
+                onchange: e => { state.edition = parseInt(e.target.value, 10); updateNav(); renderStep(); }
+            }, editionsOptions),
+            el('button', { class: 'browse-spacer', 'aria-hidden': 'true', tabindex: '-1' }, 'Browse...')
+        ),
+        el('div', { class: 'iso-status-line', role: 'status', 'aria-live': 'polite' },
+            el('span', { class: 'iso-status-label' }, 'ISO/DVD state: '),
+            state.validating ? el('span', { class: 'wizard-spinner', 'aria-hidden': 'true' }) : null,
+            el('span', { id: 'iso-status-text', class: 'iso-status-value' }, computeIsoStatusText())
+        ),
+
+        el('label', { for: 'scratch-input' }, 'Scratch directory ', el('span', { class: 'req-asterisk', 'aria-hidden': 'true' }, '*')),
+        el('div', { class: 'row' },
+            el('input', {
+                id: 'scratch-input', type: 'text', value: state.scratchDir || '',
+                'aria-required': 'true',
+                onchange: e => { state.scratchDir = e.target.value; prefillOutputIfEmpty(); renderStep(); }
+            }),
+            el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
+        ),
+
+        el('label', { for: 'out-input' }, 'Output ISO ', el('span', { class: 'req-asterisk', 'aria-hidden': 'true' }, '*')),
+        el('div', { class: 'row' },
+            el('input', {
+                id: 'out-input', type: 'text', value: state.outputPath || '',
+                'aria-required': 'true',
+                onchange: e => { state.outputPath = e.target.value; state.outputPathIsAuto = false; renderStep(); }
+            }),
+            el('button', { onclick: () => ps({ type: 'browse-save-file', payload: { context: 'output', title: 'Save tiny11 ISO as...', filter: 'ISO files|*.iso|All files|*.*', defaultName: state.coreMode ? 'tiny11core.iso' : 'tiny11.iso' } }) }, 'Browse...')
+        )
+    );
+
+    // Right column: Build options card.
+    const rightCard = el('div', { class: 'step1-card' },
+        el('h4', null, 'Build options'),
+
+        el('label', { class: 'checkbox-label' },
+            el('input', {
+                id: 'unmount-source', type: 'checkbox',
+                checked: state.unmountSource,
+                onchange: e => state.unmountSource = e.target.checked
+            }),
+            'Unmount source ISO/DVD when build finishes'
+        ),
+
         el('label', { class: 'checkbox-label' },
             el('input', {
                 id: 'fast-build', type: 'checkbox',
@@ -1026,13 +1114,7 @@ function renderSourceStep() {
             'Fast build (skip recovery compression)'
         ),
         el('p', { class: 'hint' }, fastBuildHint),
-    ];
 
-    // Post-boot cleanup task -- re-removes apps and re-applies tweaks if Windows
-    // Update brings them back. Tailored per-build to the user's catalog selections;
-    // default on. Adds a scheduled task that fires at boot + daily + on every CU
-    // install. See docs/superpowers/specs/2026-05-12-post-boot-cleanup-design.md.
-    const postBootRow = [
         el('label', { class: 'checkbox-label' },
             el('input', {
                 id: 'install-post-boot-cleanup', type: 'checkbox',
@@ -1046,16 +1128,7 @@ function renderSourceStep() {
             'Adds a scheduled task that fires 10 minutes after boot, daily at 03:00, ' +
             'and on every CU install. Tailored to your catalog selections; idempotent.'
         ),
-    ];
 
-    // A13 (v1.0.3): "Log build output" + indented "Append to existing log".
-    // Logging defaults ON, append defaults OFF. Append checkbox is disabled
-    // when logging is off (no point appending to a file we won't create).
-    // Log file location: <scratchDir>\tiny11build.log, or %TEMP%\tiny11build.log
-    // when scratch is left blank (the wrapper script picks its own fresh
-    // temp scratch in that case, but the log goes to %TEMP% proper so it's
-    // findable). Per-session: NOT saved to profile JSON or settings.json.
-    const logBuildRow = [
         el('label', { class: 'checkbox-label' },
             el('input', {
                 id: 'log-build-output', type: 'checkbox',
@@ -1078,90 +1151,9 @@ function renderSourceStep() {
             '(or under %TEMP% when scratch is left blank). With "Append to existing log" off, ' +
             'each build overwrites the previous log; with it on, builds accumulate in one file.'
         ),
-    ];
 
-    // Core warning panel — shown only when coreMode is on.
-    const coreWarning = state.coreMode
-        ? el('div', { class: 'core-warning' },
-            'tiny11 Core builds a significantly smaller image, but the output is not serviceable: ' +
-            'you cannot install Windows Updates, add languages, or enable Windows features after install. ' +
-            'Suitable for VM testing or short-lived development environments — not as a daily-driver Windows install.'
-          )
-        : null;
-
-    // .NET 3.5 checkbox + hint — shown only when coreMode is on.
-    const net35Row = state.coreMode
-        ? [
-            el('label', { class: 'checkbox-label' },
-                el('input', {
-                    id: 'enable-net35', type: 'checkbox',
-                    checked: state.enableNet35,
-                    onchange: e => { state.enableNet35 = e.target.checked; }
-                }),
-                'Enable .NET 3.5 (legacy app compatibility)'
-            ),
-            el('p', { class: 'hint' },
-                '.NET 3.5 must be enabled at build time — cannot be added after install. Adds ~100 MB.'
-            ),
-          ]
-        : [];
-
-    const section = el('section', { class: 'form' },
-        el('label', null, 'Windows 11 ISO/DVD'),
-        el('div', { class: 'row' },
-            el('input', {
-                id: 'src-input', type: 'text', value: state.source || '',
-                placeholder: 'ISO or drive letter where Windows 11 media is located (ex - E: or C:\\path\\win11.iso)',
-                onchange: e => {
-                    state.source = e.target.value;
-                    state.editions = null;
-                    state.edition = null;
-                    ps({ type: 'validate-iso', payload: { path: state.source } });
-                    startValidationSpinner();
-                }
-            }),
-            el('button', { id: 'src-browse', onclick: () => ps({ type: 'browse-file', payload: { context: 'source', title: 'Select Win11 ISO', filter: 'ISO files|*.iso|All files|*.*' } }) }, 'Browse...')
-        ),
-        errorBanner,
-        el('label', null, 'Edition'),
-        el('div', { class: 'row' },
-            el('select', {
-                id: 'edition-select',
-                disabled: !state.editions,
-                onchange: e => { state.edition = parseInt(e.target.value, 10); updateNav(); }
-            }, editionsOptions),
-            el('button', { class: 'browse-spacer', 'aria-hidden': 'true', tabindex: '-1' }, 'Browse...')
-        ),
-        // Permanent status line below the dropdown — never appears/disappears (so the
-        // dropdown row's width never shifts as messages grow). The trailing value
-        // portion swaps content based on state via computeIsoStatusText().
-        el('div', { class: 'iso-status-line', role: 'status', 'aria-live': 'polite' },
-            el('span', { class: 'iso-status-label' }, 'ISO/DVD state: '),
-            state.validating
-                ? el('span', { class: 'wizard-spinner', 'aria-hidden': 'true' })
-                : null,
-            el('span', { id: 'iso-status-text', class: 'iso-status-value' }, computeIsoStatusText())
-        ),
-        el('label', null, 'Scratch directory'),
-        el('div', { class: 'row' },
-            el('input', {
-                id: 'scratch-input', type: 'text', value: state.scratchDir || '',
-                placeholder: 'Choose temp file location. If empty, a temporary folder under %TEMP% is created automatically.',
-                onchange: e => { state.scratchDir = e.target.value; prefillOutputIfEmpty(); }
-            }),
-            el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
-        ),
-        el('label', { class: 'checkbox-label' },
-            el('input', {
-                id: 'unmount-source', type: 'checkbox',
-                checked: state.unmountSource,
-                onchange: e => state.unmountSource = e.target.checked
-            }),
-            'Unmount source ISO/DVD when build finishes'
-        ),
-        ...fastBuildRow,
-        ...postBootRow,
-        ...logBuildRow,
+        // Core mode toggle relocated to bottom of right column. Drawer (warning +
+        // .NET 3.5 + hint) expands within this card so left column never reflows.
         el('label', { class: 'checkbox-label' },
             el('input', {
                 id: 'core-mode', type: 'checkbox',
@@ -1174,10 +1166,10 @@ function renderSourceStep() {
             }),
             'Build tiny11 Core (smaller, non-serviceable)'
         ),
-        coreWarning,
-        ...net35Row
+        coreDrawer
     );
-    return section;
+
+    return el('section', { class: 'form step1-grid' }, leftCard, rightCard);
 }
 
 onPs(msg => {
@@ -1370,6 +1362,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // request-update-check). Both fired on the same event; boot order
     // depended on registration order. Now: explicit ordered sequence.
     initTheme();
+    // v1.0.9: scratchDir is now boot-populated from __autoScratchPath; prefill
+    // outputPath via the existing helper so the required-field gate is satisfied
+    // out of the box.
+    prefillOutputIfEmpty();
 
     // Wire update-badge click. Defensive: if the badge element is missing
     // (HTML refactor), skip badge wiring but still continue with renderStep
