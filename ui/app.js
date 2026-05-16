@@ -107,7 +107,7 @@ const state = {
     outputPath: null,
     // v1.0.9: tracks whether outputPath is still the auto-derived value
     // (<scratchDir>\tiny11.iso or tiny11core.iso) vs a user-customized one.
-    // prefillOutputIfEmpty + syncOutputFilenameToMode only write to outputPath
+    // autofillOutputPath + syncOutputFilenameToMode only write to outputPath
     // when this is true. User input or Browse-result flips it false; profile
     // load also flips false (profile values are explicit user choices).
     outputPathIsAuto: true,
@@ -215,29 +215,35 @@ function updateValidationSpinnerText() {
     node.textContent = computeIsoStatusText();
 }
 
-// When the user picks or types a scratch directory, prefill the output ISO path with
-// "<scratchDir>\tiny11.iso" (or tiny11core.iso in Core mode) — but only if outputPath is
-// empty so we never clobber a custom value. Output goes alongside scratchDir's tiny11/
-// source folder, not inside it, so oscdimg never sees its own output as input.
-function prefillOutputIfEmpty() {
-    if (!state.scratchDir) return;
-    if (!state.outputPathIsAuto) return;
+// v1.0.9: pure helper that computes the auto-derived Output ISO path from
+// scratchDir + coreMode. Returns null when scratchDir is empty (caller
+// should handle / skip). Used by autofillOutputPath + syncOutputFilenameToMode.
+function buildAutoOutputPath() {
+    if (!state.scratchDir) return null;
     const trimmed = state.scratchDir.replace(/[\\/]+$/, '');
     const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
     const filename = state.coreMode ? 'tiny11core.iso' : 'tiny11.iso';
-    state.outputPath = trimmed + sep + filename;
+    return trimmed + sep + filename;
+}
+
+// When the user picks or types a scratch directory, fill the output ISO path with
+// "<scratchDir>\tiny11.iso" (or tiny11core.iso in Core mode) — but only when
+// outputPathIsAuto is true so we never clobber a custom value. Output goes alongside
+// scratchDir's tiny11/ source folder, not inside it, so oscdimg never sees its own
+// output as input.
+// v1.0.9: renamed from prefillOutputIfEmpty (post-Task-2 the guard is
+// state.outputPathIsAuto, not state.outputPath emptiness — name now matches).
+function autofillOutputPath() {
+    if (!state.outputPathIsAuto) return;
+    const next = buildAutoOutputPath();
+    if (next !== null) state.outputPath = next;
 }
 
 // When coreMode toggles, swap the default ISO filename if the user hasn't customized it.
 function syncOutputFilenameToMode() {
-    if (!state.scratchDir) return;
     if (!state.outputPathIsAuto) return;
-    // Recompute the auto path under the new mode and overwrite. The flag check
-    // above already gates this so we never clobber a user-customized path.
-    const trimmed = state.scratchDir.replace(/[\\/]+$/, '');
-    const sep = (trimmed.includes('/') && !trimmed.includes('\\')) ? '/' : '\\';
-    const filename = state.coreMode ? 'tiny11core.iso' : 'tiny11.iso';
-    state.outputPath = trimmed + sep + filename;
+    const next = buildAutoOutputPath();
+    if (next !== null) state.outputPath = next;
 }
 
 function renderStep() {
@@ -407,30 +413,6 @@ function renderStep3SummaryCards() {
     );
 
     return [pathsCard, modeCard, customCard];
-}
-
-function renderBuildStep() {
-    const banner = renderInlineCleanupStatus();
-    const [pathsCard, modeCard, customCard] = renderStep3SummaryCards();
-
-    let card4;
-    if (state.building) {
-        card4 = renderProgressCard();
-    } else if (state.completed) {
-        card4 = renderCompleteCard();
-    } else if (state.buildError) {
-        card4 = renderErrorCard();
-    } else {
-        card4 = renderIdleCtaCard();
-    }
-
-    return el('section', { class: 'build s3-stack' },
-        banner,
-        pathsCard,
-        modeCard,
-        customCard,
-        card4
-    );
 }
 
 function renderIdleCtaCard() {
@@ -790,6 +772,30 @@ function renderErrorCard() {
     return el('div', { class: 's3-card error' }, ...children);
 }
 
+function renderBuildStep() {
+    const banner = renderInlineCleanupStatus();
+    const [pathsCard, modeCard, customCard] = renderStep3SummaryCards();
+
+    let card4;
+    if (state.building) {
+        card4 = renderProgressCard();
+    } else if (state.completed) {
+        card4 = renderCompleteCard();
+    } else if (state.buildError) {
+        card4 = renderErrorCard();
+    } else {
+        card4 = renderIdleCtaCard();
+    }
+
+    return el('section', { class: 'build s3-stack' },
+        banner,
+        pathsCard,
+        modeCard,
+        customCard,
+        card4
+    );
+}
+
 function buildSelectionsIfEmpty() {
     if (Object.keys(state.selections).length > 0) return;
     state.catalog.items.forEach(it => state.selections[it.id] = it.default);
@@ -1130,7 +1136,7 @@ function renderSourceStep() {
             el('input', {
                 id: 'scratch-input', type: 'text', value: state.scratchDir || '',
                 'aria-required': 'true',
-                onchange: e => { state.scratchDir = e.target.value; prefillOutputIfEmpty(); renderStep(); }
+                onchange: e => { state.scratchDir = e.target.value; autofillOutputPath(); renderStep(); }
             }),
             el('button', { onclick: () => ps({ type: 'browse-folder', payload: { context: 'scratch', title: 'Select scratch directory' } }) }, 'Browse...')
         ),
@@ -1253,7 +1259,7 @@ onPs(msg => {
     } else if (msg.type === 'browse-result') {
         if (!p.path) return; // user cancelled the dialog
         if (p.context === 'source')  { state.source = p.path; ps({ type: 'validate-iso', payload: { path: p.path } }); startValidationSpinner(); }
-        else if (p.context === 'scratch') { state.scratchDir = p.path; prefillOutputIfEmpty(); renderStep(); }
+        else if (p.context === 'scratch') { state.scratchDir = p.path; autofillOutputPath(); renderStep(); }
         else if (p.context === 'output')  { state.outputPath = p.path; state.outputPathIsAuto = false; renderStep(); }
         else if (p.context === 'profile-save') {
             ps({ type: 'save-profile', payload: { path: p.path, selections: pendingSaveProfileSelections } });
@@ -1401,7 +1407,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // v1.0.9: scratchDir is now boot-populated from __autoScratchPath; prefill
     // outputPath via the existing helper so the required-field gate is satisfied
     // out of the box.
-    prefillOutputIfEmpty();
+    autofillOutputPath();
 
     // Wire update-badge click. Defensive: if the badge element is missing
     // (HTML refactor), skip badge wiring but still continue with renderStep
