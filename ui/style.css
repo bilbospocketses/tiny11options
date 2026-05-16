@@ -131,19 +131,33 @@ body {
 /* Update-available indicator. Sits left-of theme-toggle when visible, takes
    the right-anchor margin-left:auto. When hidden (display:none) the sibling
    rule below puts the auto back on theme-toggle so it stays right-aligned.
-   v1.0.15: resting state is always blue (var(--accent), unchanged across themes
-   — Microsoft blue is the universal "update available" cue). On hover the dot
-   swaps to var(--badge-hover-color), which is theme-scoped: white in dark mode,
-   #3a3a3a (dark grey) in light mode. Hover does NOT stop the pulse; only the
-   background color changes, the scale + opacity keyframes keep running so the
-   "flashing dot" character is preserved on hover. v1.0.12 had stopped the pulse
-   + pinned scale + added a halo, which the user reported as visually unreadable
-   ("can't tell what the hell it's doing when mouse is hovered"). */
+
+   v1.0.17 (two corrections from v1.0.15 smoke):
+   (1) The ring wave color now follows the dot color via a single
+   --badge-pulse-color custom property. At rest --badge-pulse-color resolves
+   to var(--accent) (blue); on :hover / :focus-visible it resolves to
+   var(--badge-hover-color) (white in dark mode, #3a3a3a in light mode).
+   Both the dot's background AND the @keyframes box-shadow ring read from
+   this same var so the entire pulsing effect is one unified color in each
+   state — user reported "circle is the theme color with a pulsing blue
+   wave in both themes" as broken, since the original spec was "blue
+   flashing dot changes to white flashing dot" (entire element, not just
+   the inner disc).
+   (2) The transform: scale() animation is removed from the keyframes. The
+   pulse motion now lives entirely in the box-shadow ring expanding from
+   0px → 10px spread while fading from --badge-pulse-color to transparent.
+   The dot itself stays fixed at 14px. This decouples the ::after tooltip
+   from the pulse — pseudo-elements inherit their parent's transform, and
+   the user reported "our hover text has joined the party and is pulsing
+   larger/smaller with the blue wave" as off-design. Opacity is also out
+   of the keyframes for the same reason (parent opacity multiplies into
+   ::after opacity, which would have made the tooltip subtly flicker). */
 .update-badge {
+    --badge-pulse-color: var(--accent);
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--badge-pulse-color);
     border: none;
     margin-left: auto;
     margin-right: 12px;
@@ -156,17 +170,19 @@ body {
     -webkit-appearance: none;
     /* Intentionally NOT gated on prefers-reduced-motion. This is a notification
        indicator the user needs to discover; the entire feature is "movement that
-       grabs your eye". Subtle scale + ring pulse, not a strobe. */
+       grabs your eye". Now: just the ring pulse (no dot scale), so subtle. */
     animation: badge-pulse 1.6s ease-in-out infinite;
 }
 .update-badge.hidden { display: none; }
 .update-badge:hover,
 .update-badge:focus-visible {
-    /* v1.0.15: PURE color swap on hover. No animation override, no transform
-       override, no opacity override, no static halo. The pulse keeps running
-       at the same cadence; only the dot's background color changes. The CSS
-       tooltip (::after rule below) still triggers on the same :hover selector. */
-    background: var(--badge-hover-color);
+    /* v1.0.17: override --badge-pulse-color so both the dot bg AND the
+       @keyframes ring color follow the theme-scoped hover color. Modern
+       Chromium re-resolves var() in keyframes when the custom property
+       changes, so the next animation frame after :hover engages picks up
+       the new color. No transform/opacity overrides — those are out of
+       the keyframes entirely now. */
+    --badge-pulse-color: var(--badge-hover-color);
 }
 .update-badge.hidden ~ .theme-toggle { margin-left: auto; }
 
@@ -198,13 +214,21 @@ body {
 .update-badge:focus-visible::after { opacity: 1; }
 
 @keyframes badge-pulse {
-    /* v1.0.15: ring color back to var(--accent) (blue) to match the resting
-       dot. On hover the dot swaps to var(--badge-hover-color); the expanding
-       ring still flashes blue, which provides a subtle "look — there's still
-       an update here" cue without needing the inner dot to itself be blue. */
-    0%   { transform: scale(0.85); box-shadow: 0 0 0 0   var(--accent); opacity: 1; }
-    50%  { transform: scale(1.35); box-shadow: 0 0 0 10px transparent; opacity: 0.85; }
-    100% { transform: scale(0.85); box-shadow: 0 0 0 0   transparent; opacity: 1; }
+    /* v1.0.17: pulse motion is purely the box-shadow ring expanding from
+       0px → 10px spread radius while the ring color fades from
+       var(--badge-pulse-color) → transparent. transform:scale and opacity
+       are gone from this animation:
+         - transform:scale was making the entire badge button + its ::after
+           tooltip pseudo-element scale together; removing it keeps the
+           tooltip steady when the user hovers the dot.
+         - opacity on the parent was multiplying into the tooltip's opacity,
+           causing a subtle flicker.
+       The dot itself stays at fixed 14px size. var(--badge-pulse-color)
+       resolves to var(--accent) at rest and var(--badge-hover-color) on
+       hover via the override on the .update-badge:hover rule above. */
+    0%   { box-shadow: 0 0 0 0   var(--badge-pulse-color); }
+    50%  { box-shadow: 0 0 0 10px transparent; }
+    100% { box-shadow: 0 0 0 0   transparent; }
 }
 
 /* Main content area */

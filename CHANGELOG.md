@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.17] - 2026-05-16
+
+**Update-badge — unified pulse color + tooltip stops pulsing with the wave.** Two corrections from v1.0.15 smoke:
+
+1. The ring/wave kept flashing in `var(--accent)` (blue) even when the dot swapped to the theme-scoped hover color on `:hover`. User report: "circle is the theme color with a pulsing blue wave in both themes" — flagged as off-design since the original spec was "blue flashing dot changes to *white* flashing dot" (the entire flashing element, not just the inner disc).
+2. The `::after` tooltip pseudo-element was inheriting the badge's `transform: scale()` from the keyframes, so the tooltip pulsed larger/smaller in sync with the wave. User report: "our hover text has joined the party and is pulsing larger/smaller with the blue wave. interesting, for sure, but we're not for the final design."
+
+Fix is CSS-only — no HTML or JS changes.
+
+### Changed
+
+- **`ui/style.css` `.update-badge`** — introduced `--badge-pulse-color` custom property on the badge element. Defaults to `var(--accent)` (blue) at rest. The badge's `background` reads from this property instead of directly from `var(--accent)`. On `:hover` / `:focus-visible` the property is overridden to `var(--badge-hover-color)` — `#ffffff` in dark mode, `#3a3a3a` in light mode. Both the dot AND the ring resolve from the same variable, so the entire pulsing element is unified to one color in each state. Modern Chromium re-resolves `var()` references in keyframes when the custom property changes, so the next animation frame after `:hover` engages picks up the new color (WebView2 ships Chromium 120+ which has full support; no `@property` registration needed).
+
+- **`ui/style.css` `@keyframes badge-pulse`** — removed `transform: scale(0.85 → 1.35 → 0.85)` and `opacity: 1 → 0.85 → 1` from the keyframes. The pulse motion now lives entirely in the box-shadow ring (`0 0 0 0 var(--badge-pulse-color)` → `0 0 0 10px transparent` → `0 0 0 0 transparent`). The dot itself stays fixed at 14px. The `::after` tooltip pseudo-element no longer inherits a transform from its parent so it stays geometrically steady when hovered. Parent opacity no longer multiplies into tooltip opacity so the tooltip doesn't flicker mid-pulse either. The user-perceived motion changes from "dot pumps + ring ripples" to "ring ripples" — still a clear pulsing-notification feel, just without the inner-dot grow/shrink.
+
+### Note
+
+- **Why the v1.0.15 `transform: scale()` keyframe was retained but the tooltip wasn't checked.** v1.0.15's fix was scoped to "color semantics" (resting blue vs. hover theme-color); the tooltip rendering surface was assumed unchanged from v1.0.12. The pulse-inheritance through `::after` is a side effect of the same `transform: scale()` that v1.0.11 introduced for the dot's scale animation — it predates the v1.0.12 ::after tooltip entirely, so the two were never composed in design. Smoking the v1.0.15 hover state surfaced the composition.
+- **Versioning per user request.** "we'll keep with semver for this round until we get this finalized. Code signing step will now subver to 1.1.0 when we get there." So v1.0.17 = this fix (patch), v1.0.18 = inert trigger for end-to-end smoke (patch), v1.1.0 = Microsoft Trusted Signing (minor bump, signaling a step-change in release maturity).
+
 ## [1.0.16] - 2026-05-16
 
 **No-op smoke-trigger release.** Zero behavior change vs v1.0.15. Sole purpose: serve as the "newer release" that a v1.0.15-installed launcher detects via its (v1.0.13-added) `window.focus` re-check, so the corrected v1.0.15 badge colors can be smoked end-to-end:
