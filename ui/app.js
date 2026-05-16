@@ -131,6 +131,7 @@ const state = {
     validatingStart: 0,        // Date.now() when validation kicked off — drives the elapsed counter
     completed: null,
     progress: null,
+    buildError: null,
     buildDetailsOpen: false,
     // mount-state tracking for the cancel-cleanup button. PS pipeline emits
     // build-progress {phase: 'mount-state', mountActive, mountDir, sourceDir}
@@ -347,22 +348,29 @@ document.querySelectorAll('.crumb-btn').forEach(btn => {
     });
 });
 
-function renderBuildStep() {
-    if (state.building) return renderProgress();
-    if (state.completed) return renderComplete();
-
+// v1.0.9: Cards 1-3 of Step 3, used by both idle and building/complete/error
+// states. During build, these are read-only history frozen at the values
+// they held when the user clicked Build ISO. Edit links are still wired
+// but disabled during the build (state.building) so the user can't navigate
+// away mid-build.
+function renderStep3SummaryCards() {
     const resolved = reconcile();
     const totalApplied = state.catalog.items.filter(i => resolved[i.id].effective === 'apply').length;
     const editionLabel = (state.editions || []).find(e => e.index === state.edition);
+    const navLocked = state.building;
 
-    // Cleanup banner (full-width above cards) — same three states as before.
-    const banner = renderInlineCleanupStatus();
+    const editLink = (label, target, selector) => el('button', {
+        type: 'button',
+        class: 's3-edit-link',
+        'aria-label': label,
+        disabled: navLocked,
+        onclick: () => { if (!navLocked) goToStep(target, { focusSelector: selector }); }
+    }, label);
 
-    // Card 1: Paths
     const pathsCard = el('div', { class: 's3-card' },
         el('div', { class: 's3-card-header' },
             el('h4', null, 'Paths'),
-            renderEditLink('Edit in Step 1', 'source', '#src-input')
+            editLink('Edit in Step 1', 'source', '#src-input')
         ),
         el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Source'),      el('span', { class: 'val' }, state.source || '—')),
         el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Edition'),     el('span', { class: 'val' }, editionLabel ? `${editionLabel.name} (index ${editionLabel.index})` : '—')),
@@ -370,7 +378,6 @@ function renderBuildStep() {
         el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Output ISO'),  el('span', { class: 'val' }, state.outputPath || '—'))
     );
 
-    // Card 2: Build mode
     const optionChips = [
         state.unmountSource ? 'Unmount source' : null,
         state.fastBuild ? 'Fast build' : null,
@@ -380,7 +387,7 @@ function renderBuildStep() {
     const modeCard = el('div', { class: 's3-card' },
         el('div', { class: 's3-card-header' },
             el('h4', null, 'Build mode'),
-            renderEditLink('Edit in Step 1', 'source', '#unmount-source')
+            editLink('Edit in Step 1', 'source', '#unmount-source')
         ),
         el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Mode'),    el('span', { class: 'val' }, state.coreMode ? 'Core' : 'Standard')),
         el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Options'), el('span', { class: 'val' }, optionChips)),
@@ -389,24 +396,50 @@ function renderBuildStep() {
             : null
     );
 
-    // Card 3: Customizations
     const customCard = el('div', { class: 's3-card' },
         el('div', { class: 's3-card-header' },
             el('h4', null, 'Customizations'),
-            renderEditLink('Edit in Step 2', 'customize', '#search')
+            editLink('Edit in Step 2', 'customize', '#search')
         ),
         state.coreMode
             ? el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Note'), el('span', { class: 'val' }, "Customizations don't apply to Core builds — Core builds a fixed minimal image."))
             : el('div', { class: 's3-row' }, el('span', { class: 'lbl' }, 'Applied'), el('span', { class: 'val' }, `${totalApplied} items (out of ${state.catalog.items.length})`))
     );
 
-    // Card 4: Ready to build (CTA)
+    return [pathsCard, modeCard, customCard];
+}
+
+function renderBuildStep() {
+    const banner = renderInlineCleanupStatus();
+    const [pathsCard, modeCard, customCard] = renderStep3SummaryCards();
+
+    let card4;
+    if (state.building) {
+        card4 = renderProgressCard();
+    } else if (state.completed) {
+        card4 = renderCompleteCard();
+    } else if (state.buildError) {
+        card4 = renderErrorCard();
+    } else {
+        card4 = renderIdleCtaCard();
+    }
+
+    return el('section', { class: 'build s3-stack' },
+        banner,
+        pathsCard,
+        modeCard,
+        customCard,
+        card4
+    );
+}
+
+function renderIdleCtaCard() {
     const buildDisabled = state.cleaning || (state.cleanupStatus && state.cleanupStatus.kind === 'error');
     const buildMode = state.coreMode
         ? (state.fastBuild ? 'Core + Fast build' : 'Core')
         : (state.fastBuild ? 'Standard + Fast build' : 'Standard');
     const estHint = `Estimated 20–40 min for a ${buildMode} build.`;
-    const ctaCard = el('div', { class: 's3-card s3-cta-card' },
+    return el('div', { class: 's3-card s3-cta-card' },
         el('p', { class: 's3-cta-hint' }, estHint),
         el('button', {
             class: 'primary s3-cta-button',
@@ -414,6 +447,7 @@ function renderBuildStep() {
             onclick: () => {
                 if (buildDisabled) return;
                 state.building = true;
+                state.buildError = null;
                 state.cleaning = false;
                 state.cleanupStatus = null;
                 state.pendingCleanupAfterCancel = false;
@@ -440,26 +474,6 @@ function renderBuildStep() {
         }, 'Build ISO'),
         el('p', { class: 's3-cta-footnote' }, 'Output lands at ', el('code', null, state.outputPath || '—'))
     );
-
-    return el('section', { class: 'build s3-stack' },
-        banner,
-        pathsCard,
-        modeCard,
-        customCard,
-        ctaCard
-    );
-}
-
-// v1.0.9: helper to render a Step 3 edit-link header button. Click jumps to
-// the target step + focuses the specified selector via goToStep's focus hook.
-function renderEditLink(label, targetStep, focusSelector) {
-    return el('button', {
-        type: 'button',
-        class: 's3-edit-link',
-        'aria-label': label,
-        'data-edit-target': focusSelector,
-        onclick: () => goToStep(targetStep, { focusSelector })
-    }, label);
 }
 
 // Common cleanup command list, surfaced both in the recipe block (in-progress
@@ -540,12 +554,12 @@ function cancelBuildAndCleanup() {
 
 // Recipe-only block (no button, no status) used in the in-progress details
 // panel. The auto-cleanup button was removed from this context because:
-//   1. renderProgress re-runs on every build-progress marker, so a status
+//   1. renderProgressCard re-runs on every build-progress marker, so a status
 //      line that toggles state.mountActive=false on cleanup-complete would
 //      cause the whole block (including the success line) to vanish.
 //   2. Clicking cleanup mid-build races the live DISM mount — the script's
 //      Remove-Item silently fails because files are locked by the build PS
-//      subprocess. The new "Cancel build & clean up" button in renderProgress
+//      subprocess. The new "Cancel build & clean up" button in renderProgressCard
 //      drives the cancel-then-cleanup chain instead.
 function renderCleanupRecipe() {
     if (!state.mountActive) return null;
@@ -621,7 +635,7 @@ function renderInlineCleanupStatus() {
     );
 }
 
-function renderProgress() {
+function renderProgressCard() {
     const p = state.progress || {};
     const progressBar = el('progress', { max: 100, value: p.percent || 0 });
 
@@ -639,7 +653,6 @@ function renderProgress() {
     const resolved = reconcile();
     const appliedItems = state.catalog.items.filter(i => resolved[i.id].effective === 'apply');
 
-    // Build-details inner content differs by mode.
     const detailsInner = state.coreMode
         ? [
             el('dl', { class: 'build-details-summary' },
@@ -662,7 +675,7 @@ function renderProgress() {
             renderCleanupRecipe(),
           ];
 
-    return el('section', { class: 'progress' },
+    return el('div', { class: 's3-card s3-card--progress' },
         el('h2', null, 'Building tiny11 image...'),
         progressBar,
         el('p', null, `Phase: ${p.phase || '—'}`),
@@ -747,15 +760,34 @@ function renderCompletionCleanupBlock() {
     );
 }
 
-function renderComplete() {
+function renderCompleteCard() {
     const c = state.completed;
-    return el('section', { class: 'complete' },
+    return el('div', { class: 's3-card s3-card--complete' },
         el('h2', null, 'Build complete'),
         el('p', null, `Output: ${c.outputPath}`),
-        el('button', { onclick: () => ps({ type: 'open-folder', payload: { path: c.outputPath } }) }, 'Open output folder'),
-        el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close'),
+        el('div', { class: 'row' },
+            el('button', { onclick: () => ps({ type: 'open-folder', payload: { path: c.outputPath } }) }, 'Open output folder'),
+            el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close')
+        ),
         renderCompletionCleanupBlock()
     );
+}
+
+function renderErrorCard() {
+    const e = state.buildError;
+    const cleanupBlock = renderCleanupBlock();
+    const children = [
+        el('h2', null, e.wasCancelled ? 'Build cancelled' : 'Build failed'),
+    ];
+    if (!e.wasCancelled && e.message) {
+        children.push(el('p', null, e.message));
+    }
+    if (e.logPath) {
+        children.push(el('p', { class: 'log-hint' }, 'Full build log: ', el('code', null, e.logPath)));
+    }
+    if (cleanupBlock) children.push(cleanupBlock);
+    children.push(el('button', { onclick: () => { state.buildError = null; ps({ type: 'close', payload: {} }); } }, 'Close'));
+    return el('div', { class: 's3-card error' }, ...children);
 }
 
 function buildSelectionsIfEmpty() {
@@ -1268,9 +1300,6 @@ onPs(msg => {
         renderStep();
     } else if (msg.type === 'build-error') {
         state.building = false;
-        // Chained "Cancel build & clean up": user clicked the chained button
-        // mid-build, we sent cancel-build, the build subprocess is now down
-        // and DISM mount locks are released. Now safe to fire start-cleanup.
         if (state.pendingCleanupAfterCancel) {
             state.pendingCleanupAfterCancel = false;
             state.cleanupStatus = { kind: 'progress', message: 'Starting cleanup…' };
@@ -1280,30 +1309,15 @@ onPs(msg => {
             ps({ type: 'start-cleanup', payload: { mountDir: state.mountDir, sourceDir: state.sourceDir } });
             return;
         }
-        const root = document.getElementById('content');
-        clear(root);
-        // Cancel-vs-failure header polish: BuildHandlers.cs emits build-error with
-        // message "Build cancelled by user." when the user clicks plain "Cancel
-        // build". Surface that as a friendlier "Build cancelled" header rather
-        // than "Build failed" — same screen, less alarming.
-        const wasCancelled = ((p.message || '') + '').toLowerCase().includes('cancelled by user');
-        const children = [
-            el('h2', null, wasCancelled ? 'Build cancelled' : 'Build failed'),
-        ];
-        if (!wasCancelled) {
-            children.push(el('p', null, p.message || 'Unknown error'));
-        }
-        if (p.logPath) {
-            children.push(el('p', { class: 'log-hint' }, 'Full build log: ', el('code', null, p.logPath)));
-        }
-        // Cleanup section renders for both Core and Worker; the function
-        // self-gates on state.mountActive so it returns null outside the
-        // mount window. The button on this screen navigates the user to
-        // Step 3 (renderBuild) where the spinner-flow status row lives.
-        const cleanupBlock = renderCleanupBlock();
-        if (cleanupBlock) children.push(cleanupBlock);
-        children.push(el('button', { onclick: () => ps({ type: 'close', payload: {} }) }, 'Close'));
-        root.appendChild(el('section', { class: 'error' }, ...children));
+        // v1.0.9: stash the error info on state and re-render Step 3 so Cards 1-3
+        // stay visible and Card 4 transforms into the error view in place.
+        state.buildError = {
+            message: p.message || '',
+            wasCancelled: ((p.message || '') + '').toLowerCase().includes('cancelled by user'),
+            logPath: p.logPath || null,
+        };
+        state.step = 'build';
+        renderStep();
     } else if (msg.type === 'cleanup-progress') {
         state.cleanupStatus = { kind: 'progress', message: `(${p.percent || 0}%) ${p.step || ''}` };
         renderStep();

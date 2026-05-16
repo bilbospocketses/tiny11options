@@ -484,25 +484,25 @@ section.build button.primary {
 }
 
 /* Progress (Step 3) */
-section.progress {
+.s3-card--progress {
     text-align: center;
     padding-top: var(--gap-lg);
 }
 
-section.progress progress {
+.s3-card--progress progress {
     width: 100%;
     height: 24px;
     margin: var(--gap) 0;
     accent-color: var(--accent);
 }
 
-section.progress p {
+.s3-card--progress p {
     margin: 4px 0;
     color: var(--fg-muted);
 }
 
-section.complete h2,
-section.progress h2 {
+.s3-card--complete h2,
+.s3-card--progress h2 {
     color: var(--accent);
 }
 
@@ -693,7 +693,7 @@ section.progress h2 {
 
 /* Cancel-row in the in-progress screen — holds "Cancel build" + the new
    "Cancel build & clean up" side-by-side. */
-section.progress .cancel-row {
+.s3-card--progress .cancel-row {
     justify-content: center;
     gap: var(--gap);
     margin-top: var(--gap);
