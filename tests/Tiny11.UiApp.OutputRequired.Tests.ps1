@@ -36,8 +36,6 @@ Describe 'ui/app.js -- Output ISO required-field gate (v1.0.9+ Step 1 surface)' 
     BeforeAll {
         $script:appJsPath = (Resolve-Path (Join-Path $PSScriptRoot '..\ui\app.js')).Path
         $script:content   = Get-Content $script:appJsPath -Raw
-        $script:cssPath   = (Resolve-Path (Join-Path $PSScriptRoot '..\ui\style.css')).Path
-        $script:css       = Get-Content $script:cssPath -Raw
     }
 
     Context 'state model -- error fields survive renderStep' {
@@ -99,24 +97,4 @@ Describe 'ui/app.js -- Output ISO required-field gate (v1.0.9+ Step 1 surface)' 
         }
     }
 
-    Context 'style.css -- .output-required-warning rule (DEAD CSS, v1.0.11 follow-up)' {
-        # v1.0.10 NOTE: these three rules are no longer referenced by any
-        # rendered markup -- the .output-required-warning element was removed
-        # entirely in the v1.0.9 redesign. The CSS rules remain in style.css
-        # and should be pruned in a v1.0.11 cleanup pass. These tests pass
-        # for now; they will start failing once the dead CSS is removed.
-        # Delete this Context in the same change that prunes the CSS.
-        It 'declares the .output-required-warning class' {
-            $script:css | Should -Match '\.output-required-warning\s*\{'
-        }
-
-        It 'uses theme-aware --warn-bg / --warn-fg variables (dark + light parity)' {
-            $script:css | Should -Match '\.output-required-warning[\s\S]{0,400}--warn-bg'
-            $script:css | Should -Match '\.output-required-warning[\s\S]{0,400}--warn-fg'
-        }
-
-        It 'declares the .output-required-glyph circle badge' {
-            $script:css | Should -Match '\.output-required-glyph\s*\{'
-        }
-    }
 }
