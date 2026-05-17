@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.22] - 2026-05-17
+
+**No-op smoke-trigger release for v1.0.21 dot-bg fix.** Zero behavior change vs v1.0.21. Sole purpose: be the "newer release" that a v1.0.21-installed launcher detects via the v1.0.13-added `window.focus` re-check, so the v1.0.21 belt-and-suspenders fix (cache-bust `?v=` query string + `::before` pseudo-element for the visible dot) can be smoked end-to-end. Expected on v1.0.21 badge surface: resting blue pulsing dot (both themes); hover dark = solid white dot + white wave fading outward (both unified, ring AND inner circle now actually swap color); hover light = solid `#3a3a3a` dot + `#3a3a3a` wave fading outward; tooltip "Update available, click to install..." steady (no scale inheritance).
+
+### Changed
+
+- **`launcher/tiny11options.Launcher.csproj`** — `<Version>1.0.21</Version>` → `<Version>1.0.22</Version>`.
+- **`launcher/app.manifest`** — `assemblyIdentity version="1.0.21.0"` → `"1.0.22.0"`.
+- **`ui/index.html`** — `style.css?v=1.0.21` → `style.css?v=1.0.22`. Per the v1.0.21 lesson, the cache-bust query string must be bumped in lockstep with the launcher `<Version>` on every release so WebView2's HTTP cache fetches the fresh `style.css` rather than serving a stale copy from `%LOCALAPPDATA%\tiny11options\webview2-userdata\` cached against the same `https://app.local/style.css` URL from a prior version.
+
+No CSS, JS, resource, or test changes. Pester 516/0 + xUnit 140/0 both expected to match v1.0.21 ship.
+
+### Note
+
+- **v1.1.0 = Microsoft Trusted Signing** (still queued, unchanged).
+
 ## [1.0.21] - 2026-05-17
 
 **Belt-and-suspenders fix for the persistent dot-bg-on-hover bug.** v1.0.19 declared `background-color: var(--badge-hover-color)` explicitly in the `:hover` rule, which should have resolved the v1.0.17 var-indirection issue. User installed v1.0.19, hovered, reported the same bug: "1.0.19 has the same issue: theme color for circle on hover." Two plausible root causes were not previously addressed; v1.0.21 defends against both simultaneously, with the explicit ask "please figure out the issue, and only push one release (1.0.21)."
