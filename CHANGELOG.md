@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.21] - 2026-05-17
+
+**Belt-and-suspenders fix for the persistent dot-bg-on-hover bug.** v1.0.19 declared `background-color: var(--badge-hover-color)` explicitly in the `:hover` rule, which should have resolved the v1.0.17 var-indirection issue. User installed v1.0.19, hovered, reported the same bug: "1.0.19 has the same issue: theme color for circle on hover." Two plausible root causes were not previously addressed; v1.0.21 defends against both simultaneously, with the explicit ask "please figure out the issue, and only push one release (1.0.21)."
+
+### Changed
+
+- **`ui/index.html` — cache-bust `style.css` href via `?v=1.0.21` query string.** WebView2's HTTP cache serves resources from `VirtualHostNameToFolderMapping` by URL. The URL `https://app.local/style.css` is identical across every app version, even though each version's launcher.exe maps `app.local` to a *different* on-disk `ui-cache` folder. The user's WebView2 userdata directory (shared across versions at `%LOCALAPPDATA%\tiny11options\webview2-userdata\`) caches HTTP responses by URL — so v1.0.19's CSS update would be invisible if the URL matches a previously-cached v1.0.17/v1.0.18 response. Adding `?v=1.0.21` forces a fresh fetch since the cache key includes the query string. This must be bumped in lockstep with `launcher/tiny11options.Launcher.csproj <Version>` for every release going forward.
+- **`ui/style.css` — `.update-badge` visible dot is now a `::before` pseudo-element on the `<button>`, not the button itself.** The `<button>` becomes a transparent click target (background: transparent, border: none, outline: none, appearance: none, etc); the `::before` owns the bg-color, border-radius, and the pulse animation. The `:hover` / `:focus-visible` state propagates from the button to its `::before` via `.update-badge:hover::before` / `:focus-visible::before`. Both the dot's bg AND the `@keyframes box-shadow` ring color follow a single `--badge-pulse-color` custom property scoped to the `::before` — resting `var(--accent)` (blue), hover `var(--badge-hover-color)` (white in dark / `#3a3a3a` in light). The `::after` tooltip is unaffected (always was on the button itself; its CSS is unchanged).
+- **`--badge-pulse-color` custom property is now defined on `::before` rather than on the button.** Scoped to where it's actually consumed (by the `::before`'s own `background-color` AND by the `@keyframes box-shadow` color that the `::before`'s animation drives).
+
+### Note
+
+- **Why two changes for one bug.** Without dev-tools access on the live app, I can't tell whether the cause is the cache or a `<button>` UA quirk. The CSS restructure to `::before` removes any possibility of a button-specific UA interaction since pseudo-elements have no button-specific UA defaults. The cache-bust handles the orthogonal possibility that v1.0.19's CSS never actually loaded due to stale WebView2 cache. Either fix alone could have been the right one; doing both eliminates the diagnostic ambiguity in one shot per user direction ("please figure out the issue, and only push one release").
+- **No v1.0.22 inert trigger this round.** User explicitly: "only post 1.0.21. When I'm back I'll ask you to post 1.0.22 so we can see if 1.0.21 has the right fix." v1.0.21-installed clients will see no update until v1.0.22 publishes — manual smoke deferred to that follow-up push.
+- **v1.1.0 = Microsoft Trusted Signing** (still deferred, unchanged from prior breadcrumbs).
+
 ## [1.0.20] - 2026-05-17
 
 **No-op smoke-trigger release.** Zero behavior change vs v1.0.19. Sole purpose: be the "newer release" that a v1.0.19-installed launcher detects via its (v1.0.13-added) `window.focus` re-check, so the v1.0.19 dot-bg fix can be smoked end-to-end. Expected on v1.0.19 badge surface: resting blue pulsing dot (both themes); hover dark = solid white dot at center + white wave fading outward; hover light = solid `#3a3a3a` dot at center + `#3a3a3a` wave fading outward; tooltip "Update available, click to install..." renders steady. The "nav bg shows through the dot" bug from v1.0.17/v1.0.18 is gone.

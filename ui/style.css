@@ -132,70 +132,71 @@ body {
    the right-anchor margin-left:auto. When hidden (display:none) the sibling
    rule below puts the auto back on theme-toggle so it stays right-aligned.
 
-   v1.0.17 (two corrections from v1.0.15 smoke):
-   (1) The ring wave color now follows the dot color via a single
-   --badge-pulse-color custom property. At rest --badge-pulse-color resolves
-   to var(--accent) (blue); on :hover / :focus-visible it resolves to
-   var(--badge-hover-color) (white in dark mode, #3a3a3a in light mode).
-   Both the dot's background AND the @keyframes box-shadow ring read from
-   this same var so the entire pulsing effect is one unified color in each
-   state — user reported "circle is the theme color with a pulsing blue
-   wave in both themes" as broken, since the original spec was "blue
-   flashing dot changes to white flashing dot" (entire element, not just
-   the inner disc).
-   (2) The transform: scale() animation is removed from the keyframes. The
-   pulse motion now lives entirely in the box-shadow ring expanding from
-   0px → 10px spread while fading from --badge-pulse-color to transparent.
-   The dot itself stays fixed at 14px. This decouples the ::after tooltip
-   from the pulse — pseudo-elements inherit their parent's transform, and
-   the user reported "our hover text has joined the party and is pulsing
-   larger/smaller with the blue wave" as off-design. Opacity is also out
-   of the keyframes for the same reason (parent opacity multiplies into
-   ::after opacity, which would have made the tooltip subtly flicker). */
+   v1.0.21: visible dot is now a ::before pseudo-element on the .update-badge
+   <button>. The button itself is a TRANSPARENT click target (background:
+   transparent, no border, etc); the ::before owns the bg-color, border-radius,
+   and the pulse animation. Why the restructure: v1.0.17 → v1.0.19 tried to
+   set background-color directly on the <button> with explicit hover overrides,
+   but the user reported on each successive ship that the inner dot still
+   rendered as the theme bg color on hover (while the box-shadow ring DID flip
+   color correctly — confirming :hover fires and the var-driven keyframe
+   re-resolves). Two plausible root causes that v1.0.21 defends against
+   simultaneously: (a) WebView2's HTTP cache serving stale style.css from a
+   prior version's userdata since the URL https://app.local/style.css is
+   identical across versions, even though the on-disk file content differs —
+   addressed by the ?v=1.0.21 query-string cache-bust in index.html; (b)
+   some <button>-specific UA / animation interaction overriding the static
+   background-color declaration on hover even with appearance: none —
+   addressed here by moving the visible rendering to a pseudo-element which
+   has no button-specific UA defaults at all.
+
+   The ::after tooltip is unaffected (it has always been on the .update-badge
+   itself and its CSS is unchanged).
+*/
 .update-badge {
-    /* --badge-pulse-color drives the @keyframes box-shadow ring color (see
-       keyframes below). The dot's own background-color is declared
-       EXPLICITLY (var(--accent) at rest, var(--badge-hover-color) on hover)
-       rather than indirected through --badge-pulse-color. v1.0.17/v1.0.18
-       had `background: var(--badge-pulse-color)` and user smoke surfaced
-       that the static background did not re-resolve when the var changed
-       via :hover (the dot kept showing the nav bg through it on hover even
-       though the ring color DID flip correctly). Suspected WebView2
-       Chromium quirk with `background` shorthand + hover-triggered custom
-       property changes. The keyframe's var() reference re-resolves fine,
-       so we keep the var for the ring and just use explicit colors for the
-       dot bg. */
-    --badge-pulse-color: var(--accent);
+    /* Click target only. No visual styling — the visible dot is ::before. */
     width: 14px;
     height: 14px;
-    border-radius: 50%;
-    background-color: var(--accent);
+    background: transparent;
     border: none;
     margin-left: auto;
     margin-right: 12px;
     padding: 0;
     cursor: pointer;
     position: relative;
-    /* Suppress native button UA styling that can otherwise re-skin the bg on
-       hover/active in some WebView2 builds. */
     appearance: none;
     -webkit-appearance: none;
-    /* Intentionally NOT gated on prefers-reduced-motion. This is a notification
-       indicator the user needs to discover; the entire feature is "movement that
-       grabs your eye". Now: just the ring pulse (no dot scale), so subtle. */
-    animation: badge-pulse 1.6s ease-in-out infinite;
+    outline: none;
 }
 .update-badge.hidden { display: none; }
-.update-badge:hover,
-.update-badge:focus-visible {
-    /* v1.0.19: declare background-color EXPLICITLY on hover (not via the
-       --badge-pulse-color indirection). The var still gets overridden too
-       so the @keyframes box-shadow ring color follows; that part works
-       reliably. The explicit background-color is the dot-bg fix. */
+.update-badge.hidden ~ .theme-toggle { margin-left: auto; }
+
+/* Visible pulsing dot. ::before is positioned over the entire button area
+   via inset: 0. Owns its own background-color (resting blue, hover swap to
+   theme-scoped white/grey) AND its own --badge-pulse-color custom property
+   that the @keyframes box-shadow reads. The dot bg and the ring color
+   therefore stay unified per state. */
+.update-badge::before {
+    --badge-pulse-color: var(--accent);
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background-color: var(--accent);
+    /* Intentionally NOT gated on prefers-reduced-motion. This is a notification
+       indicator the user needs to discover; the entire feature is "movement that
+       grabs your eye". Just the ring pulse (no dot scale), so subtle. */
+    animation: badge-pulse 1.6s ease-in-out infinite;
+}
+
+/* Hover/focus-visible state propagates from the button to its ::before via
+   the .update-badge:hover::before / :focus-visible::before selector. Both
+   the dot's bg AND the keyframe ring color follow --badge-pulse-color. */
+.update-badge:hover::before,
+.update-badge:focus-visible::before {
     --badge-pulse-color: var(--badge-hover-color);
     background-color: var(--badge-hover-color);
 }
-.update-badge.hidden ~ .theme-toggle { margin-left: auto; }
 
 /* v1.0.12: CSS-based tooltip via ::after + data-tooltip. Native title-attr
    tooltips are inconsistently rendered in WebView2 (often delayed / suppressed

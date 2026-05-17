@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <title>tiny11options</title>
-    <link rel="stylesheet" href="style.css">
+    <!-- v1.0.21: cache-bust query string. WebView2's HTTP cache serves resources
+         from VirtualHostNameToFolderMapping by URL; even though each app version
+         maps app.local to a different ui-cache folder on disk, the URL
+         https://app.local/style.css is identical across versions and the cache
+         can serve a stale copy from the user's webview2-userdata dir. Bumping
+         the query param per release forces a fresh fetch. Update this string in
+         lockstep with launcher/tiny11options.Launcher.csproj <Version>. -->
+    <link rel="stylesheet" href="style.css?v=1.0.21">
 </head>
 <body>
     <nav class="breadcrumb" aria-label="Wizard progress">
