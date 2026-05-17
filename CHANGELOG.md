@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.19] - 2026-05-16
+
+**Update-badge dot now actually shows the hover color** (the wave already did since v1.0.17). User smoke of v1.0.17/v1.0.18: "the 'circle' inside the pulsing wave is still the theme color, not the hover color. all else is good to go. note that the pulse color is good to go." Screenshots showed the box-shadow ring fading correctly to the hover color but the inner dot rendering as if its `background` were transparent — the nav bg showed through.
+
+### Changed
+
+- **`ui/style.css` `.update-badge` background is now declared with `background-color` (longhand) instead of `background` (shorthand), and the value is the literal `var(--accent)` at rest / `var(--badge-hover-color)` on `:hover` / `:focus-visible` — no `--badge-pulse-color` indirection on the bg.** v1.0.17 had `background: var(--badge-pulse-color)` and relied on the var change in the `:hover` rule to propagate to the static background. The `@keyframes box-shadow ... var(--badge-pulse-color)` indirection works fine (the ring color flips reliably on hover, confirmed in user smoke); the static-background-via-var indirection does not (the bg stayed at the rest-time computed value). Suspected WebView2 Chromium quirk with `background` shorthand combined with hover-triggered custom-property changes. Switching to `background-color` longhand AND making the hover override an explicit declaration both bypass the issue.
+- **`--badge-pulse-color` retained on `.update-badge`** purely for the `@keyframes badge-pulse` ring-color reference. The hover rule still overrides it (so the ring keeps changing color in lockstep with the dot); the dot bg just no longer depends on that indirection.
+
+### Note
+
+- **v1.0.20 = inert smoke-trigger release.** Same pattern as v1.0.14/v1.0.16/v1.0.18 — pure version bump so v1.0.19 clients detect a newer release via the v1.0.13 focus re-check + can manually smoke the corrected dot-bg behavior.
+- **v1.1.0 = Microsoft Trusted Signing** (unchanged from previous breadcrumbs).
+- **Lesson worth noting.** `background: var(--x)` and `background-color: var(--x)` are NOT equivalent under hover-triggered custom-property changes in WebView2's Chromium. The shorthand appears to compute once at element style time and not re-resolve when the var changes via a more-specific rule. Longhand `background-color` updates correctly. Defensive default for future similar work: prefer longhand for dynamic-var-driven properties.
+
 ## [1.0.18] - 2026-05-16
 
 **No-op smoke-trigger release.** Zero behavior change vs v1.0.17. Sole purpose: serve as the "newer release" that a v1.0.17-installed launcher detects via its (v1.0.13-added) `window.focus` re-check, so the v1.0.17 unified-pulse-color + non-pulsing-tooltip corrections can be smoked end-to-end. Resting blue dot (both themes); hover swap to a fully-white pulse in dark mode or a fully-`#3a3a3a` pulse in light mode (dot + wave matched); tooltip "Update available, click to install..." renders steadily (no longer pulses with the wave).

@@ -153,11 +153,23 @@ body {
    of the keyframes for the same reason (parent opacity multiplies into
    ::after opacity, which would have made the tooltip subtly flicker). */
 .update-badge {
+    /* --badge-pulse-color drives the @keyframes box-shadow ring color (see
+       keyframes below). The dot's own background-color is declared
+       EXPLICITLY (var(--accent) at rest, var(--badge-hover-color) on hover)
+       rather than indirected through --badge-pulse-color. v1.0.17/v1.0.18
+       had `background: var(--badge-pulse-color)` and user smoke surfaced
+       that the static background did not re-resolve when the var changed
+       via :hover (the dot kept showing the nav bg through it on hover even
+       though the ring color DID flip correctly). Suspected WebView2
+       Chromium quirk with `background` shorthand + hover-triggered custom
+       property changes. The keyframe's var() reference re-resolves fine,
+       so we keep the var for the ring and just use explicit colors for the
+       dot bg. */
     --badge-pulse-color: var(--accent);
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: var(--badge-pulse-color);
+    background-color: var(--accent);
     border: none;
     margin-left: auto;
     margin-right: 12px;
@@ -176,13 +188,12 @@ body {
 .update-badge.hidden { display: none; }
 .update-badge:hover,
 .update-badge:focus-visible {
-    /* v1.0.17: override --badge-pulse-color so both the dot bg AND the
-       @keyframes ring color follow the theme-scoped hover color. Modern
-       Chromium re-resolves var() in keyframes when the custom property
-       changes, so the next animation frame after :hover engages picks up
-       the new color. No transform/opacity overrides — those are out of
-       the keyframes entirely now. */
+    /* v1.0.19: declare background-color EXPLICITLY on hover (not via the
+       --badge-pulse-color indirection). The var still gets overridden too
+       so the @keyframes box-shadow ring color follows; that part works
+       reliably. The explicit background-color is the dot-bg fix. */
     --badge-pulse-color: var(--badge-hover-color);
+    background-color: var(--badge-hover-color);
 }
 .update-badge.hidden ~ .theme-toggle { margin-left: auto; }
 
