@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.20] - 2026-05-17
+
+**No-op smoke-trigger release.** Zero behavior change vs v1.0.19. Sole purpose: be the "newer release" that a v1.0.19-installed launcher detects via its (v1.0.13-added) `window.focus` re-check, so the v1.0.19 dot-bg fix can be smoked end-to-end. Expected on v1.0.19 badge surface: resting blue pulsing dot (both themes); hover dark = solid white dot at center + white wave fading outward; hover light = solid `#3a3a3a` dot at center + `#3a3a3a` wave fading outward; tooltip "Update available, click to install..." renders steady. The "nav bg shows through the dot" bug from v1.0.17/v1.0.18 is gone.
+
+### Changed
+
+- **`launcher/tiny11options.Launcher.csproj`** — `<Version>1.0.19</Version>` → `<Version>1.0.20</Version>`.
+- **`launcher/app.manifest`** — `assemblyIdentity version="1.0.19.0"` → `"1.0.20.0"`.
+
+No code, resource, or test changes. Pester 516/0 + xUnit 140/0 both expected to match v1.0.19 ship.
+
+### Note
+
+- **v1.1.0 = Microsoft Trusted Signing** (unchanged from v1.0.18 breadcrumb).
+
 ## [1.0.19] - 2026-05-16
 
 **Update-badge dot now actually shows the hover color** (the wave already did since v1.0.17). User smoke of v1.0.17/v1.0.18: "the 'circle' inside the pulsing wave is still the theme color, not the hover color. all else is good to go. note that the pulse color is good to go." Screenshots showed the box-shadow ring fading correctly to the hover color but the inner dot rendering as if its `background` were transparent — the nav bg showed through.
