@@ -7,22 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.23.1] - 2026-05-19
+## [1.0.24] - 2026-05-19
 
-**Hot-fix for v1.0.23's failed release pipeline.** v1.0.23 cut the tag but the release workflow failed at action-resolution time: `azure/trusted-signing-action@v0.5.1`'s `action.yml` calls `actions/cache@v4` (unpinned) on lines 218 + 228, and the v1.0.23 baseline's new `sha_pinning_required: true` enforcement rejects transitive unpinned refs even for gate-skipped steps. The v1.0.23 tag exists on origin but no GitHub Release was created — `v1.0.23.1` is the shippable result for that work.
+**Shippable result of the v1.0.23 security baseline work after two release-pipeline blockers.** v1.0.23 cut the tag but the release workflow failed at action-resolution time: `azure/trusted-signing-action@v0.5.1`'s `action.yml` calls `actions/cache@v4` (unpinned) on lines 218 + 228, and the v1.0.23 baseline's new `sha_pinning_required: true` enforcement rejects transitive unpinned refs even for gate-skipped steps. The v1.0.23.1 hot-fix tag swapped the action to `azure/artifact-signing-action@v2.0.0` (with SHA-pinned internals) but Velopack rejected the 4-part `1.0.23.1` version string ("must be a 3-part SemVer2 compliant version string"). v1.0.24 is the same hot-fixed code re-cut under a 3-part SemVer-compliant tag. The v1.0.23 + v1.0.23.1 tags remain on origin as zombies (no associated GitHub Release for either); the tag ruleset's `deletion: true` rule prevents their cleanup without a bypass.
 
 ### Changed
 
 - **`azure/trusted-signing-action@v0.5.1` → `azure/artifact-signing-action@v2.0.0`** in `release.yml` (both occurrences). SHA `c7ab2a863ab5f9a846ddb8265964877ef296ee82`. The Azure team renamed the repo + cut v2.0.0 with internally-SHA-pinned `actions/cache@<sha> # v5.0.4`. The rename was originally deferred to v1.1.0 per the v1.0.22 breadcrumb (`ci B3`); the v1.0.23 baseline's `sha_pinning_required` enforcement forced the rename forward. v1.1.0 scope now shrinks to: secret provisioning + step-level secret scope (`ci B2`).
 - **Repo-level `patterns_allowed`** swapped `azure/trusted-signing-action@*` → `azure/artifact-signing-action@*`. `ossf/scorecard-action@*` unchanged.
-- **csproj `<Version>`** `1.0.23` → `1.0.23.1`. `app.manifest` `assemblyIdentity version="1.0.23.0"` → `"1.0.23.1"`. `ui/index.html` `style.css?v=1.0.23` → `?v=1.0.23.1`.
+- **csproj `<Version>`** `1.0.23` → `1.0.24`. `app.manifest` `assemblyIdentity version="1.0.23.0"` → `"1.0.24.0"`. `ui/index.html` `style.css?v=1.0.23` → `?v=1.0.24`.
 
 ### Notes
 
-- **v1.0.23 tag is a zombie.** Tag `v1.0.23` exists on `origin` but has no associated GitHub Release. Tag ruleset's `deletion: true` rule blocks deletion without a bypass; choosing to leave it as an audit-trail artifact and ship the result as v1.0.23.1 instead. v1.0.23 is documented in CHANGELOG `[1.0.23]` to preserve the historical entry; consumers should ignore the orphan tag.
-- **Lesson captured:** `sha_pinning_required: true` extends to transitive `uses:` inside composite actions. Auditing for SHA pinning means looking at our workflow files PLUS the `action.yml` of every action we call, recursively. The CM canonical baseline hasn't hit this because CM hasn't cut a release with `sha_pinning_required: true` enforcement active yet (v1.1.0-beta.3 shipped pre-hardening 2026-05-13; the 2026-05-18 hardening pass is still awaiting v1.1.0 VM smoke). When CM next tags, the same `azure/trusted-signing-action@v0.5.1` block will surface — CM will need an analogous hot-fix.
+- **v1.0.23 + v1.0.23.1 tags are zombies.** Both tags exist on `origin` but have no associated GitHub Release. The tag ruleset's `deletion: true` rule blocks deletion without a bypass; leaving them as audit-trail artifacts of the two release-pipeline blockers (transitive SHA-pinning + 4-part SemVer). Consumers should ignore both; v1.0.24 is the first shippable release after the security baseline pass.
+- **Lessons captured:**
+  - `sha_pinning_required: true` extends to transitive `uses:` inside composite actions. Auditing for SHA pinning means looking at our workflow files PLUS the `action.yml` of every action we call, recursively. The CM canonical baseline hasn't hit this because CM hasn't cut a release with `sha_pinning_required: true` enforcement active yet (v1.1.0-beta.3 shipped pre-hardening 2026-05-13; the 2026-05-18 hardening pass is still awaiting v1.1.0 VM smoke). When CM next tags, the same `azure/trusted-signing-action@v0.5.1` block will surface — CM will need an analogous hot-fix.
+  - **Velopack's vpk pack rejects 4-part SemVer.** `--packVersion` requires 3-part `MAJOR.MINOR.PATCH` (optionally with `-prerelease` / `+build` per SemVer2). 4-part Microsoft-style assembly versions are NOT accepted. When hot-fixing a tag mid-release-pipeline, pick a 3-part SemVer label (patch bump or prerelease form), not a 4-part one.
 
-## [1.0.23] - 2026-05-19
+## [1.0.23.1] - 2026-05-19 [zombie tag, no Release]
+
+Hot-fix attempt for v1.0.23 — swapped `azure/trusted-signing-action@v0.5.1` → `azure/artifact-signing-action@v2.0.0`. Release pipeline failed at Velopack pack: 4-part `1.0.23.1` rejected. See `[1.0.24]` above for the shippable result.
+
+## [1.0.23] - 2026-05-19 [zombie tag, no Release]
 
 ### Added
 
