@@ -33,8 +33,9 @@ jobs:
     # vpk all confirmed working on this image as of v1.0.7.
     runs-on: windows-2025-vs2026
     permissions:
-      id-token: write   # OIDC federation to Azure for Trusted Signing
-      contents: write   # gh release create
+      id-token: write       # OIDC for Azure Trusted Signing + Sigstore attestation
+      contents: write       # gh release create
+      attestations: write   # write attestation to repo via Attestations API
     env:
       # Surface signing secrets at job-level so step-level `if:` guards can
       # check env.AZURE_TENANT_ID. Missing secrets evaluate to '' (empty
@@ -157,6 +158,19 @@ jobs:
           files-folder: dist/releases
           files-folder-filter: exe,nupkg
           file-digest: SHA256
+
+      - name: Attest release artifacts (Sigstore build provenance)
+        # Generates Sigstore-backed build-provenance attestations for the 4
+        # release assets. Public verifiability via:
+        #   gh attestation verify <asset> --repo bilbospocketses/tiny11options
+        # Runs AFTER signing so the signed bytes are what get attested.
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: |
+            dist/releases/*.nupkg
+            dist/releases/*Setup.exe
+            dist/releases/RELEASES
+            dist/releases/releases.*.json
 
       - name: Create GitHub Release
         env:
