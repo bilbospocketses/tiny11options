@@ -13,11 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Microsoft.Web.WebView2 now resolved via NuGet, not vendored DLLs.** Replaces three `<Reference HintPath="...">` + `<Content Include="...">` blocks in `launcher/tiny11options.Launcher.csproj` with a single `<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2535.41" />`. MSBuild handles native asset deployment automatically (`WebView2Loader.dll` lands in both the build root and `runtimes/win-x64/native/` per NuGet's standard layout). Deleted `dependencies/webview2/1.0.2535.41/` (three checked-in DLLs: Core.dll, Wpf.dll, WebView2Loader.dll). Future version bumps flow through Dependabot's `nuget` ecosystem.
+- **Microsoft.Web.WebView2 now resolved via NuGet end-to-end, not vendored DLLs.**
+  - `launcher/tiny11options.Launcher.csproj`: three `<Reference HintPath="...">` + `<Content Include="...">` blocks replaced with a single `<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2535.41" />`. MSBuild handles native asset deployment automatically (`WebView2Loader.dll` lands in both the build root and `runtimes/win-x64/native/` per NuGet's standard layout). The published `tiny11options.exe` bundles all DLLs into the self-contained single-file artifact via `IncludeAllContentForSelfExtract=true` — end-user installs remain fully offline-capable.
+  - `src/Tiny11.WebView2.psm1`: legacy PS WPF wizard now resolves DLLs from the NuGet global packages folder (`%USERPROFILE%\.nuget\packages\microsoft.web.webview2\<version>\lib\net462\` for managed wrappers + `\runtimes\win-x64\native\` for the loader). `Get-Tiny11WebView2SdkPath` swapped its `-RepoRoot` parameter for `-NugetPackagesRoot` (default: `$env:NUGET_PACKAGES` or `$env:USERPROFILE/.nuget/packages`). Error message points at `dotnet restore launcher/tiny11options.Launcher.csproj` when DLLs are missing.
+  - `tests/Tiny11.WebView2.Tests.ps1`: 6 existing tests updated to assert the NuGet cache layout; 2 new tests added (NUGET_PACKAGES env var override + dotnet restore hint in the throw message). Pester baseline 516/0 -> 518/0.
+  - `CONTRIBUTING.md`: documents `dotnet restore` as a one-time prereq for the legacy PS path. Production users of the released `.exe` are unaffected.
+  - Deleted `dependencies/webview2/1.0.2535.41/` (three checked-in DLLs: Core.dll, Wpf.dll, WebView2Loader.dll).
+  - Future version bumps flow through Dependabot's `nuget` ecosystem; previously the vendored DLLs were invisible to Dependabot.
 
 ### Security
 
-- **OpenSSF Scorecard `BinaryArtifactsID` finding cleared** — the three WebView2 DLLs previously vendored under `dependencies/webview2/` were the only binaries flagged. Going forward, binaries in the repo will be flagged by Scorecard so we know about them.
+- **OpenSSF Scorecard `BinaryArtifactsID` finding cleared** — the three WebView2 DLLs previously vendored under `dependencies/webview2/` were the only binaries flagged. Going forward, binaries committed to the repo will be flagged by Scorecard so we know about them.
+- **Microsoft.Web.WebView2 now under Dependabot visibility** — Dependabot's `nuget` ecosystem already tracks `launcher/tiny11options.Launcher.csproj`, so SDK CVEs + version bumps now arrive as auto-PRs. Vendored DLLs were invisible to Dependabot, which was the practical security gap that motivated this change (CVE-fix freshness, not active exploitability — the wrappers are thin shims over the user-installed Edge WebView2 Runtime).
 
 ## [1.0.24] - 2026-05-19
 

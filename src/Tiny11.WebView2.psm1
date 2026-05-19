@@ -35,26 +35,33 @@ function Save-Tiny11UserSettings {
 
 function Get-Tiny11WebView2SdkPath {
     [CmdletBinding()]
-    param([string]$RepoRoot)
-    if (-not $RepoRoot) { $RepoRoot = Split-Path -Parent $PSScriptRoot }
-    $verDir = Join-Path $RepoRoot "dependencies\webview2\$PinnedVersion"
+    param([string]$NugetPackagesRoot)
+    # Resolve the NuGet global packages folder. NUGET_PACKAGES env var overrides
+    # the default per Microsoft's NuGet docs on global-packages-and-cache-folders.
+    if (-not $NugetPackagesRoot) {
+        $NugetPackagesRoot = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE '.nuget\packages' }
+    }
+    # NuGet caches as <root>\<id-lowercased>\<version>\... -- package id is lowercased on disk.
+    # Managed wrappers live under lib\<tfm>\; net462 is the right TFM for PowerShell 5.1
+    # (.NET Framework 4.x WPF host). Native loader lives under runtimes\win-x64\native\.
+    $pkgDir = Join-Path $NugetPackagesRoot "microsoft.web.webview2\$PinnedVersion"
     [pscustomobject]@{
-        VersionDir = $verDir
-        CoreDll    = Join-Path $verDir 'Microsoft.Web.WebView2.Core.dll'
-        WpfDll     = Join-Path $verDir 'Microsoft.Web.WebView2.Wpf.dll'
-        NativeDll  = Join-Path $verDir 'WebView2Loader.dll'
+        VersionDir = $pkgDir
+        CoreDll    = Join-Path $pkgDir 'lib\net462\Microsoft.Web.WebView2.Core.dll'
+        WpfDll     = Join-Path $pkgDir 'lib\net462\Microsoft.Web.WebView2.Wpf.dll'
+        NativeDll  = Join-Path $pkgDir 'runtimes\win-x64\native\WebView2Loader.dll'
     }
 }
 
 function Test-Tiny11WebView2SdkPresent {
     [CmdletBinding()]
-    param([string]$RepoRoot)
+    param([string]$NugetPackagesRoot)
     $resolveArgs = @{}
-    if ($RepoRoot) { $resolveArgs.RepoRoot = $RepoRoot }
+    if ($NugetPackagesRoot) { $resolveArgs.NugetPackagesRoot = $NugetPackagesRoot }
     $paths = Get-Tiny11WebView2SdkPath @resolveArgs
     foreach ($p in @($paths.CoreDll, $paths.WpfDll, $paths.NativeDll)) {
         if (-not (Test-Path $p)) {
-            throw "WebView2 SDK DLL missing: $p. Expected vendored at $($paths.VersionDir). The repo ships these DLLs under dependencies/webview2/$PinnedVersion/."
+            throw "WebView2 SDK DLL missing: $p. SDK is resolved from the NuGet global packages folder ($($paths.VersionDir)). Run 'dotnet restore launcher/tiny11options.Launcher.csproj' from the repo root to populate it."
         }
     }
     $paths
