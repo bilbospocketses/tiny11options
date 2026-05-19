@@ -1,0 +1,44 @@
+# Dependabot version updates for tiny11options.
+#
+# Security updates are handled separately by Dependabot security alerts
+# (enabled via repo Settings -> Code security and analysis). This file covers
+# routine non-security version bumps.
+#
+# Two ecosystems wired:
+#   - nuget: covers the .NET 10 dep graph (Velopack, WebView2, xUnit,
+#     FluentAssertions, Microsoft.NET.Test.Sdk, Microsoft.Web.WebView2, etc.)
+#     across launcher/tiny11options.Launcher.csproj and
+#     launcher/Tests/tiny11options.Launcher.Tests.csproj. Dependabot
+#     auto-discovers all csproj files under the root.
+#   - github-actions: maintains the SHA-pinned action refs in
+#     .github/workflows/. Upstream actions tag new versions periodically;
+#     without this Dependabot would never bump our pins and we would drift on
+#     security fixes shipped in the actions themselves.
+#
+# Weekly Monday 09:00 ET cadence keeps PR noise manageable for a solo-owned
+# repo. PowerShell modules + Pester pinning are handled out-of-band by
+# Run-Tests.ps1's #Requires; no PowerShellGallery ecosystem entry needed.
+
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(actions)"
