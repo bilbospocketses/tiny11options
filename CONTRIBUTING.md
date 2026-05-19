@@ -29,6 +29,8 @@ The legacy PowerShell path (no UI) still works for direct CLI use:
 pwsh -NoProfile -File tiny11maker.ps1
 ```
 
+**Prerequisite for the legacy PS path:** the WPF wizard imports `Tiny11.WebView2.psm1`, which loads Microsoft.Web.WebView2 DLLs from the NuGet global packages folder (`%USERPROFILE%\.nuget\packages\microsoft.web.webview2\<version>\`). Run `dotnet restore launcher/tiny11options.Launcher.csproj` once before invoking `tiny11maker.ps1` to populate the cache. The .NET launcher (`tiny11options.exe`) bundles these DLLs into the published single-file binary, so production users never need this restore step — it only applies when running the legacy PS path from a source checkout.
+
 ## Development Workflow
 
 ```bash

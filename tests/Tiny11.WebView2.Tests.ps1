@@ -3,19 +3,31 @@ Import-Module "$PSScriptRoot/Tiny11.TestHelpers.psm1" -Force
 Import-Tiny11Module -Name 'Tiny11.WebView2'
 
 Describe "Get-Tiny11WebView2SdkPath" {
-    It "returns paths under repo dependencies/webview2/<version>/" {
+    It "returns paths under the NuGet packages cache for microsoft.web.webview2/<version>" {
         $r = Get-Tiny11WebView2SdkPath
-        $r.CoreDll   | Should -Match 'Microsoft\.Web\.WebView2\.Core\.dll$'
-        $r.WpfDll    | Should -Match 'Microsoft\.Web\.WebView2\.Wpf\.dll$'
-        $r.NativeDll | Should -Match 'WebView2Loader\.dll$'
-        $r.VersionDir | Should -Match 'dependencies[\\/]webview2[\\/]1\.0\.2535\.41$'
+        $r.CoreDll   | Should -Match 'lib[\\/]net462[\\/]Microsoft\.Web\.WebView2\.Core\.dll$'
+        $r.WpfDll    | Should -Match 'lib[\\/]net462[\\/]Microsoft\.Web\.WebView2\.Wpf\.dll$'
+        $r.NativeDll | Should -Match 'runtimes[\\/]win-x64[\\/]native[\\/]WebView2Loader\.dll$'
+        $r.VersionDir | Should -Match 'microsoft\.web\.webview2[\\/]1\.0\.2535\.41$'
     }
-    It "honors -RepoRoot override" {
+    It "honors -NugetPackagesRoot override" {
         $tmp = New-TempScratchDir
         try {
-            $r = Get-Tiny11WebView2SdkPath -RepoRoot $tmp
-            $r.CoreDll | Should -BeLike "$tmp*dependencies*webview2*Microsoft.Web.WebView2.Core.dll"
+            $r = Get-Tiny11WebView2SdkPath -NugetPackagesRoot $tmp
+            $r.CoreDll | Should -BeLike "$tmp*microsoft.web.webview2*1.0.2535.41*lib*net462*Microsoft.Web.WebView2.Core.dll"
         } finally {
+            Remove-TempScratchDir -Path $tmp
+        }
+    }
+    It "honors NUGET_PACKAGES environment variable when -NugetPackagesRoot is omitted" {
+        $tmp = New-TempScratchDir
+        $original = $env:NUGET_PACKAGES
+        try {
+            $env:NUGET_PACKAGES = $tmp
+            $r = Get-Tiny11WebView2SdkPath
+            $r.CoreDll | Should -BeLike "$tmp*microsoft.web.webview2*1.0.2535.41*lib*net462*Microsoft.Web.WebView2.Core.dll"
+        } finally {
+            $env:NUGET_PACKAGES = $original
             Remove-TempScratchDir -Path $tmp
         }
     }
@@ -25,12 +37,14 @@ Describe "Test-Tiny11WebView2SdkPresent" {
     It "returns paths object when all 3 DLLs present" {
         $tmp = New-TempScratchDir
         try {
-            $verDir = Join-Path $tmp 'dependencies\webview2\1.0.2535.41'
-            New-Item -ItemType Directory -Force -Path $verDir | Out-Null
-            New-Item -ItemType File -Path (Join-Path $verDir 'Microsoft.Web.WebView2.Core.dll') -Force | Out-Null
-            New-Item -ItemType File -Path (Join-Path $verDir 'Microsoft.Web.WebView2.Wpf.dll') -Force | Out-Null
-            New-Item -ItemType File -Path (Join-Path $verDir 'WebView2Loader.dll') -Force | Out-Null
-            $r = Test-Tiny11WebView2SdkPresent -RepoRoot $tmp
+            $libDir    = Join-Path $tmp 'microsoft.web.webview2\1.0.2535.41\lib\net462'
+            $nativeDir = Join-Path $tmp 'microsoft.web.webview2\1.0.2535.41\runtimes\win-x64\native'
+            New-Item -ItemType Directory -Force -Path $libDir    | Out-Null
+            New-Item -ItemType Directory -Force -Path $nativeDir | Out-Null
+            New-Item -ItemType File -Path (Join-Path $libDir    'Microsoft.Web.WebView2.Core.dll') -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $libDir    'Microsoft.Web.WebView2.Wpf.dll')  -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $nativeDir 'WebView2Loader.dll')              -Force | Out-Null
+            $r = Test-Tiny11WebView2SdkPresent -NugetPackagesRoot $tmp
             $r.CoreDll   | Should -Exist
             $r.WpfDll    | Should -Exist
             $r.NativeDll | Should -Exist
@@ -41,7 +55,15 @@ Describe "Test-Tiny11WebView2SdkPresent" {
     It "throws with helpful message when no DLLs present" {
         $tmp = New-TempScratchDir
         try {
-            { Test-Tiny11WebView2SdkPresent -RepoRoot $tmp } | Should -Throw -ExpectedMessage '*WebView2 SDK DLL missing*'
+            { Test-Tiny11WebView2SdkPresent -NugetPackagesRoot $tmp } | Should -Throw -ExpectedMessage '*WebView2 SDK DLL missing*'
+        } finally {
+            Remove-TempScratchDir -Path $tmp
+        }
+    }
+    It "throws with dotnet restore hint when no DLLs present" {
+        $tmp = New-TempScratchDir
+        try {
+            { Test-Tiny11WebView2SdkPresent -NugetPackagesRoot $tmp } | Should -Throw -ExpectedMessage '*dotnet restore*'
         } finally {
             Remove-TempScratchDir -Path $tmp
         }
@@ -49,15 +71,18 @@ Describe "Test-Tiny11WebView2SdkPresent" {
     It "throws when only some DLLs are present" {
         $tmp = New-TempScratchDir
         try {
-            $verDir = Join-Path $tmp 'dependencies\webview2\1.0.2535.41'
-            New-Item -ItemType Directory -Force -Path $verDir | Out-Null
-            New-Item -ItemType File -Path (Join-Path $verDir 'Microsoft.Web.WebView2.Core.dll') -Force | Out-Null
-            { Test-Tiny11WebView2SdkPresent -RepoRoot $tmp } | Should -Throw -ExpectedMessage '*WebView2 SDK DLL missing*'
+            $libDir = Join-Path $tmp 'microsoft.web.webview2\1.0.2535.41\lib\net462'
+            New-Item -ItemType Directory -Force -Path $libDir | Out-Null
+            New-Item -ItemType File -Path (Join-Path $libDir 'Microsoft.Web.WebView2.Core.dll') -Force | Out-Null
+            { Test-Tiny11WebView2SdkPresent -NugetPackagesRoot $tmp } | Should -Throw -ExpectedMessage '*WebView2 SDK DLL missing*'
         } finally {
             Remove-TempScratchDir -Path $tmp
         }
     }
-    It "finds the vendored DLLs in the repo (integration)" {
+    It "finds the NuGet-restored DLLs after dotnet restore (integration)" {
+        # Requires `dotnet restore launcher/tiny11options.Launcher.csproj` to have populated
+        # the NuGet cache. CI runs Restore before Test (Pester); local dev box has the cache
+        # warm from any prior build. Documented in CONTRIBUTING.md.
         $r = Test-Tiny11WebView2SdkPresent
         Test-Path $r.CoreDll   | Should -BeTrue
         Test-Path $r.WpfDll    | Should -BeTrue

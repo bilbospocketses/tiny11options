@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`LICENSE`** — GPL-3.0-only license text added at repo root. Matches control-menu, ws-scrcpy-web, svgedit, and oao licensing posture. Clears the OpenSSF Scorecard `LicenseID` finding. README's existing "License / credits" section already references upstream + fork additions; this PR adds the formal license file.
+
+### Changed
+
+- **Microsoft.Web.WebView2 now resolved via NuGet end-to-end, not vendored DLLs.**
+  - `launcher/tiny11options.Launcher.csproj`: three `<Reference HintPath="...">` + `<Content Include="...">` blocks replaced with a single `<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2535.41" />`. MSBuild handles native asset deployment automatically (`WebView2Loader.dll` lands in both the build root and `runtimes/win-x64/native/` per NuGet's standard layout). The published `tiny11options.exe` bundles all DLLs into the self-contained single-file artifact via `IncludeAllContentForSelfExtract=true` — end-user installs remain fully offline-capable.
+  - `src/Tiny11.WebView2.psm1`: legacy PS WPF wizard now resolves DLLs from the NuGet global packages folder (`%USERPROFILE%\.nuget\packages\microsoft.web.webview2\<version>\lib\net462\` for managed wrappers + `\runtimes\win-x64\native\` for the loader). `Get-Tiny11WebView2SdkPath` swapped its `-RepoRoot` parameter for `-NugetPackagesRoot` (default: `$env:NUGET_PACKAGES` or `$env:USERPROFILE/.nuget/packages`). Error message points at `dotnet restore launcher/tiny11options.Launcher.csproj` when DLLs are missing.
+  - `tests/Tiny11.WebView2.Tests.ps1`: 6 existing tests updated to assert the NuGet cache layout; 2 new tests added (NUGET_PACKAGES env var override + dotnet restore hint in the throw message). Pester baseline 516/0 -> 518/0.
+  - `CONTRIBUTING.md`: documents `dotnet restore` as a one-time prereq for the legacy PS path. Production users of the released `.exe` are unaffected.
+  - Deleted `dependencies/webview2/1.0.2535.41/` (three checked-in DLLs: Core.dll, Wpf.dll, WebView2Loader.dll).
+  - Future version bumps flow through Dependabot's `nuget` ecosystem; previously the vendored DLLs were invisible to Dependabot.
+
+### Security
+
+- **OpenSSF Scorecard `BinaryArtifactsID` finding cleared** — the three WebView2 DLLs previously vendored under `dependencies/webview2/` were the only binaries flagged. Going forward, binaries committed to the repo will be flagged by Scorecard so we know about them.
+- **Microsoft.Web.WebView2 now under Dependabot visibility** — Dependabot's `nuget` ecosystem already tracks `launcher/tiny11options.Launcher.csproj`, so SDK CVEs + version bumps now arrive as auto-PRs. Vendored DLLs were invisible to Dependabot, which was the practical security gap that motivated this change (CVE-fix freshness, not active exploitability — the wrappers are thin shims over the user-installed Edge WebView2 Runtime).
+
 ## [1.0.24] - 2026-05-19
 
 **Shippable result of the v1.0.23 security baseline work after two release-pipeline blockers.** v1.0.23 cut the tag but the release workflow failed at action-resolution time: `azure/trusted-signing-action@v0.5.1`'s `action.yml` calls `actions/cache@v4` (unpinned) on lines 218 + 228, and the v1.0.23 baseline's new `sha_pinning_required: true` enforcement rejects transitive unpinned refs even for gate-skipped steps. The v1.0.23.1 hot-fix tag swapped the action to `azure/artifact-signing-action@v2.0.0` (with SHA-pinned internals) but Velopack rejected the 4-part `1.0.23.1` version string ("must be a 3-part SemVer2 compliant version string"). v1.0.24 is the same hot-fixed code re-cut under a 3-part SemVer-compliant tag. The v1.0.23 + v1.0.23.1 tags remain on origin as zombies (no associated GitHub Release for either); the tag ruleset's `deletion: true` rule prevents their cleanup without a bypass.
