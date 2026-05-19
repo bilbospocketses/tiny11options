@@ -381,6 +381,14 @@ For headless validation, `dism /Get-WimInfo /WimFile:<your-iso>\sources\install.
 
 This is a standalone hard fork. Issues and PRs filed here will not be propagated upstream. If you'd like changes to land in the upstream `ntdevlabs/tiny11builder`, file there separately.
 
+## Security
+
+Security vulnerability reports go through GitHub's private advisory flow:
+
+**[Report a vulnerability](https://github.com/bilbospocketses/tiny11options/security/advisories/new)**
+
+See [`SECURITY.md`](SECURITY.md) for scope, response expectations, and what to include. Acknowledgement within 72 hours.
+
 ## License / credits
 
 Originally based on [`ntdevlabs/tiny11builder`](https://github.com/ntdevlabs/tiny11builder) by NTDEV. The upstream project's removal lists, registry tweaks, and overall approach inform the catalog. Refer to the upstream repository for license and contributor history.
