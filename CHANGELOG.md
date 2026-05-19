@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.23] - 2026-05-19
+
 ### Added
 
 - **`SECURITY.md`** — private vulnerability reporting flow via GitHub Security Advisories with a 72h acknowledgement SLA. Scope covers the PowerShell ISO builder, the .NET / WebView2 launcher, the Velopack-managed auto-update flow, the autounattend.xml + oscdimg runtime-fetch surface, and catalog application logic.
