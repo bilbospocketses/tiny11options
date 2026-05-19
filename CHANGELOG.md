@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`SECURITY.md`** — private vulnerability reporting flow via GitHub Security Advisories with a 72h acknowledgement SLA. Scope covers the PowerShell ISO builder, the .NET / WebView2 launcher, the Velopack-managed auto-update flow, the autounattend.xml + oscdimg runtime-fetch surface, and catalog application logic.
+- **`CONTRIBUTING.md`** — developer prerequisites (PowerShell 5.1, .NET 10 SDK, WebView2 runtime, Pester 5.3.1–5.99.99), setup, dev workflow, project structure, code style, tests, specs/plans convention, commit message conventions, branch strategy, bug reporting, and a security-issue reporting pointer.
+- **README "Security" section** — direct link to the private advisory flow and `SECURITY.md`, inserted above the License/credits section.
+- **`.github/dependabot.yml`** — weekly version updates for the `nuget` ecosystem (covers `launcher/tiny11options.Launcher.csproj` + `launcher/Tests/tiny11options.Launcher.Tests.csproj`) and the `github-actions` ecosystem (tracks SHA-pinned action refs in `.github/workflows/`). Monday 09:00 ET cadence; 5-PR cap per ecosystem. Pester pinning stays out-of-band via `Run-Tests.ps1`'s `#Requires`.
+- **`.github/workflows/ci.yml`** — `build-and-test` job on push to `main` and PRs targeting `main`. Restores `tiny11options.sln`, builds Release, runs xUnit (`launcher/Tests/tiny11options.Launcher.Tests.csproj`), runs Pester (`tests/Run-Tests.ps1`), uploads test results. Required status check on the `main` branch ruleset. Image: `windows-2025-vs2026` matches `release.yml`.
+- **`.github/workflows/scorecard.yml`** — OpenSSF Scorecard weekly cron (Monday 13:00 UTC) + on-push to `main` + on-`branch_protection_rule` triggers. SARIF uploaded to the Security tab; public score published to `scorecard.dev`. Verbatim mirror of control-menu's scorecard.yml with the only edit being `branches: [master]` → `[main]`.
+- **Sigstore build-provenance attestation** — new `actions/attest-build-provenance@a2bbfa2 # v4.1.0` step in `release.yml` attests the 4 release assets (`*.nupkg`, `*Setup.exe`, `RELEASES`, `releases.*.json`). Verifiable via `gh attestation verify <asset> --repo bilbospocketses/tiny11options`. Inserted between Velopack signing and `gh release create`. Requires new `attestations: write` permission on the release job alongside the existing `id-token: write` (for OIDC) + `contents: write`.
+
+### Changed
+
+- **All `uses:` refs in `release.yml` are now SHA-pinned** with `# vX.Y.Z` comments for Dependabot's `github-actions` ecosystem to track. Replaces `@v6` (`actions/checkout`), `@v5` (`actions/setup-dotnet`), and the two `@v0.5.1` refs (`azure/trusted-signing-action`) with full commit SHAs. The Azure repo has been renamed to `Azure/artifact-signing-action`; GitHub's owner/repo redirect resolves the pinned SHA against the new repo automatically. The v1.1.0 cycle handles the `azure/trusted-signing-action@v0.5.1` → `azure/artifact-signing-action@v2.0.0` rename + bump.
+- **Job permissions block in `release.yml`** — added `attestations: write` alongside `id-token: write` + `contents: write`. Required for the Sigstore attest step.
+
+### Security
+
+- **Dependabot vulnerability alerts + security updates enabled.** Repo `security_and_analysis.dependabot_security_updates.status` flipped from `disabled` to `enabled`. CVE-driven dependency bumps now arrive as auto-PRs.
+- **CodeQL default setup configured** for `actions`, `csharp`, `javascript-typescript` (auto-expanded to also cover `javascript` + `typescript` standalone tokens). Default query suite, threat model `remote`, weekly schedule. First scan completed successfully across all 3 language jobs.
+- **Repo-level `allowed_actions: selected`** — `github_owned_allowed: true` covers `actions/*` + `github/*` automatically. Explicit `patterns_allowed`: `azure/trusted-signing-action@*` and `ossf/scorecard-action@*`.
+- **Repo-level `sha_pinning_required: true`** — every `uses:` ref must be a full commit SHA. Tag refs and branch refs reject at workflow-resolution time. SHA-pinning of `release.yml` (above) is the prerequisite that lets this flip cleanly.
+- **Branch ruleset on `main`** (`Protect main`, ruleset id 16576552) — `deletion`, `non_fast_forward`, `required_linear_history`, `required_signatures`, `pull_request` (0 reviewers — solo self-merge OK), `required_status_checks` (`build-and-test`). Effective immediately; all post-baseline changes go through the new gated PR flow.
+- **Tag ruleset on `refs/tags/v*`** (`Protect release tags`, ruleset id 16576620) — `deletion`, `non_fast_forward`, `required_signatures`. Release tags cannot be moved or deleted once pushed, and must be GPG/SSH-signed. Global git config already has `tag.gpgsign=true` so `git tag <name>` signs by default; no `-s` flag needed.
+- **gitleaks full-history sweep clean** — 459 commits scanned with `--log-opts="--all"`; no secrets, tokens, keys, or credentials surfaced. Sweep ran on `feat/v1.0.23-security-baseline` HEAD before FF-merge to `main`.
+- **5 historically-unsigned commits on `main`** will continue to display as Unverified in the GitHub UI (`%G? = N` on `900d1bf`, `18459ff`, `ac23463`, `94ee654`, `4ac950f`). These are pre-key-regen commits from the v1.0.19–v1.0.22 cycle; signing wasn't working at authoring time. Ruleset enforcement applies only to new pushes — the historical commits are unaffected and the badges are cosmetic. All commits from the v1.0.23 baseline pass forward are signed (`%G? = G`).
+
+### Notes
+
+- **No `LICENSE` added in this pass.** tiny11options has no declared license, mirroring upstream `ntdevlabs/tiny11builder` (also unlicensed). README's "Refer to the upstream repository for license and contributor history" is the current statement. Adding a license is a separate decision (likely candidate: GPL-3.0-only for parity with control-menu + ws-scrcpy-web) tracked for a follow-up release.
+- **Trusted Signing deferred to v1.1.0** — the 5 Azure secret provisioning, the `azure/trusted-signing-action@v0.5.1` → `azure/artifact-signing-action@v2.0.0` rename, and step-level secret scoping all land together in the next release per the v1.0.22 breadcrumb plan.
+- **Lesson captured during execution:** the `gh api -X PATCH ... -f 'languages[]=...'` syntax silently fails to populate array fields on CodeQL default-setup; use `gh api -X PATCH ... --input <jsonfile>` with a full JSON body for any PATCH that includes array values. The first PATCH attempt during this baseline pass left `languages: []` persisted (despite triggering a 3-language scan); the second PATCH via `--input` populated the field correctly.
+
 ## [1.0.22] - 2026-05-17
 
 **No-op smoke-trigger release for v1.0.21 dot-bg fix.** Zero behavior change vs v1.0.21. Sole purpose: be the "newer release" that a v1.0.21-installed launcher detects via the v1.0.13-added `window.focus` re-check, so the v1.0.21 belt-and-suspenders fix (cache-bust `?v=` query string + `::before` pseudo-element for the visible dot) can be smoked end-to-end. Expected on v1.0.21 badge surface: resting blue pulsing dot (both themes); hover dark = solid white dot + white wave fading outward (both unified, ring AND inner circle now actually swap color); hover light = solid `#3a3a3a` dot + `#3a3a3a` wave fading outward; tooltip "Update available, click to install..." steady (no scale inheritance).
