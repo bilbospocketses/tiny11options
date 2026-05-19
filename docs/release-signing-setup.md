@@ -1,16 +1,18 @@
 # Release signing setup — step by step
 
-> **Status (2026-05-15):** **v1.0.0 through v1.0.7 ALL shipped unsigned; code signing is now scheduled for the v1.0.8 cycle.** This guide is the forward-looking reference for the v1.0.8 signing pass — pick it up when you're ready to land Trusted Signing. The release workflow (`.github/workflows/release.yml`) already gates its two signing steps on `if: env.AZURE_TENANT_ID != ''`, **validated end-to-end across 7 releases** (v1.0.1 through v1.0.7 all skipped the sign steps cleanly with the secrets absent). The moment the 5 secrets in Part 4 are added to the repo, the next tag push produces signed binaries automatically with no workflow edits needed.
+> **Status (2026-05-19):** **v1.0.0 through v1.0.24 ALL shipped unsigned; code signing is now scheduled for the v1.1.0 cycle.** This guide is the forward-looking reference for the v1.1.0 signing pass — pick it up when you're ready to land Trusted Signing. The release workflow (`.github/workflows/release.yml`) already gates its two signing steps on `if: env.AZURE_TENANT_ID != ''`, **validated end-to-end across 24 releases** (v1.0.1 through v1.0.24 all skipped the sign steps cleanly with the secrets absent). The moment the 5 secrets in Part 4 are added to the repo, the next tag push produces signed binaries automatically with no workflow edits needed.
 >
-> The v1.0.7 release run (`actions/checkout@v6` + `actions/setup-dotnet@v5` on Node.js 24, runner pinned to `windows-2025-vs2026`) also confirmed the gate's `if:` syntax still routes correctly through the workflow-refresh bundle, so v1.0.8 work is JUST adding secrets — no workflow file edits required.
+> The v1.0.24 release run (`actions/checkout@v6` + `actions/setup-dotnet@v5.2.0` on Node.js 24, runner pinned to `windows-2025-vs2026`, `azure/artifact-signing-action@v2.0.0` per the v1.0.24 rename) confirmed the gate's `if:` syntax still routes correctly through the v1.0.23 baseline hardening (SHA-pinned actions + `sha_pinning_required: true` + Sigstore attestation), so v1.1.0 work is JUST adding secrets — no workflow file edits required.
 >
-> Until then, all releases through v1.0.7 ship unsigned and rely on Windows SmartScreen click-through for first install. Velopack auto-updates work fine across the unsigned-to-signed transition, so existing installs will pick up the signed v1.0.8 build without manual reinstall.
+> v1.1.0 cycle ALSO includes `ci B2` (narrow job-level secret scope → step-level for the 4 non-gating secrets; only `AZURE_TENANT_ID` needs job-level for the gate's `env.AZURE_TENANT_ID != ''` evaluation). That clears the Scorecard `TokenPermissionsID` finding on `release.yml`.
+>
+> Until then, all releases through v1.0.24 ship unsigned and rely on Windows SmartScreen click-through for first install. Velopack auto-updates work fine across the unsigned-to-signed transition, so existing installs will pick up the signed v1.1.0 build without manual reinstall.
 
 ---
 
 This is the verbose walkthrough for wiring Microsoft Trusted Signing (a.k.a. Artifact Signing) into the GitHub Actions release workflow. Follow this once; after it's done, every `v*` tag push produces signed binaries automatically.
 
-> **Naming note (2025 rebrand):** Microsoft renamed **Trusted Signing** to **Artifact Signing** in their Azure Portal UI in 2025. The GitHub Action is still published at `azure/trusted-signing-action` and our `release.yml` references that name. **Azure Portal screens say "Artifact Signing"; the GitHub Action and our secret names say "Trusted Signing".** Both refer to the same service. Don't worry about the inconsistency.
+> **Naming note (2025 rebrand + 2026 action rename):** Microsoft renamed **Trusted Signing** to **Artifact Signing** in their Azure Portal UI in 2025. In 2026 the GitHub Action repo was also renamed: `Azure/trusted-signing-action` → `Azure/artifact-signing-action`. As of v1.0.24, our `release.yml` references the new name (pinned to `azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0` — the rename was forced forward by the v1.0.23 transitive-SHA-pinning enforcement, since the old v0.5.1 action's `action.yml` referenced an unpinned `actions/cache@v4`). **Azure Portal screens say "Artifact Signing"; our `release.yml` says `azure/artifact-signing-action`; our secret names still use the older `TRUSTED_SIGNING_*` prefix** to match the action's input parameter names — both `trusted-signing-account-name` and `signing-account-name` are accepted as input keys in v2.0.0 for backward compat. All refer to the same service. Don't worry about the prefix inconsistency on secret names.
 
 ---
 
@@ -389,7 +391,7 @@ Workflow runs, signs, packs, releases. You're done.
 ## Troubleshooting / FAQ
 
 **Q: I see "Trusted Signing" some places and "Artifact Signing" others. Which is right?**
-A: Both. Microsoft rebranded the service in 2025. Azure Portal blades and role names are updated to "Artifact Signing". The GitHub Action is still at `azure/trusted-signing-action`. Our `release.yml` secret names use the older "TRUSTED_SIGNING_*" prefix to match the action's input parameter names.
+A: Both. Microsoft rebranded the service in 2025. Azure Portal blades and role names are updated to "Artifact Signing". The GitHub Action repo was also renamed in 2026 from `azure/trusted-signing-action` to `azure/artifact-signing-action` (v2.0.0 onwards); our `release.yml` uses the new name since v1.0.24. Our `release.yml` secret names still use the older "TRUSTED_SIGNING_*" prefix because the action's input parameter `trusted-signing-account-name` is preserved for backward compat alongside the new `signing-account-name` alias.
 
 **Q: Can I assign the signing role at the Artifact Signing account level instead of per-profile?**
 A: Yes — the role is inherited downward. Account-level is fine if you only have one certificate profile or use them all from this workflow. Profile-level is tighter (least-privilege) which is why this guide recommends it.

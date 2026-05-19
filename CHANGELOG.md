@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`docs/release-signing-setup.md` drift fix** — Status banner refreshed from "v1.0.0 through v1.0.7 / v1.0.8 cycle" to "v1.0.0 through v1.0.24 / v1.1.0 cycle". Naming-note + FAQ updated to reflect the v1.0.24 `azure/trusted-signing-action` → `azure/artifact-signing-action@v2.0.0` rename (pinned to commit `c7ab2a86`). Added explanation that v2.0.0 retains `trusted-signing-account-name` as a backward-compat input alongside the new `signing-account-name`, so existing `TRUSTED_SIGNING_*` secret names continue to work. Added v1.1.0 `ci B2` scope mention (step-level secret scope narrowing, clears Scorecard `TokenPermissionsID`).
+
 ### Added
 
 - **`LICENSE`** — GPL-3.0-only license text added at repo root. Matches control-menu, ws-scrcpy-web, svgedit, and oao licensing posture. Clears the OpenSSF Scorecard `LicenseID` finding. README's existing "License / credits" section already references upstream + fork additions; this PR adds the formal license file.
