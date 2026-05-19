@@ -96,7 +96,7 @@ jobs:
         # standalone). Presence-check on AZURE_TENANT_ID is sufficient because
         # all 5 signing secrets are wired together.
         if: env.AZURE_TENANT_ID != ''
-        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
           azure-client-id: ${{ env.AZURE_CLIENT_ID }}
@@ -148,7 +148,7 @@ jobs:
         # Skipped when signing secrets aren't configured (see note on the
         # earlier Sign step above).
         if: env.AZURE_TENANT_ID != ''
-        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
           azure-client-id: ${{ env.AZURE_CLIENT_ID }}
