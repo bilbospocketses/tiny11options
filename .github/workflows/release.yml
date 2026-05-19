@@ -51,9 +51,9 @@ jobs:
       # 2026-06-02 default-Node-24 cutover and the 2026-09-16 Node 20 removal.
       # Both deprecation notices were logged on every v1.0.2 -> v1.0.6 release
       # run; this pair-bump retires both.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
           # Pinned via global.json (SDK 10.0.203 + rollForward: latestPatch).
           # Avoids the runner pulling an SDK whose matching runtime pack
@@ -95,7 +95,7 @@ jobs:
         # standalone). Presence-check on AZURE_TENANT_ID is sufficient because
         # all 5 signing secrets are wired together.
         if: env.AZURE_TENANT_ID != ''
-        uses: azure/trusted-signing-action@v0.5.1
+        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
         with:
           azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
           azure-client-id: ${{ env.AZURE_CLIENT_ID }}
@@ -147,7 +147,7 @@ jobs:
         # Skipped when signing secrets aren't configured (see note on the
         # earlier Sign step above).
         if: env.AZURE_TENANT_ID != ''
-        uses: azure/trusted-signing-action@v0.5.1
+        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
         with:
           azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
           azure-client-id: ${{ env.AZURE_CLIENT_ID }}
