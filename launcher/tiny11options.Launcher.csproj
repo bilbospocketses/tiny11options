@@ -113,7 +113,7 @@
          version (1.0.2535.41) that was previously vendored under
          dependencies/webview2/. Bumping is a routine Dependabot PR. -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2535.41" />
-    <PackageReference Include="Velopack" Version="0.0.1298" />
+    <PackageReference Include="Velopack" Version="1.0.1" />
   </ItemGroup>
 
 </Project>
