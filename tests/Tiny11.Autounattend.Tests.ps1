@@ -1,5 +1,7 @@
 Import-Module "$PSScriptRoot/Tiny11.TestHelpers.psm1" -Force
 Import-Tiny11Module -Name 'Tiny11.Autounattend'
+Import-Tiny11Module -Name 'Tiny11.Catalog'
+Import-Tiny11Module -Name 'Tiny11.Selections'
 
 Describe "Render-Tiny11Autounattend" {
     It "substitutes placeholders" {
@@ -17,20 +19,43 @@ Describe "Render-Tiny11Autounattend" {
 }
 
 Describe "Get-Tiny11AutounattendBindings" {
-    It "maps tweak-bypass-nro=apply to HIDE_ONLINE_ACCOUNT_SCREENS=true" {
-        $resolved = @{
-            'tweak-bypass-nro'        = [pscustomobject]@{ EffectiveState='apply' }
-            'tweak-disable-chat-icon' = [pscustomobject]@{ EffectiveState='skip' }
-            'tweak-compact-install'   = [pscustomobject]@{ EffectiveState='apply' }
+    # Part 2 (v1.0.25): derive ResolvedSelections from the REAL catalog instead of a
+    # hand-built fixture. The old fixture fabricated 'tweak-compact-install' as present,
+    # masking the v1.0.8..v1.0.24 Standard-build crash (the ID was referenced by the
+    # bindings but never existed in catalog.json). Catalog-derived selections make any
+    # such drift fail right here.
+    BeforeAll {
+        $script:catalog = Get-Tiny11Catalog -Path "$PSScriptRoot/../catalog/catalog.json"
+    }
+
+    It "references only catalog IDs that exist in catalog.json (no orphan references)" {
+        $selections = New-Tiny11Selections    -Catalog $script:catalog
+        $resolved   = Resolve-Tiny11Selections -Catalog $script:catalog -Selections $selections
+        { Get-Tiny11AutounattendBindings -ResolvedSelections $resolved -ImageIndex 6 } | Should -Not -Throw
+    }
+
+    It "maps apply/skip states to the correct autounattend values (real catalog)" {
+        $selections = New-Tiny11Selections -Catalog $script:catalog -Overrides @{
+            'tweak-bypass-nro'        = 'apply'
+            'tweak-disable-chat-icon' = 'apply'
+            'tweak-compact-install'   = 'skip'
         }
+        $resolved = Resolve-Tiny11Selections -Catalog $script:catalog -Selections $selections
         $b = Get-Tiny11AutounattendBindings -ResolvedSelections $resolved -ImageIndex 6
-        $b['HIDE_ONLINE_ACCOUNT_SCREENS'] | Should -Be 'true'
-        $b['CONFIGURE_CHAT_AUTO_INSTALL'] | Should -Be 'true'
-        $b['COMPACT_INSTALL']             | Should -Be 'true'
+        $b['HIDE_ONLINE_ACCOUNT_SCREENS'] | Should -Be 'true'    # bypass-nro applied
+        $b['CONFIGURE_CHAT_AUTO_INSTALL'] | Should -Be 'false'   # chat-icon applied => chat auto-install OFF (inverted)
+        $b['COMPACT_INSTALL']             | Should -Be 'false'   # compact skipped
         $b['IMAGE_INDEX']                 | Should -Be '6'
     }
 
-    It "throws on missing item ID instead of defaulting to apply" {
+    It "defaults COMPACT_INSTALL to true (Compact OS on by default)" {
+        $selections = New-Tiny11Selections    -Catalog $script:catalog
+        $resolved   = Resolve-Tiny11Selections -Catalog $script:catalog -Selections $selections
+        $b = Get-Tiny11AutounattendBindings -ResolvedSelections $resolved -ImageIndex 6
+        $b['COMPACT_INSTALL'] | Should -Be 'true'
+    }
+
+    It "throws on a truly-missing item ID (guard intact, not weakened by the fix)" {
         $resolved = @{}  # No item IDs at all
         { Get-Tiny11AutounattendBindings -ResolvedSelections $resolved -ImageIndex 6 } | Should -Throw "*not found in ResolvedSelections*"
     }
