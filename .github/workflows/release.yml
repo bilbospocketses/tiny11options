@@ -21,7 +21,7 @@ on:
       - 'v*'
 
 env:
-  VPK_VERSION: 0.0.1298
+  VPK_VERSION: 1.0.1
 
 jobs:
   build-sign-release:
@@ -178,9 +178,11 @@ jobs:
         shell: pwsh
         run: |
           # Asset glob NOTE: `releases.*.json` is the modern Velopack manifest
-          # (default channel = win -> `releases.win.json`) that the runtime
-          # library 0.0.1298's GithubSource.GetAssetUrlFromName explicitly
-          # queries when checking for updates. The legacy plain-text `RELEASES`
+          # (default channel = win -> `releases.win.json`) that the Velopack
+          # runtime's GithubSource.GetAssetUrlFromName explicitly queries when
+          # checking for updates. Verified unchanged across the 0.0.1298 -> 1.0.1
+          # vpk upgrade (1.0.1 still emits releases.win.json + RELEASES +
+          # tiny11options-win-Setup.exe + *.nupkg). The legacy plain-text `RELEASES`
           # file is also produced by vpk pack and is uploaded for any older
           # client that might still parse it, but the runtime baked into
           # v1.0.0..v1.0.3 looks at releases.win.json ONLY. v1.0.0..v1.0.3
