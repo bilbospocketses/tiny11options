@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.26] - 2026-05-29
+
+**First release that completes a Standard-mode ISO build end-to-end.** v1.0.25 fixed the autounattend orphan crash at 18%, but Standard builds still failed at the catalog-apply phase — an older, separate regression the orphan crash had been masking. v1.0.26 fixes it.
+
+### Fixed
+
+- **Standard-mode builds no longer abort on benign takeown/icacls "Access is denied" noise.** Since v1.0.7, `Invoke-NativeWithNoiseFilter` ran `& tool 2>&1 | ForEach-Object`; on the build host (Windows PowerShell 5.1) under the orchestrator's `$ErrorActionPreference='Stop'`, redirecting a native command's stderr via `2>&1` makes that stderr a **terminating error** — so benign protected-folder lines (`…\LogFiles\WMI\RtBackup\*: Access is denied.`, `…\WebThreatDefSvc\*`) aborted the build at the catalog-apply step *before* the filter could suppress them. This regressed v1.0.3's `| Out-Null` behavior (which never aborted) and was hidden v1.0.8–v1.0.25 behind the earlier 18% orphan crash. Fix: a function-local `$ErrorActionPreference='Continue'` so native stderr flows through the filter instead of terminating — restoring the non-fatal contract while keeping the noise suppression. New regression guard spawns the real 5.1 host (pwsh 7 doesn't reproduce it).
+- **A failed build no longer bricks the next one (stale offline-hive recovery).** A build that exited with the offline registry hives still loaded stranded `HKLM\z{COMPONENTS,DEFAULT,NTUSER,SOFTWARE,SYSTEM}`, making every subsequent build fail at `reg load` with "Access is denied". New `Clear-Tiny11StaleHives` runs at the start of both the Worker and Core pipelines (before any hive load), best-effort unloading any stranded `z*` hive and clearing corrupt WIM mount points; never fatal. Pester 521/0 → 524/0; xUnit 140/0.
+
+### Notes
+
+- **v1.0.8 through v1.0.25 cannot complete a Standard-mode ISO build** (v1.0.8–v1.0.24: the 18% orphan crash; v1.0.25: the takeown regression above). The deprecation banners on those GitHub releases point to **v1.0.26**, the first release that builds a Standard ISO end-to-end. Core-mode builds were unaffected throughout, and existing installs auto-update to v1.0.26 via Velopack.
+
 ## [1.0.25] - 2026-05-29
 
 ### Deprecated

@@ -31,6 +31,12 @@ function Invoke-Tiny11BuildPipeline {
     $progress = { param($p) & $ProgressCallback $p }
     & $progress @{ phase='start'; step='Mounting source'; percent=0 }
 
+    # v1.0.26: recover from a prior build that exited with hives still loaded / a WIM mount
+    # abandoned. A stranded HKLM\z<Hive> bricks `reg load` on every subsequent build with
+    # "Access is denied"; corrupt mounts accumulate. Best-effort, never fatal.
+    Clear-Tiny11StaleHives
+    try { Clear-WindowsCorruptMountPoint | Out-Null } catch { Write-Warning "Build preflight: Clear-WindowsCorruptMountPoint failed: $($_.Exception.Message)" }
+
     $mountResult = Mount-Tiny11Source -InputPath $Source
     try {
         $sourceRoot = "$($mountResult.DriveLetter):\"

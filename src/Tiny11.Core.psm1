@@ -1210,6 +1210,12 @@ function Invoke-Tiny11CoreBuildPipeline {
     # Mount-Tiny11Source returns DriveLetter as a single letter (e.g. "E");
     # we add the ":" + "\*" suffix to walk the whole mount root. If $Source
     # was already a drive letter, MountedByUs=false and Dismount is a no-op.
+    # v1.0.26: recover from a prior build that exited with hives still loaded / a WIM mount
+    # abandoned (a stranded HKLM\z<Hive> bricks `reg load` on the next build with "Access is
+    # denied"). Best-effort, never fatal.
+    Clear-Tiny11StaleHives
+    try { Clear-WindowsCorruptMountPoint | Out-Null } catch { Write-Warning "Build preflight: Clear-WindowsCorruptMountPoint failed: $($_.Exception.Message)" }
+
     & $ProgressCallback @{ phase='preflight'; step='Mounting source ISO'; percent=2 }
     New-Item -ItemType Directory -Force -Path $sourceDir | Out-Null
     $sourceMount = Mount-Tiny11Source -InputPath $Source

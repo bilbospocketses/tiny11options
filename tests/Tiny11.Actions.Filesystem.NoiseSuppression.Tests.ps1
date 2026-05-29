@@ -89,3 +89,28 @@ Describe "Test-IsKnownBenignTakeownIcaclsNoise" {
         }
     }
 }
+
+Describe "Invoke-NativeWithNoiseFilter -- benign native stderr must not abort the build" {
+    # v1.0.26 regression guard. The build runs under powershell.exe (Windows PowerShell 5.1)
+    # with $ErrorActionPreference='Stop' (the orchestrator convention, Core.psm1). The v1.0.7
+    # filter switched takeown/icacls to `& tool 2>&1 | ForEach`, which under 5.1 + Stop turns
+    # benign protected-folder stderr into a TERMINATING error BEFORE the filter can suppress it,
+    # failing every Standard build at the catalog-apply phase (masked through v1.0.8..v1.0.24 by
+    # the earlier 18% orphan crash that stopped builds before they reached takeown). This spawns
+    # the real 5.1 host (pwsh 7 does NOT reproduce it) and asserts the helper tolerates benign
+    # stderr + non-zero exit instead of aborting the build.
+    It "does not throw under PowerShell 5.1 + ErrorActionPreference=Stop" {
+        $modulePath = (Resolve-Path "$PSScriptRoot/../src/Tiny11.Actions.Filesystem.psm1").Path
+        $probe = Join-Path $TestDrive 'noisefilter-eap-probe.ps1'
+        @"
+`$ErrorActionPreference = 'Stop'
+Import-Module '$modulePath' -Force
+try {
+    Invoke-NativeWithNoiseFilter -FileName 'cmd.exe' -Arguments @('/c','echo C:\x\Windows\System32\LogFiles\WMI\RtBackup\*: Access is denied. 1>&2 & exit 1')
+    'NOTHROW'
+} catch { 'THREW: ' + `$_.Exception.Message }
+"@ | Set-Content -LiteralPath $probe -Encoding UTF8
+        $result = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe 2>&1 | Select-Object -Last 1
+        "$result" | Should -Be 'NOTHROW'
+    }
+}
