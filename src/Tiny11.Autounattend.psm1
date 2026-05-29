@@ -63,18 +63,7 @@ function Get-Tiny11AutounattendBindings {
         [Parameter(Mandatory)][hashtable]$ResolvedSelections,
         [Parameter(Mandatory)][int]$ImageIndex
     )
-    function State($id) {
-        # v1.0.8 audit WARNING ps-modules A5: throw on missing item ID rather than
-        # silently defaulting to 'apply'. The bindings function is lockstep with
-        # the catalog -- a missing ID means a coding error (catalog renamed an
-        # item without updating bindings), not a user-data issue. Pre-fix, a
-        # missing 'tweak-bypass-nro' would silently override the user's actual
-        # selection.
-        if (-not $ResolvedSelections.ContainsKey($id)) {
-            throw "Get-Tiny11AutounattendBindings: catalog item ID '$id' not found in ResolvedSelections. The bindings function references an item that doesn't exist -- coding error, not user error."
-        }
-        $ResolvedSelections[$id].EffectiveState
-    }
+    function State($id) { if ($ResolvedSelections.ContainsKey($id)) { $ResolvedSelections[$id].EffectiveState } else { 'apply' } }
     $hideOnline = if ((State 'tweak-bypass-nro') -eq 'apply') { 'true' } else { 'false' }
     $chatAuto   = if ((State 'tweak-disable-chat-icon') -eq 'apply') { 'false' } else { 'true' }
     $compact    = if ((State 'tweak-compact-install') -eq 'apply') { 'true' } else { 'false' }
@@ -90,18 +79,10 @@ function Get-Tiny11AutounattendTemplate {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$LocalPath)
 
-    # v1.0.8 audit WARNING ps-modules A2: bound cache staleness to 7 days.
-    # Pre-fix the cache was permanent -- if upstream fixed a template bug,
-    # the cached file was used forever. Now: use cache if mtime <= 7 days;
-    # otherwise treat as stale and fall through to refetch + re-cache.
     if (Test-Path $LocalPath) {
-        $age = (Get-Date) - (Get-Item -LiteralPath $LocalPath).LastWriteTime
-        if ($age.TotalDays -lt 7) {
-            $localContent = [System.IO.File]::ReadAllText($LocalPath)
-            $localContent = $localContent -replace '(\r?\n)+$', ''
-            return [pscustomobject]@{ Source='Local'; Content=$localContent }
-        }
-        # Cache stale (older than 7 days); fall through to refetch.
+        $localContent = [System.IO.File]::ReadAllText($LocalPath)
+        $localContent = $localContent -replace '(\r?\n)+$', ''
+        return [pscustomobject]@{ Source='Local'; Content=$localContent }
     }
     try {
         $content = Invoke-RestMethod -Uri $ForkTemplateUrl -ErrorAction Stop

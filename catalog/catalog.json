@@ -10,7 +10,7 @@
     { "id": "sponsored",         "displayName": "Sponsored apps and suggestions", "description": "Pre-installed sponsored apps, Start menu suggestions, and consumer content delivery." },
     { "id": "copilot-ai",        "displayName": "Copilot and AI features",        "description": "Windows Copilot app and policy keys that disable AI surfaces." },
     { "id": "hardware-bypass",   "displayName": "Hardware requirement bypass",    "description": "Bypass TPM, Secure Boot, RAM, CPU, and storage checks for installation and upgrade." },
-    { "id": "oobe",              "displayName": "OOBE and system tweaks",         "description": "Out-of-box experience tweaks (local accounts, reserved storage, BitLocker auto-encryption, chat icon, Compact OS)." }
+    { "id": "oobe",              "displayName": "OOBE and system tweaks",         "description": "Out-of-box experience tweaks (local accounts, reserved storage, BitLocker auto-encryption, chat icon)." }
   ],
   "items": [
     { "id": "remove-intelmanagement", "category": "store-apps", "displayName": "Intel Management and Security Status", "description": "Removes the AppUp.IntelManagementandSecurityStatus provisioned package.", "default": "apply", "runtimeDepsOn": [], "actions": [ { "type": "provisioned-appx", "packagePrefix": "AppUp.IntelManagementandSecurityStatus" } ] },
@@ -183,7 +183,6 @@
     { "id": "tweak-disable-chat-icon", "category": "oobe", "displayName": "Disable taskbar Chat icon", "description": "Hides the Teams Chat icon from the taskbar (ChatIcon=3, TaskbarMn=0).", "default": "apply", "runtimeDepsOn": [], "actions": [
       { "type": "registry", "op": "set", "hive": "SOFTWARE", "key": "Policies\\Microsoft\\Windows\\Windows Chat", "name": "ChatIcon", "valueType": "REG_DWORD", "value": "3" },
       { "type": "registry", "op": "set", "hive": "NTUSER",   "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "TaskbarMn", "valueType": "REG_DWORD", "value": "0" }
-    ] },
-    { "id": "tweak-compact-install", "category": "oobe", "displayName": "Compact OS install (compress system files)", "description": "Installs Windows with system files compressed on disk (Compact OS), reclaiming ~1.5-2.5 GB. Applied via <Compact> in the generated autounattend.xml at image-install time; minor CPU cost to decompress on read. No offline action -- this toggle only drives the autounattend binding.", "default": "apply", "runtimeDepsOn": [], "actions": [] }
+    ] }
   ]
 }

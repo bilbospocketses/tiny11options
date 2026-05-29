@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.27] - 2026-05-29
+
+**First release since v1.0.6 that produces an *installable* Standard-mode ISO.** v1.0.26 was the first to *complete* a Standard build, but the ISO it produced failed during Windows Setup at the file-copy step ("Windows installation has failed") — a build-pipeline regression in the image-shaping code that had accumulated between v1.0.7 and v1.0.26 and only became observable once the build could finally run to completion. v1.0.27 reverts that build code to the proven v1.0.6 state while keeping the safe post-v1.0.6 work. Verified end-to-end on a Win11 25H2 build: clean ISO build → clean install → Compact OS on → first-boot cleanup task deployed and working.
+
+### Fixed
+
+- **The generated Standard-mode ISO installs again.** The files that shape the offline image — `catalog/catalog.json`, `src/Tiny11.Autounattend.psm1`, `src/Tiny11.Catalog.psm1`, `src/Tiny11.Actions.Registry.psm1`, `src/Tiny11.Actions.Filesystem.psm1` — were reverted to their **v1.0.6** content, the last version with a confirmed clean install (a dozen-plus smoke installs over several days). The changes that accumulated across v1.0.7–v1.0.26 in those files (takeown/icacls stderr handling, the autounattend `State`-throw guard, the registry-pattern-zero rework, catalog-load validation, and the `tweak-compact-install` catalog item) collectively produced an image that no longer installed; reverting them as one consistent v1.0.6 set restores the installable image. Compact OS stays **on** by default — v1.0.6's lenient `State` resolves the now-uncatalogued `tweak-compact-install` to `apply` → `<Compact>true</Compact>` — so the on-disk footprint is unchanged.
+
+### Changed
+
+- **Only the image-shaping build pipeline was reverted; the UI, logging, and failed-build cleanup stay current.** Verified from the v1.0.6→v1.0.26 diffs to be cleanup/logging/robustness with zero effect on the output image, and therefore kept: the WebView2 UI redesign, build logging, stale-hive recovery (`Clear-Tiny11StaleHives`) and locked-scratch-file reporting in the Worker pipeline, the input-ISO drive-letter mount poll (`Tiny11.Iso.psm1`), and `tiny11-cancel-cleanup.ps1`. Core-mode (`Tiny11.Core.psm1`) and first-boot cleanup (`Tiny11.PostBoot.psm1`) — neither on the Standard install path — were also left current.
+
+### Deprecated
+
+- **Releases v1.0.7 through v1.0.26 are deprecated — none produces an installable Standard-mode ISO.** v1.0.7 aborts the build (takeown/icacls `2>&1` becomes a terminating error under the orchestrator's `Stop` on the Windows PowerShell 5.1 build host); v1.0.8–v1.0.25 crash the build at 18% (the `tweak-compact-install` orphan reference once v1.0.8 made `State` throw); v1.0.26 builds an ISO but it **fails to install** at the Windows Setup file-copy step. Each GitHub release in that range carries a defect banner pointing here. Core-mode builds were unaffected throughout, and existing installs auto-update to v1.0.27 via Velopack. v1.0.6 and earlier predate the regression.
+
+### Notes
+
+- The single change within the reverted set responsible for the *install* failure was not individually isolated — the five files were reverted together as the proven v1.0.6 image pipeline. A follow-up bisect can pinpoint it and re-apply the innocent improvements (e.g. catalog-load validation, the registry-pattern-zero correctness fix) on top of this working baseline.
+
 ## [1.0.26] - 2026-05-29
 
 **First release that completes a Standard-mode ISO build end-to-end.** v1.0.25 fixed the autounattend orphan crash at 18%, but Standard builds still failed at the catalog-apply phase — an older, separate regression the orphan crash had been masking. v1.0.26 fixes it.
