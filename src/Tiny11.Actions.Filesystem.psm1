@@ -41,6 +41,14 @@ function Invoke-NativeWithNoiseFilter {
         [Parameter(Mandatory)][string]$FileName,
         [Parameter(Mandatory)][string[]]$Arguments
     )
+    # v1.0.26: the build orchestrator runs under $ErrorActionPreference='Stop'. On the build
+    # host (Windows PowerShell 5.1), redirecting a native command's stderr via `2>&1` makes
+    # that stderr a TERMINATING error under 'Stop' -- so benign takeown/icacls
+    # "<protected>\*: Access is denied." lines aborted the build BEFORE this filter could
+    # suppress them (a regression vs v1.0.3's `| Out-Null`, which never aborted). Force
+    # 'Continue' locally so native stderr flows through the ForEach to be filtered, restoring
+    # the v1.0.3 non-fatal contract while keeping the v1.0.7 noise suppression.
+    $ErrorActionPreference = 'Continue'
     & $FileName @Arguments 2>&1 | ForEach-Object {
         if ($_ -is [System.Management.Automation.ErrorRecord]) {
             $msg = $_.Exception.Message
@@ -112,4 +120,4 @@ function Get-Tiny11FilesystemOnlineCommand {
     })
 }
 
-Export-ModuleMember -Function Invoke-FilesystemAction, Invoke-Takeown, Invoke-Icacls, Get-AdminGroupAccount, Get-Tiny11FilesystemOnlineCommand, Test-IsKnownBenignTakeownIcaclsNoise
+Export-ModuleMember -Function Invoke-FilesystemAction, Invoke-Takeown, Invoke-Icacls, Get-AdminGroupAccount, Get-Tiny11FilesystemOnlineCommand, Test-IsKnownBenignTakeownIcaclsNoise, Invoke-NativeWithNoiseFilter

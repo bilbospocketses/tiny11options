@@ -35,3 +35,22 @@ Describe "Mount-/Dismount-Tiny11Hive" {
         }
     }
 }
+
+Describe "Clear-Tiny11StaleHives" {
+    # v1.0.26: a build that fails with hives still loaded strands HKLM\z* and bricks every
+    # subsequent build at `reg load` ("Access is denied"). Build-start recovery unloads any
+    # stranded z-hive, best-effort, and must never throw (a hive genuinely in use is warned, not fatal).
+    It "unloads only the z-hives currently present, and never throws on a failed unload" {
+        # Simulate zSOFTWARE + zSYSTEM stranded-loaded from a prior failed build; others absent.
+        Mock -CommandName 'Test-Path' -ModuleName 'Tiny11.Hives' -MockWith { $LiteralPath -in 'HKLM:\zSOFTWARE','HKLM:\zSYSTEM' }
+        Mock -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Hives' -MockWith { if (($RegArgs -join ' ') -like '*zSYSTEM*') { throw 'hive in use' }; 0 }
+        { Clear-Tiny11StaleHives } | Should -Not -Throw
+        Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Hives' -Times 2 -Exactly -ParameterFilter { $RegArgs -contains 'unload' }
+    }
+    It "is a no-op when no z-hives are loaded" {
+        Mock -CommandName 'Test-Path' -ModuleName 'Tiny11.Hives' -MockWith { $false }
+        Mock -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Hives' -MockWith { 0 }
+        Clear-Tiny11StaleHives
+        Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Hives' -Times 0 -Exactly
+    }
+}

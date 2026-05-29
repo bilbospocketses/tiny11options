@@ -54,4 +54,18 @@ function Dismount-Tiny11AllHives {
     }
 }
 
-Export-ModuleMember -Function Resolve-Tiny11HivePath, Get-Tiny11HiveMountKey, Invoke-RegCommand, Mount-Tiny11Hive, Dismount-Tiny11Hive, Mount-Tiny11AllHives, Dismount-Tiny11AllHives
+function Clear-Tiny11StaleHives {
+    [CmdletBinding()] param()
+    # v1.0.26: recover from a prior build that exited with hives still loaded. A stranded
+    # HKLM\z<Hive> makes the next build's `reg load` fail with "Access is denied", bricking
+    # every subsequent build until manual cleanup. Best-effort + never throws: unload any
+    # z-key currently present, ignoring per-hive failures (e.g. a hive genuinely in use).
+    $ErrorActionPreference = 'Continue'
+    foreach ($h in $HiveMap.Keys) {
+        if (Test-Path -LiteralPath "HKLM:\z$h") {
+            try { Dismount-Tiny11Hive -Hive $h } catch { Write-Warning "Stale-hive recovery: could not unload HKLM\z${h}: $_" }
+        }
+    }
+}
+
+Export-ModuleMember -Function Resolve-Tiny11HivePath, Get-Tiny11HiveMountKey, Invoke-RegCommand, Mount-Tiny11Hive, Dismount-Tiny11Hive, Mount-Tiny11AllHives, Dismount-Tiny11AllHives, Clear-Tiny11StaleHives
