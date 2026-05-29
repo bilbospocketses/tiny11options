@@ -8,6 +8,14 @@
 
 A catalog-driven Windows 11 image trimmer with an interactive WebView2 + WPF wizard. Build your own customized Win11 ISO by picking what to keep and what to remove from a curated list of ~74 items across 10 categories.
 
+> [!IMPORTANT]
+> **Compact OS is forced ON in the ISOs this tool currently builds.** Compact OS installs Windows with its system files kept compressed on disk — it reclaims roughly **1.5–2.5 GB** in exchange for a small CPU cost to decompress them on read. Current builds enable it for every image and there is **no in-app toggle yet**, so it's flagged here in case you'd rather not use it (for example on a low-CPU machine, or if you simply prefer your files left uncompressed). You can change it at any time on the *installed* machine from an **elevated** Command Prompt or PowerShell:
+>
+> ```
+> compact /compactos:never     (turn Compact OS OFF)
+> compact /compactos:always    (turn Compact OS ON)
+> ```
+
 ## What's different from upstream
 
 | | Upstream tiny11builder | tiny11options |
