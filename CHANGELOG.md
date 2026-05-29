@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.25] - 2026-05-29
+
+### Deprecated
+
+- **Releases v1.0.8 through v1.0.24 are deprecated — they shipped a defective Standard-mode build.** Every release in that range crashes during a **Standard-mode** ISO build at the autounattend-render step (18%) with `catalog item ID 'tweak-compact-install' not found in ResolvedSelections`, producing no ISO. (Root cause under *Fixed* below: a long-latent orphaned catalog reference that v1.0.8's audit hardening turned from a silent default into a hard failure.) **Core-mode builds in that range were unaffected.** v1.0.25 is the fix. These releases remain published for auditability, but each one's GitHub release notes are annotated with a defect banner pointing to v1.0.25, and existing installs are offered v1.0.25 as the new latest via Velopack auto-update. v1.0.7 and earlier predate the change and were not affected.
+
 ### Fixed
 
 - **Standard-mode (Worker pipeline) builds no longer crash at the 18% autounattend-render step.** `Get-Tiny11AutounattendBindings` referenced catalog item `tweak-compact-install`, which was never present in `catalog/catalog.json` — only the binding and a hand-built test fixture existed (the Compact-OS toggle from the v0.1.0 design spec was half-implemented: consumer written, catalog producer never added). Since v1.0.8 hardened the bindings to *throw* on a missing ID instead of silently defaulting it to `apply` (audit A5), every Standard build failed with `catalog item ID 'tweak-compact-install' not found in ResolvedSelections`. Fix completes the feature: adds `tweak-compact-install` as a real `oobe` catalog item (`default: apply`, metadata-only — no offline action; it drives the `<Compact>` autounattend element only), so it now surfaces as a user-facing checkbox and `<Compact>` is genuinely user-controllable. Compact OS stays on by default, matching pre-v1.0.8 behavior. Core-mode builds were unaffected. Reported on a Win11 25H2 build.
