@@ -137,10 +137,13 @@ function Invoke-RegistryPatternZeroAction {
         return
     }
 
-    $names = @(Get-ItemProperty -LiteralPath $psPath -ErrorAction SilentlyContinue |
-               Get-Member -MemberType NoteProperty -ErrorAction SilentlyContinue |
-               Where-Object Name -like $Action.namePattern |
-               Select-Object -ExpandProperty Name)
+    # v1.0.8 audit BLOCKER ps-modules B1: use Get-Item -LiteralPath | Property
+    # to read the actual registry value names array from the provider, without
+    # PSObject metadata pollution (PSPath, PSChildName, PSDrive, PSProvider,
+    # PSParentPath) that Get-ItemProperty | Get-Member would also surface.
+    $allNames = @(Get-Item -LiteralPath $psPath -ErrorAction SilentlyContinue |
+                  Select-Object -ExpandProperty Property)
+    $names = @($allNames | Where-Object { $_ -like $Action.namePattern })
 
     foreach ($name in $names) {
         Invoke-RegCommand 'add' "$mountKey\$($Action.key)" '/v' $name '/t' $Action.valueType '/d' '0' '/f' | Out-Null

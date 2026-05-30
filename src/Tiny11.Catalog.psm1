@@ -44,8 +44,21 @@ function Get-Tiny11Catalog {
             if ($action.type -notin $ValidActionTypes) {
                 throw "Catalog item '$($item.id)' has invalid action type: $($action.type) (expected one of $($ValidActionTypes -join ', '))"
             }
-            if ($action.type -eq 'registry' -and ($action.PSObject.Properties.Name -contains 'hive') -and ($action.hive -notin $ValidHives)) {
-                throw "Catalog item '$($item.id)' has invalid hive: $($action.hive)"
+            if ($action.type -in @('registry','registry-pattern-zero')) {
+                if (($action.PSObject.Properties.Name -contains 'hive') -and ($action.hive -notin $ValidHives)) {
+                    throw "Catalog item '$($item.id)' has invalid hive: $($action.hive)"
+                }
+                # v1.0.8 audit WARNING ps-modules A3: registry-pattern-zero requires
+                # namePattern, valueType, key, hive at catalog-load time so a typo
+                # (NTUSR / HKEY_CURRENT_USER) is caught here, not deep inside the
+                # action handler after hives are already mounted.
+                if ($action.type -eq 'registry-pattern-zero') {
+                    foreach ($req in @('namePattern','valueType','key','hive')) {
+                        if (-not ($action.PSObject.Properties.Name -contains $req)) {
+                            throw "Catalog item '$($item.id)' registry-pattern-zero action missing required field: $req"
+                        }
+                    }
+                }
             }
         }
         $itemIds[$item.id] = $true
