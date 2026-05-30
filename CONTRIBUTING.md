@@ -52,7 +52,7 @@ tiny11options/
 ├── tiny11-iso-validate.ps1          ISO sanity check
 ├── tiny11-profile-validate.ps1      Profile JSON schema check
 ├── tiny11-cancel-cleanup.ps1        Scratch cleanup on cancellation
-├── autounattend.template.xml        Fetched-from-fork template (runtime download by builder)
+├── autounattend.template.xml        Bundled autounattend template (embedded in the exe; no runtime fetch as of v1.0.28)
 ├── catalog/                         Removal lists, registry tweaks, capability deprovisioning data
 ├── config/                          Default JSON profiles consumed by the GUI + headless flows
 ├── dependencies/                    Vendored helpers
