@@ -36,7 +36,7 @@ Security fixes target the latest commit on `main`. Older commits and tagged rele
 - The PowerShell ISO builder (`tiny11maker.ps1`, `tiny11Coremaker.ps1`, and the `-from-config.ps1` variants)
 - The .NET / WebView2 launcher (`launcher/tiny11options.Launcher`) and its bridge code
 - The Velopack-managed auto-update flow (manifest fetch, signature verification, install/restart)
-- The autounattend.xml template + the runtime fetch of `autounattend.xml` from our fork and `oscdimg.exe` from Microsoft's symbol server
+- The autounattend.xml template (bundled + embedded as of v1.0.28 — the runtime fetch from our fork was retired) and the runtime fetch of `oscdimg.exe` from Microsoft's symbol server
 - Catalog application logic (registry hive editing, Appx removal, capability deprovisioning)
 
 **Out of scope:**
