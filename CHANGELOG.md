@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.28] - 2026-05-30
+
+**Re-applies the safe image-shaping improvements on top of the proven v1.0.27 baseline, and retires the autounattend template's runtime network fetch.** v1.0.27 reverted five image-shaping files wholesale to v1.0.6 to restore an installable ISO; this release re-applies the install-verified subset of those changes (the Compact OS toggle, catalog-load validation, and the registry-pattern-zero read fix) — each confirmed image-neutral — while permanently leaving out the one change that caused harm (the v1.0.8 `State`-throw guard). Standard-mode build and install behavior is unchanged from v1.0.27. Pester 491/0, xUnit 140/0.
+
+### Added
+
+- **Compact OS is a user-facing toggle again.** Re-added `tweak-compact-install` as a real `oobe` catalog item (`default: apply`, metadata-only — it drives the `<Compact>` autounattend element, no offline action), so Compact OS surfaces as a checkbox and is genuinely user-controllable. It stays **on by default**, matching v1.0.27. To change it post-install instead: `compact.exe /compactos:never` (or `/compactos:always`).
+- **Catalog-load validation for `registry-pattern-zero` actions** — the catalog loader now validates the field shape of `registry-pattern-zero` actions at load time.
+
+### Changed
+
+- **`registry-pattern-zero` reads value names via `Get-Item … | Select-Object -ExpandProperty Property`** instead of `Get-ItemProperty | Get-Member`, avoiding `PSObject` metadata pollution (`PSPath`, `PSChildName`, …). Image-neutral — same value names matched, same result for the one `SubscribedContent-*Enabled` action.
+
+### Removed
+
+- **The autounattend template no longer performs a runtime network fetch.** `Get-Tiny11AutounattendTemplate` previously fell through from the bundled file to a live `Invoke-RestMethod` against the fork's GitHub `main` branch, re-caching the result. Because the template ships bundled with the app (and is always present), that fetch tier was effectively unreachable in normal builds — and where it *would* have fired (a stale cache), it made `raw.githubusercontent.com` a live build-time dependency and a date-/network-dependent build input. The template is now **bundled + embedded only**: the shipped file is used, with the in-module embedded copy as the sole fallback, and template updates ride a normal app release. A Pester regression guard asserts no `Invoke-RestMethod` is performed.
+
+### Notes
+
+- **This completes the v1.0.27 follow-up bisect.** Each of the five files v1.0.27 reverted was re-tested individually against a real build + install; all were confirmed image-neutral — consistent with the v1.0.26 install failure having been intermittent (a WIM dismount/save file-lock is the leading suspect, tracked separately) rather than caused by any one file. The **only** v1.0.8–v1.0.26 change deliberately *not* re-applied is the autounattend `State`-throw guard: a runtime `throw` on a missing catalog ID was the wrong layer — it turned a self-inflicted orphan into a build crash at 18% on the user's machine. `State` stays lenient (v1.0.6 behavior); orphan detection will return as a CI/load-time reference-integrity test, not a runtime throw. The `Tiny11.Actions.Filesystem.psm1` takeown/icacls noise filter also stays reverted (plain `| Out-Null`).
+
 ## [1.0.27] - 2026-05-29
 
 **First release since v1.0.6 that produces an *installable* Standard-mode ISO.** v1.0.26 was the first to *complete* a Standard build, but the ISO it produced failed during Windows Setup at the file-copy step ("Windows installation has failed") — a build-pipeline regression in the image-shaping code that had accumulated between v1.0.7 and v1.0.26 and only became observable once the build could finally run to completion. v1.0.27 reverts that build code to the proven v1.0.6 state while keeping the safe post-v1.0.6 work. Verified end-to-end on a Win11 25H2 build: clean ISO build → clean install → Compact OS on → first-boot cleanup task deployed and working.

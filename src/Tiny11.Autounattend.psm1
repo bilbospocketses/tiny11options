@@ -40,8 +40,6 @@ $EmbeddedTemplate = @'
 </unattend>
 '@
 
-$ForkTemplateUrl = 'https://raw.githubusercontent.com/bilbospocketses/tiny11options/refs/heads/main/autounattend.template.xml'
-
 function Render-Tiny11Autounattend {
     [CmdletBinding()]
     param(
@@ -79,19 +77,18 @@ function Get-Tiny11AutounattendTemplate {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$LocalPath)
 
+    # Template acquisition: the bundled autounattend.template.xml (shipped with
+    # the app and extracted next to the catalog at runtime), falling back to the
+    # in-module embedded copy if that file is ever missing. No runtime network
+    # fetch -- the template ships with the app and any update rides a normal
+    # release. (Dependency policy: bundled + embedded only, no runtime fetch;
+    # see project_tiny11options_dependency_policy.md.)
     if (Test-Path $LocalPath) {
         $localContent = [System.IO.File]::ReadAllText($LocalPath)
         $localContent = $localContent -replace '(\r?\n)+$', ''
         return [pscustomobject]@{ Source='Local'; Content=$localContent }
     }
-    try {
-        $content = Invoke-RestMethod -Uri $ForkTemplateUrl -ErrorAction Stop
-        Set-Content -Path $LocalPath -Value $content -Encoding UTF8
-        return [pscustomobject]@{ Source='Network'; Content=$content }
-    } catch {
-        Write-Warning "autounattend template fetch from $ForkTemplateUrl failed; using embedded fallback. ($_)"
-        return [pscustomobject]@{ Source='Embedded'; Content=$EmbeddedTemplate }
-    }
+    return [pscustomobject]@{ Source='Embedded'; Content=$EmbeddedTemplate }
 }
 
 function Get-Tiny11EmbeddedAutounattend { $EmbeddedTemplate }

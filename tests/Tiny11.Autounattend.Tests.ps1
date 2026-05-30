@@ -31,21 +31,31 @@ Describe "Get-Tiny11AutounattendBindings" {
     }
 }
 
-Describe "Get-Tiny11AutounattendTemplate (3-tier)" {
+Describe "Get-Tiny11AutounattendTemplate (bundled + embedded, no network fetch)" {
     BeforeAll { $script:tmp = New-TempScratchDir }
     AfterAll  { Remove-TempScratchDir -Path $script:tmp }
 
-    It "uses the local file when present" {
+    It "uses the local (bundled) file when present" {
         $local = Join-Path $script:tmp 'autounattend.template.xml'
         Set-Content -Path $local -Value '<unattend>local</unattend>' -Encoding UTF8
         $r = Get-Tiny11AutounattendTemplate -LocalPath $local
         $r.Source | Should -Be 'Local'
         $r.Content | Should -Be '<unattend>local</unattend>'
     }
-    It "falls back to embedded when local missing and network mocked to fail" {
-        Mock -CommandName 'Invoke-RestMethod' -ModuleName 'Tiny11.Autounattend' -MockWith { throw "no network" }
+    It "falls back to the embedded template when the local file is missing" {
         $r = Get-Tiny11AutounattendTemplate -LocalPath (Join-Path $script:tmp 'nope.xml')
         $r.Source | Should -Be 'Embedded'
         $r.Content | Should -Match '<unattend'
+    }
+    It "never performs a runtime network fetch (fetch tier retired in v1.0.28)" {
+        # Regression guard for the bundled+embedded-only dependency policy: if a
+        # future change re-introduces a runtime fetch, this mock fires and the
+        # -Times 0 assertion fails.
+        Mock -CommandName 'Invoke-RestMethod' -ModuleName 'Tiny11.Autounattend' -MockWith { throw 'network fetch must not happen' }
+        $local = Join-Path $script:tmp 'autounattend.template.xml'
+        Set-Content -Path $local -Value '<unattend>local</unattend>' -Encoding UTF8
+        Get-Tiny11AutounattendTemplate -LocalPath $local | Out-Null
+        Get-Tiny11AutounattendTemplate -LocalPath (Join-Path $script:tmp 'missing.xml') | Out-Null
+        Should -Invoke -CommandName 'Invoke-RestMethod' -ModuleName 'Tiny11.Autounattend' -Times 0 -Exactly
     }
 }
