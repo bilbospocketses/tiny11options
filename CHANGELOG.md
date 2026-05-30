@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **CI orphan-detection restored (test-only, image-neutral).** Re-added `tests/Tiny11.Catalog.ReferenceIntegrity.Drift.Tests.ps1` — a CI scan that fails if any production file hardcodes a catalog-ID literal absent from `catalog.json` — and re-hardened the autounattend bindings test to derive `ResolvedSelections` from the real catalog (via `New-`/`Resolve-Tiny11Selections`) instead of a fabricated fixture. Together they catch the "orphan reference" class (the root of the v1.0.8–v1.0.24 18% build crash) at test time, before shipping — the correct layer, replacing the runtime `State`-throw permanently dropped in v1.0.28. Pester 491 → 495.
+
 ## [1.0.28] - 2026-05-30
 
 **Re-applies the safe image-shaping improvements on top of the proven v1.0.27 baseline, and retires the autounattend template's runtime network fetch.** v1.0.27 reverted five image-shaping files wholesale to v1.0.6 to restore an installable ISO; this release re-applies the install-verified subset of those changes (the Compact OS toggle, catalog-load validation, and the registry-pattern-zero read fix) — each confirmed image-neutral — while permanently leaving out the one change that caused harm (the v1.0.8 `State`-throw guard). Standard-mode build and install behavior is unchanged from v1.0.27. Pester 491/0, xUnit 140/0.
