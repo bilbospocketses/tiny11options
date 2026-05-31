@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.29] - 2026-05-31
+
+**Hardens the WIM commit path so a corrupt image can never ship silently, and adds real-DISM end-to-end test coverage for it.** Under transient host interference (Defender real-time scan, Windows Search indexer, Controlled Folder Access, a lingering handle), `Dismount-WindowsImage -Save` could partially commit `install.wim` — producing a valid-looking ISO that then failed Windows Setup at the file-copy step (the v1.0.26 "Windows installation has failed" symptom). The build now retries a failed save and verifies the saved/exported `install.wim` and `boot.wim`, aborting with a clear error rather than shipping a broken image. A new admin-gated synthetic-WIM harness validates the gate + retry against a real `New-WindowsImage` WIM (and runs for real in CI). No change to a successful build's output image. Pester 507/0, xUnit 140/0.
+
 ### Added
 
 - **WIM-integrity gate — a corrupt image can no longer ship silently.** After the offline-servicing save, the build verifies `install.wim` (post-`Dismount-WindowsImage -Save`, and again post-`/Export-Image`) and `boot.wim`, and **aborts the build** with an actionable error if verification fails. This closes the silent-partial-commit class behind the v1.0.26 "Windows installation has failed" file-copy failure (a transient dismount-save lock leaving `install.wim` partially committed → a valid-looking ISO that fails Windows Setup). New module `src/Tiny11.Wim.psm1` (`Assert-Tiny11WimIntegrity`, `Invoke-Tiny11WimDismountSave`). The post-save check is a structural-readability verify (`Get-WindowsImage`); the deep, full-resource hash verify is the `dism /Export-Image … /CheckIntegrity` pass on the normal (non-FastBuild) build path.
