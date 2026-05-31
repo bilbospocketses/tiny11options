@@ -45,8 +45,18 @@ Section 'Test 7: A11-I3-S2 (Core SetupComplete path) -- pattern-zero zeros a fab
 Cmd 'Plant SubscribedContent-FAKE99Enabled = 1' { reg add 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v 'SubscribedContent-FAKE99Enabled' /t REG_DWORD /d 1 /f }
 Cmd 'Pre-trigger value' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v 'SubscribedContent-FAKE99Enabled' }
 Cmd 'Trigger Post-Boot Cleanup task' { Start-ScheduledTask -TaskPath '\tiny11options\' -TaskName 'Post-Boot Cleanup' }
-Add-Content -LiteralPath $out -Value '> Wait 15 seconds for task to complete ...'
-Start-Sleep -Seconds 15
+# Wait for the task to actually finish (deterministic) instead of a fixed sleep:
+# poll State until it leaves 'Running', then a short settle. Removes the race
+# where a slow pattern-zero pass hadn't completed within a hard-coded 15s.
+Add-Content -LiteralPath $out -Value '> Waiting for Post-Boot Cleanup to complete (up to 120s) ...'
+Start-Sleep -Seconds 2
+$deadline = (Get-Date).AddSeconds(120)
+do {
+    Start-Sleep -Seconds 3
+    $taskState = (Get-ScheduledTask -TaskPath '\tiny11options\' -TaskName 'Post-Boot Cleanup' -ErrorAction SilentlyContinue).State
+} while ($taskState -eq 'Running' -and (Get-Date) -lt $deadline)
+Add-Content -LiteralPath $out -Value "  (task state after wait: $taskState)"
+Start-Sleep -Seconds 2
 Cmd 'Post-trigger value (should be 0x0)' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v 'SubscribedContent-FAKE99Enabled' }
 Cmd 'Cleanup-log entry for the fabricated value' { Select-String -Pattern 'SubscribedContent-FAKE99Enabled' -Path 'C:\Windows\Logs\tiny11-cleanup.log' | Select-Object -Last 3 | ForEach-Object { $_.Line } }
 

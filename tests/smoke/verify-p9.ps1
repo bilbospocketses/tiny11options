@@ -38,7 +38,17 @@ param(
     [string[]] $KeptRegistryKeys = @(
         'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge',
         'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge Update'
-    )
+    ),
+
+    # Re-stagers (notably Microsoft.Copilot) get re-provisioned by Windows after
+    # the first-boot cleanup, so a snapshot taken in that window shows them back.
+    # By default this drives the Post-Boot Cleanup task to completion FIRST, so
+    # the absence assertions (Arm 4) reflect the post-enforcement steady state.
+    # Pass -NoTriggerCleanup to assert the current state without re-running it.
+    [switch] $NoTriggerCleanup,
+    [string] $TaskPath = '\tiny11options\',
+    [string] $TaskName = 'Post-Boot Cleanup',
+    [int]    $TriggerTimeoutSeconds = 120
 )
 
 $ErrorActionPreference = 'Stop'
@@ -116,6 +126,31 @@ Write-Host "Expected absent: $($expectedAbsent.Count) (of $($catalogAppx.Count) 
 Write-Host ''
 
 $failures = New-Object System.Collections.Generic.List[string]
+
+# --- Pre-step: drive the cleanup task to completion (re-stager steady state) ---
+# Microsoft.Copilot (and friends) re-provision after first boot; the snapshot
+# below must be taken AFTER the enforcer runs, or a re-staged package reads as a
+# removal failure. Trigger + wait-for-completion, then snapshot.
+if (-not $NoTriggerCleanup) {
+    $task = Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
+    if (-not $task) {
+        Write-Host "NOTE: task '$TaskPath$TaskName' not found -- asserting current state without a cleanup trigger." -ForegroundColor Yellow
+    } else {
+        Write-Host "Triggering '$TaskName' and waiting for completion (re-stager steady state) ..."
+        Start-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName
+        Start-Sleep -Seconds 2
+        $deadline = (Get-Date).AddSeconds($TriggerTimeoutSeconds)
+        do {
+            Start-Sleep -Seconds 3
+            $state = (Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue).State
+        } while ($state -eq 'Running' -and (Get-Date) -lt $deadline)
+        $info = Get-ScheduledTaskInfo -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
+        $lr   = if ($info) { '0x{0:x}' -f [int]$info.LastTaskResult } else { 'n/a' }
+        Write-Host "  task state=$state lastResult=$lr"
+        Start-Sleep -Seconds 3   # settle: let deprovision changes surface to Get-AppxProvisionedPackage
+        Write-Host ''
+    }
+}
 
 # --- ARM 1: kept appx MUST be present ---
 Write-Host '[1/4] Kept appx must be PRESENT ...'

@@ -1,20 +1,35 @@
-# verify-p8.ps1 -- P8 non-appx action-type coverage on default-apply build.
+# verify-p8.ps1 -- P8 non-appx action-type coverage.
 #
 # Purpose:
 #   Validates the THREE action types beyond provisioned-appx that P6's appx-only
-#   check did not cover, end-to-end on the existing P1d (Worker default + cleanup
-#   ON) Hyper-V VM. No fresh build required.
+#   check did not cover: filesystem remove, filesystem takeown-and-remove,
+#   registry tweaks, and scheduled-task removal.
+#
+# Build context (per the smoke matrix): P8 runs on the keep-list build
+#   (Worker, FastBuild, keep Edge + Clipchamp). On a keep-list build the Edge
+#   filesystem/takeown arms assert the KEEP (Edge PRESENT = expected) -- pass
+#   -KeepEdge (or an explicit -KeptPaths) so those rows score as keeps, not
+#   removal failures. The Edge *removal* path is covered elsewhere (P3/P5:
+#   msedge.exe absent on apply builds; P2: re-staged Edge-WebView swept). The
+#   unique coverage P8 adds on the keep build is the registry (5 HKLM) +
+#   scheduled-task (5) arms, which P9 does not check.
+#
+#   Run WITHOUT -KeepEdge only on a default-apply build (Edge removed): then the
+#   Edge rows correctly assert absence.
 #
 # Action types under test:
-#   1. filesystem -- Edge folders + OneDriveSetup.exe absent.
-#   2. filesystem + takeown-and-remove -- Edge System32 WebView absent.
+#   1. filesystem -- Edge folders + OneDriveSetup.exe (absent, or kept if -KeepEdge).
+#   2. filesystem + takeown-and-remove -- Edge System32 WebView (absent, or kept).
 #   3. registry -- 5 spot-check HKLM values match catalog-expected state.
 #   4. scheduled-task removal -- 5 task paths from telemetry category absent.
 #
 # Plus a cleanup-log tail to confirm the task is actively enforcing (idempotent
 # "already" lines for items that were already in the correct state).
 #
-# Usage (run elevated on the P1d VM):
+# Usage (run elevated on the VM under test):
+#   # keep-list P8 build (kept Edge + Clipchamp):
+#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\verify-p8.ps1 -KeepEdge
+#   # default-apply build (Edge removed):
 #   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\verify-p8.ps1
 #
 # Exit codes:
@@ -23,12 +38,14 @@
 
 [CmdletBinding()]
 param(
-    # Paths to SKIP filesystem absence checks for. Use on keep-list builds
-    # (P9-style) where some catalog filesystem items were flipped to skip.
-    # Example: -KeptPaths @('C:\Program Files (x86)\Microsoft\Edge',
-    #                       'C:\Program Files (x86)\Microsoft\EdgeUpdate',
-    #                       'C:\Program Files (x86)\Microsoft\EdgeCore',
-    #                       'C:\Windows\System32\Microsoft-Edge-Webview')
+    # Convenience for the canonical keep-list P8 build: expands -KeptPaths to the
+    # standard Edge keep set (config/examples/keep-edge-and-clipchamp.json). With
+    # it, the Edge filesystem + takeown rows assert KEEP (present = expected).
+    [switch] $KeepEdge,
+
+    # Paths to SKIP filesystem absence checks for (kept-by-user). Explicit list;
+    # overrides -KeepEdge when both are given. Use on keep-list builds where some
+    # catalog filesystem items were flipped to skip.
     [string[]] $KeptPaths = @(),
 
     # Catalog item ids to SKIP scheduled-task absence checks for. None of the
@@ -38,6 +55,29 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# -KeepEdge expands to the standard Edge keep set unless an explicit -KeptPaths
+# was supplied (explicit list wins).
+$edgeKeepPaths = @(
+    'C:\Program Files (x86)\Microsoft\Edge',
+    'C:\Program Files (x86)\Microsoft\EdgeUpdate',
+    'C:\Program Files (x86)\Microsoft\EdgeCore',
+    'C:\Windows\System32\Microsoft-Edge-Webview'
+)
+if ($KeepEdge -and $KeptPaths.Count -eq 0) {
+    $KeptPaths = $edgeKeepPaths
+}
+
+# Disambiguation guard: a bare run (no keep flags) on a KEEP-LIST build sees Edge
+# present and -- correctly for a default-apply build -- would call it a removal
+# FAIL. Detect that and tell the operator how to re-run, so a kept-Edge build is
+# never misread as broken removal. (Still fails for genuine default-apply builds.)
+if ($KeptPaths.Count -eq 0 -and (Test-Path -LiteralPath 'C:\Program Files (x86)\Microsoft\Edge')) {
+    Write-Host ''
+    Write-Host 'NOTE: Edge is PRESENT and no keep-list was supplied.' -ForegroundColor Yellow
+    Write-Host '      - If this is the KEEP-LIST P8 build (Edge kept): re-run with  -KeepEdge' -ForegroundColor Yellow
+    Write-Host '      - If this is a DEFAULT-APPLY build: the Edge rows below are REAL removal failures.' -ForegroundColor Yellow
+}
 
 $failures = New-Object System.Collections.Generic.List[string]
 
