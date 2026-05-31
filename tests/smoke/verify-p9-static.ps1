@@ -29,9 +29,11 @@ param(
     [Parameter(ParameterSetName = 'FromExtracted', Mandatory)]
     [string] $CleanupScriptPath,
 
-    # Edition selection -- which install.wim image to mount. Defaults to the
-    # standard build target. Override via -ImageEdition (e.g., 'Windows 11 Pro N')
-    # or -ImageIndex if the source ISO carries different editions.
+    # Edition selection -- which install.wim image to mount. By default the script
+    # AUTO-TARGETS the index that autounattend.xml installs (FastBuild modifies
+    # only that index; the rest are pristine source editions with no baked
+    # cleanup script). Precedence: -ImageIndex (explicit) > explicit -ImageEdition
+    # > autounattend.xml /IMAGE/INDEX > the -ImageEdition default below.
     [string] $ImageEdition = 'Windows 11 Pro',
 
     [int] $ImageIndex = 0,
@@ -86,23 +88,45 @@ function Get-CleanupScriptFromIso {
             throw "install.wim not found at $installWim"
         }
 
-        # 3. Pick the image to mount. -ImageIndex (if non-zero) wins; otherwise
-        # match -ImageEdition by ImageName. Previous "highest index" heuristic
-        # picked 'Windows 11 Pro N for Workstations' (idx 11) on a stock Win11
-        # 25H2 ISO, where only the BUILD-TARGETED edition (typically Pro, idx 6)
-        # carries the modified tiny11-cleanup.ps1 -- other indices are untouched.
+        # 3. Pick the image to mount. FastBuild keeps every source edition in
+        # install.wim but modifies ONLY the build-targeted index (the one
+        # autounattend.xml installs); the rest are pristine and carry no baked
+        # tiny11-cleanup.ps1. So auto-target the autounattend index. Precedence:
+        #   1. -ImageIndex (explicit)         2. explicit -ImageEdition
+        #   3. autounattend.xml /IMAGE/INDEX  4. -ImageEdition default
+        # (The old name-match-only default picked Pro=idx 6 and threw on a Home
+        # build whose autounattend installs idx 1 -- the only modified index.)
         $images = Get-WindowsImage -ImagePath $installWim
+
+        # Read the build-targeted index straight from the ISO's answer file.
+        $autoIdx = $null
+        foreach ($name in 'autounattend.xml', 'Autounattend.xml', 'AutoUnattend.xml') {
+            $au = Join-Path "$($driveLetter):\" $name
+            if (Test-Path -LiteralPath $au) {
+                $m = [regex]::Match((Get-Content -LiteralPath $au -Raw), '(?is)/IMAGE/INDEX\s*</Key>\s*<Value>\s*([0-9]+)')
+                if ($m.Success) { $autoIdx = [int]$m.Groups[1].Value }
+                break
+            }
+        }
+
+        $avail = ($images | ForEach-Object { '  ' + $_.ImageIndex + ': ' + $_.ImageName } | Out-String)
         if ($ImageIndex -gt 0) {
             $targetIdx = $ImageIndex
             $matchedName = ($images | Where-Object ImageIndex -eq $targetIdx).ImageName
-            if (-not $matchedName) {
-                throw "ImageIndex $ImageIndex not present in install.wim. Available:`n$($images | ForEach-Object { '  ' + $_.ImageIndex + ': ' + $_.ImageName } | Out-String)"
-            }
+            if (-not $matchedName) { throw "ImageIndex $ImageIndex not present in install.wim. Available:`n$avail" }
+        } elseif ($PSBoundParameters.ContainsKey('ImageEdition')) {
+            $matched = $images | Where-Object ImageName -eq $ImageEdition
+            if (-not $matched) { throw "No image with ImageName='$ImageEdition' in install.wim. Available:`n$avail`nPass -ImageEdition or -ImageIndex to override." }
+            $targetIdx = $matched.ImageIndex
+            $matchedName = $matched.ImageName
+        } elseif ($null -ne $autoIdx) {
+            $targetIdx = $autoIdx
+            $matchedName = ($images | Where-Object ImageIndex -eq $targetIdx).ImageName
+            if (-not $matchedName) { throw "autounattend.xml targets index $autoIdx but install.wim has no such index. Available:`n$avail" }
+            Write-Host "  autounattend.xml installs index $autoIdx -- auto-targeting it"
         } else {
             $matched = $images | Where-Object ImageName -eq $ImageEdition
-            if (-not $matched) {
-                throw "No image with ImageName='$ImageEdition' in install.wim. Available:`n$($images | ForEach-Object { '  ' + $_.ImageIndex + ': ' + $_.ImageName } | Out-String)Pass -ImageEdition or -ImageIndex to override."
-            }
+            if (-not $matched) { throw "No image with ImageName='$ImageEdition' in install.wim, and no autounattend.xml /IMAGE/INDEX found. Available:`n$avail`nPass -ImageEdition or -ImageIndex to override." }
             $targetIdx = $matched.ImageIndex
             $matchedName = $matched.ImageName
         }
