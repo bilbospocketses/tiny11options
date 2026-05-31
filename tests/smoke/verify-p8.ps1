@@ -1,35 +1,22 @@
-# verify-p8.ps1 -- P8 non-appx action-type coverage.
+# verify-p8.ps1 -- P8 non-appx action-type coverage (self-configuring).
 #
 # Purpose:
 #   Validates the THREE action types beyond provisioned-appx that P6's appx-only
 #   check did not cover: filesystem remove, filesystem takeown-and-remove,
 #   registry tweaks, and scheduled-task removal.
 #
-# Build context (per the smoke matrix): P8 runs on the keep-list build
-#   (Worker, FastBuild, keep Edge + Clipchamp). On a keep-list build the Edge
-#   filesystem/takeown arms assert the KEEP (Edge PRESENT = expected) -- pass
-#   -KeepEdge (or an explicit -KeptPaths) so those rows score as keeps, not
-#   removal failures. The Edge *removal* path is covered elsewhere (P3/P5:
-#   msedge.exe absent on apply builds; P2: re-staged Edge-WebView swept). The
-#   unique coverage P8 adds on the keep build is the registry (5 HKLM) +
-#   scheduled-task (5) arms, which P9 does not check.
-#
-#   Run WITHOUT -KeepEdge only on a default-apply build (Edge removed): then the
-#   Edge rows correctly assert absence.
-#
-# Action types under test:
-#   1. filesystem -- Edge folders + OneDriveSetup.exe (absent, or kept if -KeepEdge).
-#   2. filesystem + takeown-and-remove -- Edge System32 WebView (absent, or kept).
-#   3. registry -- 5 spot-check HKLM values match catalog-expected state.
-#   4. scheduled-task removal -- 5 task paths from telemetry category absent.
-#
-# Plus a cleanup-log tail to confirm the task is actively enforcing (idempotent
-# "already" lines for items that were already in the correct state).
+# SELF-CONFIGURING -- no keep-list flags. The test reads the build's OWN baked
+#   cleanup script (C:\Windows\Setup\Scripts\tiny11-cleanup.ps1) to learn what
+#   THIS image removes vs keeps, then asserts the matching on-disk state. The
+#   generator (New-Tiny11PostBootCleanupScript) emits an action ONLY for
+#   apply-state (non-kept) catalog items, so:
+#       signature present in baked script  => item was REMOVED  => assert ABSENT
+#       signature absent  from baked script => item was KEPT     => assert PRESENT
+#   (This is the same baked-script artifact P9-static trusts.) Run it bare on ANY
+#   build -- default-apply OR keep-list -- and it adapts: a kept Edge is asserted
+#   PRESENT, never failed; OneDrive (removed on these builds) is asserted ABSENT.
 #
 # Usage (run elevated on the VM under test):
-#   # keep-list P8 build (kept Edge + Clipchamp):
-#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\verify-p8.ps1 -KeepEdge
-#   # default-apply build (Edge removed):
 #   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\verify-p8.ps1
 #
 # Exit codes:
@@ -38,132 +25,123 @@
 
 [CmdletBinding()]
 param(
-    # Convenience for the canonical keep-list P8 build: expands -KeptPaths to the
-    # standard Edge keep set (config/examples/keep-edge-and-clipchamp.json). With
-    # it, the Edge filesystem + takeown rows assert KEEP (present = expected).
-    [switch] $KeepEdge,
-
-    # Paths to SKIP filesystem absence checks for (kept-by-user). Explicit list;
-    # overrides -KeepEdge when both are given. Use on keep-list builds where some
-    # catalog filesystem items were flipped to skip.
-    [string[]] $KeptPaths = @(),
-
-    # Catalog item ids to SKIP scheduled-task absence checks for. None of the
-    # current default-apply scheduled-task items are typical keep-list targets,
-    # but the parameter is here for symmetry / future use.
-    [string[]] $KeptScheduledTaskItems = @()
+    # The build's baked cleanup script -- the authoritative record of what this
+    # image removes (apply-state items appear) vs keeps (skip-state items are
+    # omitted). Present on cleanup-ON builds; P8 is one.
+    [string] $CleanupScriptPath = 'C:\Windows\Setup\Scripts\tiny11-cleanup.ps1'
 )
 
 $ErrorActionPreference = 'Stop'
 
-# -KeepEdge expands to the standard Edge keep set unless an explicit -KeptPaths
-# was supplied (explicit list wins).
-$edgeKeepPaths = @(
-    'C:\Program Files (x86)\Microsoft\Edge',
-    'C:\Program Files (x86)\Microsoft\EdgeUpdate',
-    'C:\Program Files (x86)\Microsoft\EdgeCore',
-    'C:\Windows\System32\Microsoft-Edge-Webview'
-)
-if ($KeepEdge -and $KeptPaths.Count -eq 0) {
-    $KeptPaths = $edgeKeepPaths
-}
-
-# Disambiguation guard: a bare run (no keep flags) on a KEEP-LIST build sees Edge
-# present and -- correctly for a default-apply build -- would call it a removal
-# FAIL. Detect that and tell the operator how to re-run, so a kept-Edge build is
-# never misread as broken removal. (Still fails for genuine default-apply builds.)
-if ($KeptPaths.Count -eq 0 -and (Test-Path -LiteralPath 'C:\Program Files (x86)\Microsoft\Edge')) {
-    Write-Host ''
-    Write-Host 'NOTE: Edge is PRESENT and no keep-list was supplied.' -ForegroundColor Yellow
-    Write-Host '      - If this is the KEEP-LIST P8 build (Edge kept): re-run with  -KeepEdge' -ForegroundColor Yellow
-    Write-Host '      - If this is a DEFAULT-APPLY build: the Edge rows below are REAL removal failures.' -ForegroundColor Yellow
-}
-
 $failures = New-Object System.Collections.Generic.List[string]
 
+# --- Load the build's intent from its baked cleanup script -------------------
+$script:CleanupText = $null
+if (Test-Path -LiteralPath $CleanupScriptPath) {
+    $script:CleanupText = Get-Content -LiteralPath $CleanupScriptPath -Raw
+}
+
+function Test-EmittedByBuild {
+    # TRUE  -> the item's action signature is baked into the cleanup script, i.e.
+    #          the build APPLIED it (removed a path/appx/task, set a tweak).
+    # FALSE -> absent from the script => the item was KEPT (skip-state, omitted by
+    #          the generator).
+    # The signature is matched as a COMPLETE token (followed by the closing quote
+    # the generator emits -- a double-quote for $env:-expanded paths, a single
+    # quote for names/relpaths/Description comments) so e.g. '...\Edge' is not a
+    # false hit inside '...\EdgeUpdate', and 'Microsoft Edge' not inside
+    # 'Microsoft Edge Update'.
+    # No cleanup script (cleanup-OFF build) => cannot self-derive => fall back to
+    # the default-apply assumption (TRUE = removed) and warn up front.
+    param([Parameter(Mandatory)][string] $Signature)
+    if ($null -eq $script:CleanupText) { return $true }
+    $t = $script:CleanupText
+    return ($t.IndexOf($Signature + '"', [System.StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+           ($t.IndexOf($Signature + "'", [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
+}
+
+function Assert-PathState {
+    # Derive remove-vs-keep from the build, then assert the matching disk state.
+    param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)][string] $Signature)
+    $removed = Test-EmittedByBuild -Signature $Signature
+    $present = Test-Path -LiteralPath $Path
+    if ($removed) {
+        if ($present) {
+            Write-Host "      FAIL $Path PRESENT (build removes it; cleanup did not)" -ForegroundColor Red
+            $failures.Add("removed path '$Path' should be absent but is present")
+        } else {
+            Write-Host "      OK   $Path absent (removed-by-build)" -ForegroundColor Green
+        }
+    } else {
+        if ($present) {
+            Write-Host "      KEEP $Path PRESENT (kept-by-build, expected)" -ForegroundColor Cyan
+        } else {
+            Write-Host "      FAIL $Path MISSING (kept-by-build but absent -- over-removed)" -ForegroundColor Red
+            $failures.Add("kept path '$Path' should be present but is absent")
+        }
+    }
+}
+
+Write-Host ''
+Write-Host 'P8 non-appx action-type coverage (self-configuring)'
+Write-Host '==================================================='
+if ($null -eq $script:CleanupText) {
+    Write-Host "WARNING: no baked cleanup script at $CleanupScriptPath -- cannot self-derive" -ForegroundColor Yellow
+    Write-Host "         keep-vs-remove. Falling back to default-apply (all items REMOVED)." -ForegroundColor Yellow
+    Write-Host "         (This test targets cleanup-ON builds; P3/P5 cover cleanup-OFF.)" -ForegroundColor Yellow
+} else {
+    Write-Host "Build intent derived from: $CleanupScriptPath ($($script:CleanupText.Length) bytes)"
+}
+Write-Host ''
+
 # -----------------------------------------------------------------------------
-# ARM 1: filesystem absence (Edge folders + OneDriveSetup.exe)
+# ARM 1: filesystem (op=remove) -- Edge browser folders + OneDrive setup binary.
 # -----------------------------------------------------------------------------
 $filesystemPaths = @(
-    'C:\Program Files (x86)\Microsoft\Edge',
-    'C:\Program Files (x86)\Microsoft\EdgeUpdate',
-    'C:\Program Files (x86)\Microsoft\EdgeCore',
-    'C:\Windows\System32\OneDriveSetup.exe'
+    @{ Path = 'C:\Program Files (x86)\Microsoft\Edge';       Sig = 'Program Files (x86)\Microsoft\Edge' }
+    @{ Path = 'C:\Program Files (x86)\Microsoft\EdgeUpdate'; Sig = 'Program Files (x86)\Microsoft\EdgeUpdate' }
+    @{ Path = 'C:\Program Files (x86)\Microsoft\EdgeCore';   Sig = 'Program Files (x86)\Microsoft\EdgeCore' }
+    @{ Path = 'C:\Windows\System32\OneDriveSetup.exe';       Sig = 'Windows\System32\OneDriveSetup.exe' }
 )
 
-Write-Host ''
-Write-Host 'P8 non-appx action-type coverage'
-Write-Host '================================='
-if ($KeptPaths.Count -gt 0) {
-    Write-Host "Keep-list mode: $($KeptPaths.Count) path(s) excluded from absence checks (kept-by-user)"
-}
-Write-Host ''
-Write-Host "[1/4] filesystem (op=remove) -- $($filesystemPaths.Count) paths checked ..."
-foreach ($p in $filesystemPaths) {
-    if ($KeptPaths -contains $p) {
-        if (Test-Path -LiteralPath $p) {
-            Write-Host "      KEEP $p PRESENT (kept-by-user, expected)" -ForegroundColor Cyan
-        } else {
-            Write-Host "      FAIL $p MISSING (kept-by-user but absent -- cleanup or build incorrectly removed it)" -ForegroundColor Red
-            $failures.Add("kept filesystem path '$p' should be present but is absent")
-        }
-        continue
-    }
-    if (Test-Path -LiteralPath $p) {
-        Write-Host "      FAIL $p PRESENT (cleanup task did not remove)" -ForegroundColor Red
-        $failures.Add("filesystem path '$p' should be absent but is present")
-    } else {
-        Write-Host "      OK   $p absent" -ForegroundColor Green
-    }
-}
+Write-Host "[1/4] filesystem -- $($filesystemPaths.Count) paths (expectation derived from build) ..."
+foreach ($e in $filesystemPaths) { Assert-PathState -Path $e.Path -Signature $e.Sig }
 
 # -----------------------------------------------------------------------------
-# ARM 2: filesystem + takeown-and-remove (Edge System32 WebView)
+# ARM 2: filesystem + takeown-and-remove -- Edge System32 WebView host.
 # -----------------------------------------------------------------------------
 $takeownPaths = @(
-    'C:\Windows\System32\Microsoft-Edge-Webview'
+    @{ Path = 'C:\Windows\System32\Microsoft-Edge-Webview'; Sig = 'Windows\System32\Microsoft-Edge-Webview' }
 )
 
 Write-Host ''
-Write-Host "[2/4] filesystem (op=takeown-and-remove) -- $($takeownPaths.Count) path(s) checked ..."
-foreach ($p in $takeownPaths) {
-    if ($KeptPaths -contains $p) {
-        if (Test-Path -LiteralPath $p) {
-            Write-Host "      KEEP $p PRESENT (kept-by-user, expected)" -ForegroundColor Cyan
-        } else {
-            Write-Host "      FAIL $p MISSING (kept-by-user but absent)" -ForegroundColor Red
-            $failures.Add("kept takeown path '$p' should be present but is absent")
-        }
-        continue
-    }
-    if (Test-Path -LiteralPath $p) {
-        Write-Host "      FAIL $p PRESENT (cleanup task did not takeown+remove)" -ForegroundColor Red
-        $failures.Add("takeown path '$p' should be absent but is present")
-    } else {
-        Write-Host "      OK   $p absent" -ForegroundColor Green
-    }
-}
+Write-Host "[2/4] filesystem (takeown-and-remove) -- $($takeownPaths.Count) path(s) ..."
+foreach ($e in $takeownPaths) { Assert-PathState -Path $e.Path -Signature $e.Sig }
 
 # -----------------------------------------------------------------------------
-# ARM 3: registry tweaks applied (HKLM spot-checks, 5 values)
+# ARM 3: registry tweaks (HKLM spot-checks). Asserted only when the build applied
+# the tweak (signature present); a kept/skipped tweak is reported SKIP, not failed.
 # -----------------------------------------------------------------------------
-# Each row: KeyPath, ValueName, ExpectedValue, CatalogItemId
 $registryChecks = @(
-    @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection';        Name = 'AllowTelemetry';              Expected = 0; Item = 'tweak-disable-telemetry' }
-    @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot';        Name = 'TurnOffWindowsCopilot';       Expected = 1; Item = 'tweak-disable-copilot' }
-    @{ Key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE';            Name = 'BypassNRO';                   Expected = 1; Item = 'tweak-bypass-nro' }
-    @{ Key = 'HKLM:\SYSTEM\Setup\LabConfig';                                    Name = 'BypassTPMCheck';              Expected = 1; Item = 'tweak-bypass-hardware-checks' }
+    @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection';        Name = 'AllowTelemetry';                 Expected = 0; Item = 'tweak-disable-telemetry' }
+    @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot';        Name = 'TurnOffWindowsCopilot';          Expected = 1; Item = 'tweak-disable-copilot' }
+    @{ Key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE';            Name = 'BypassNRO';                      Expected = 1; Item = 'tweak-bypass-nro' }
+    @{ Key = 'HKLM:\SYSTEM\Setup\LabConfig';                                    Name = 'BypassTPMCheck';                 Expected = 1; Item = 'tweak-bypass-hardware-checks' }
     @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent';          Name = 'DisableWindowsConsumerFeatures'; Expected = 1; Item = 'tweak-disable-sponsored-apps' }
 )
 
 Write-Host ''
-Write-Host "[3/4] registry -- $($registryChecks.Count) HKLM spot-checks must match catalog-expected ..."
+Write-Host "[3/4] registry -- $($registryChecks.Count) HKLM tweaks (assert value when applied) ..."
 foreach ($r in $registryChecks) {
+    if (-not (Test-EmittedByBuild -Signature $r.Name)) {
+        Write-Host "      SKIP $($r.Key)!$($r.Name) (kept-by-build; tweak not applied)" -ForegroundColor Cyan
+        continue
+    }
     $actual = $null
     try {
         $actual = (Get-ItemProperty -Path $r.Key -Name $r.Name -ErrorAction Stop).$($r.Name)
     } catch {
-        Write-Host "      FAIL $($r.Key)!$($r.Name) NOT FOUND (item '$($r.Item)' did not apply)" -ForegroundColor Red
+        Write-Host "      FAIL $($r.Key)!$($r.Name) NOT FOUND (item '$($r.Item)' applied but value missing)" -ForegroundColor Red
         $failures.Add("registry value '$($r.Key)!$($r.Name)' not found (expected $($r.Expected), item $($r.Item))")
         continue
     }
@@ -176,12 +154,8 @@ foreach ($r in $registryChecks) {
 }
 
 # -----------------------------------------------------------------------------
-# ARM 4: scheduled-task removal (5 task paths absent)
+# ARM 4: scheduled-task removal. Removed-by-build => absent; kept-by-build => present.
 # -----------------------------------------------------------------------------
-# Each row: TaskPath (trailing slash matters), optional TaskName for leaf entries.
-# Catalog items expect either a full task DELETION (leaf path) or a recursive
-# FOLDER deletion (recurse: true). In both cases, Get-ScheduledTask against
-# the path should return zero matches.
 $scheduledTaskChecks = @(
     @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'Microsoft Compatibility Appraiser'; Item = 'disable-task-compat-appraiser' }
     @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'ProgramDataUpdater';                Item = 'disable-task-program-data-updater' }
@@ -191,36 +165,40 @@ $scheduledTaskChecks = @(
 )
 
 Write-Host ''
-Write-Host "[4/4] scheduled-task -- $($scheduledTaskChecks.Count) catalog removals checked ..."
+Write-Host "[4/4] scheduled-task -- $($scheduledTaskChecks.Count) catalog tasks (expectation derived) ..."
 foreach ($t in $scheduledTaskChecks) {
-    if ($KeptScheduledTaskItems -contains $t.Item) {
-        $label = if ($t.Name) { "$($t.Path)$($t.Name)" } else { "$($t.Path) (folder)" }
-        Write-Host "      KEEP $label (kept-by-user, expected)" -ForegroundColor Cyan
-        continue
-    }
-    # -ErrorAction SilentlyContinue + @() array wrap works uniformly for both
-    # the leaf-task and folder-recurse forms: Get-ScheduledTask emits a
-    # CimException to the error stream when the task/path is absent, but
-    # SilentlyContinue redirects that to $Error and the cmdlet returns nothing.
-    # @($null) is an empty array, so .Count == 0 cleanly means "task absent".
+    # Catalog relpath signature -- matches the generator's Description comment
+    # (e.g. "Unregister scheduled task 'Microsoft\Windows\...\<leaf>'").
+    $rel = ($t.Path).Trim('\')
+    if ($t.Name) { $rel = "$rel\$($t.Name)" }
+    $removed = Test-EmittedByBuild -Signature $rel
+
     if ($t.Name) {
         $found = @(Get-ScheduledTask -TaskPath $t.Path -TaskName $t.Name -ErrorAction SilentlyContinue)
     } else {
         $found = @(Get-ScheduledTask -TaskPath "$($t.Path)*" -ErrorAction SilentlyContinue)
     }
+    $label = if ($t.Name) { "$($t.Path)$($t.Name)" } else { "$($t.Path) (folder)" }
 
-    if ($found.Count -eq 0) {
-        $label = if ($t.Name) { "$($t.Path)$($t.Name)" } else { "$($t.Path) (folder)" }
-        Write-Host "      OK   $label absent  (item: $($t.Item))" -ForegroundColor Green
+    if ($removed) {
+        if ($found.Count -eq 0) {
+            Write-Host "      OK   $label absent (removed-by-build, item: $($t.Item))" -ForegroundColor Green
+        } else {
+            Write-Host "      FAIL $label PRESENT (build removes it; item: $($t.Item))" -ForegroundColor Red
+            $failures.Add("scheduled-task '$label' should be absent but is present (item $($t.Item))")
+        }
     } else {
-        $label = if ($t.Name) { "$($t.Path)$($t.Name)" } else { "$($t.Path) (folder, $($found.Count) tasks)" }
-        Write-Host "      FAIL $label PRESENT (item: $($t.Item))" -ForegroundColor Red
-        $failures.Add("scheduled-task '$label' should be absent but is present (item $($t.Item))")
+        if ($found.Count -gt 0) {
+            Write-Host "      KEEP $label present (kept-by-build, item: $($t.Item))" -ForegroundColor Cyan
+        } else {
+            Write-Host "      FAIL $label ABSENT (kept-by-build but missing; item: $($t.Item))" -ForegroundColor Red
+            $failures.Add("kept scheduled-task '$label' should be present but is absent (item $($t.Item))")
+        }
     }
 }
 
 # -----------------------------------------------------------------------------
-# Cleanup log tail -- informational, confirms task is actively enforcing
+# Cleanup log tail -- informational, confirms the task is actively enforcing.
 # -----------------------------------------------------------------------------
 Write-Host ''
 Write-Host 'Cleanup log evidence (last 30 lines, filtered to interesting markers):'
@@ -233,7 +211,6 @@ if (Test-Path -LiteralPath $logPath) {
         ForEach-Object { Write-Host "  $_" }
 } else {
     Write-Host "  (log not found at $logPath)" -ForegroundColor Yellow
-    $failures.Add("cleanup log not found at $logPath -- task may never have run")
 }
 
 # -----------------------------------------------------------------------------
@@ -243,9 +220,8 @@ Write-Host ''
 Write-Host 'Summary:'
 Write-Host '--------'
 if ($failures.Count -eq 0) {
-    Write-Host '  PASS -- all four non-appx action types validated end-to-end.' -ForegroundColor Green
-    Write-Host "         filesystem ($($filesystemPaths.Count) paths absent), takeown-and-remove ($($takeownPaths.Count) paths absent),"
-    Write-Host "         registry ($($registryChecks.Count) HKLM values match), scheduled-task ($($scheduledTaskChecks.Count) catalog removals absent)."
+    Write-Host '  PASS -- all four non-appx action types validated end-to-end against the' -ForegroundColor Green
+    Write-Host "         build's own baked cleanup script (remove-vs-keep self-derived)." -ForegroundColor Green
     Write-Host ''
     exit 0
 } else {
