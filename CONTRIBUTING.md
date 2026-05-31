@@ -69,7 +69,8 @@ tiny11options/
 
 - **PowerShell:** verb-noun cmdlet naming; `Set-StrictMode -Version Latest` at module top; `$ErrorActionPreference = 'Stop'`; no aliases in scripts (`Get-ChildItem`, not `gci`)
 - **C# 13 / .NET 10:** nullable reference types enabled; file-scoped namespaces; primary constructors welcome; `dotnet format` clean before commit
-- **No PowerShell string interpolation into native commands** — use parameter binding / argument arrays; `Invoke-RegCommand` (in `src/Tiny11.Registry.psm1`) wraps `reg.exe` safely
+- **No PowerShell string interpolation into native commands** — use parameter binding / argument arrays; `Invoke-RegCommand` (in `src/Tiny11.Hives.psm1`) wraps `reg.exe` safely
+- **Offline registry hives: `reg.exe` only — never the .NET registry provider.** Read/write loaded offline hives via `reg.exe` (`Invoke-RegCommand` / `Get-Tiny11RegValueNames` / `Test-Tiny11HiveLoaded`), never `Get-Item`/`Set-ItemProperty`/`Test-Path` on `HKLM:\z*`. The provider caches an in-process hive handle that survives `reg unload` and locks `Dismount-WindowsImage -Save` ("being used by another process"). Enforced by `tests/Tiny11.OfflineHive.NoProvider.Drift.Tests.ps1`. Build-process `reg.exe`/`dism.exe`/`robocopy.exe` resolve from the absolute `%SystemRoot%\System32` path (`Get-Tiny11RegExePath` / `Get-Tiny11DismExePath`), not `%PATH%`.
 - **Logging:** use the launcher's bridge-routed logger; do not `Write-Host` in PS modules (breaks the UI bridge); use `Write-BridgeLog -Level Info/Warning/Error`
 - **No AI-generated attribution lines** in commit messages
 
