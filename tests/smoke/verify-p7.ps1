@@ -48,7 +48,7 @@ param(
 # 'Continue' (not 'Stop') on purpose: this script runs native reg.exe whose stderr
 # (a best-effort `reg unload` of a not-loaded key, or a value-absent `reg query`)
 # becomes a TERMINATING error under 'Stop' on Windows PowerShell 5.1 -- the same trap
-# the build pipeline hit in v1.0.26. Control flow keys off $LASTEXITCODE instead.
+# the build pipeline guards against. Control flow keys off $LASTEXITCODE instead.
 $ErrorActionPreference = 'Continue'
 
 # reg.exe resolved by absolute System32 path (not %PATH%, not the .NET provider).
