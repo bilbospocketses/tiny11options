@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Smoke harness (`tests/smoke/`) is now self-configuring.** `verify-p8.ps1` and `verify-p9.ps1` derive each catalog item's keep-vs-remove expectation from the build's own baked `tiny11-cleanup.ps1` (the generator emits an action only for apply-state items), instead of requiring operator-supplied keep-list flags — a forgotten flag previously produced a misleading FAIL on a kept-item build. Verified offline against an extracted real baked script + a synthetic quote-boundary test.
+- **`verify-p9-static.ps1` auto-resolves the install.wim index** from the ISO's `autounattend.xml /IMAGE/INDEX`, replacing a fragile `Windows 11 Pro` name-match default that threw on a Home-targeted FastBuild (FastBuild modifies only the installed edition; the rest are pristine).
+- **`verify-p4.ps1` Test 7 waits for the cleanup task to complete** (polls task state) instead of a fixed 15s sleep.
+- **De-versioned the smoke-script labels/comments** (dropped `v1.0.x` references from `verify-p3`..`verify-p7`).
+
 ## [1.0.30] - 2026-05-30
 
 **Fixes the `Dismount-WindowsImage -Save` lock that broke ISO creation — at its real root cause.** v1.0.29 (now retracted) misdiagnosed the WIM-commit failure as transient host interference and bolted on a retry; the lock is actually an **in-process .NET registry-provider handle** held by the build's own PowerShell process, which a retry can never clear. Offline-hive value enumeration now uses `reg.exe` exclusively (never the `HKLM:\z*` provider), so no hive handle is held at dismount time — the reg.exe-only pattern of upstream `tiny11builder` and Microsoft's offline-servicing docs. Pester 521/0 (plus the admin-gated Synthetic harness).
