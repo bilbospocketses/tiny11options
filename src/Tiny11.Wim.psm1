@@ -25,4 +25,34 @@ function Assert-Tiny11WimIntegrity {
     }
 }
 
-Export-ModuleMember -Function Assert-Tiny11WimIntegrity
+function Invoke-Tiny11WimDismountSave {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$MountPath,
+        [Parameter()][int]$Attempts = 3,
+        [Parameter()][int]$DelaySeconds = 2
+    )
+    # Dismount-WindowsImage -Save is the big, slow write that commits every offline
+    # modification back into the WIM. Under a transient lock (Defender real-time scan,
+    # Search indexer, Controlled Folder Access, a lingering handle) it can fail. Retry
+    # a bounded number of times with exponential backoff (base $DelaySeconds, x2 each
+    # attempt) before giving up. Retry-on-any: the cost of retrying a genuine
+    # (non-transient) dism error is just the backoff before the same failure resurfaces
+    # -- acceptable for a step this critical.
+    $lastError = $null
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            Dismount-WindowsImage -Path $MountPath -Save -ErrorAction Stop | Out-Null
+            return
+        } catch {
+            $lastError = $_
+            if ($attempt -lt $Attempts) {
+                $backoff = [int]($DelaySeconds * [math]::Pow(2, $attempt - 1))
+                if ($backoff -gt 0) { Start-Sleep -Seconds $backoff }
+            }
+        }
+    }
+    throw "Dismount-WindowsImage -Save failed for '$MountPath' after $Attempts attempt(s): $($lastError.Exception.Message)"
+}
+
+Export-ModuleMember -Function Assert-Tiny11WimIntegrity, Invoke-Tiny11WimDismountSave
