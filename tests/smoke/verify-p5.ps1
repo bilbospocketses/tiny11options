@@ -32,7 +32,7 @@ Section 'Test 4: cleanup script artifacts ABSENT (no Post-Boot Cleanup task mean
 Cmd 'Test-Path tiny11-cleanup.ps1' { Test-Path 'C:\Windows\Setup\Scripts\tiny11-cleanup.ps1' }
 Cmd 'Test-Path tiny11-cleanup.xml' { Test-Path 'C:\Windows\Setup\Scripts\tiny11-cleanup.xml' }
 
-Section 'Test 5: 4 new v1.0.3 catalog entries STILL applied at build time (proves -NoPostBootCleanup only affects runtime task, not offline build writes)' 'Expected: first 3 = 0x0, AutoDownload = 0x2'
+Section 'Test 5: 4 catalog entries STILL applied at build time (proves -NoPostBootCleanup only affects runtime task, not offline build writes)' 'Expected: first 3 = 0x0, AutoDownload = 0x2'
 Cmd 'RotatingLockScreenEnabled' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v RotatingLockScreenEnabled }
 Cmd 'RotatingLockScreenOverlayEnabled' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v RotatingLockScreenOverlayEnabled }
 Cmd 'SlideshowEnabled' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v SlideshowEnabled }

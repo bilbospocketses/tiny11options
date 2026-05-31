@@ -1,4 +1,4 @@
-# verify-p6.ps1 -- P6 smoke verification for the v1.0.1 post-boot cleanup task.
+# verify-p6.ps1 -- P6 smoke verification for the post-boot cleanup task.
 #
 # Purpose:
 #   Confirm that the 52 provisioned-appx packages a Worker default (cleanup ON)
@@ -8,7 +8,7 @@
 #
 # Source of truth:
 #   catalog/catalog.json -- the 52 prefixes below are every item with
-#   "actions[*].type == 'provisioned-appx'" in the v1.0.1 catalog. Keep in sync
+#   "actions[*].type == 'provisioned-appx'" in the catalog. Keep in sync
 #   when the catalog adds or removes provisioned-appx items.
 #
 # Design reference:

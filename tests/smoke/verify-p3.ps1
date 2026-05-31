@@ -19,7 +19,7 @@ function Cmd($label, $scriptBlock) {
     Add-Content -LiteralPath $out -Value ''
 }
 
-Section 'Test 1: v1.0.3 catalog entries applied at build time' 'Expected: first 3 = 0x0, AutoDownload = 0x2'
+Section 'Test 1: catalog entries applied at build time' 'Expected: first 3 = 0x0, AutoDownload = 0x2'
 Cmd 'RotatingLockScreenEnabled' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v RotatingLockScreenEnabled }
 Cmd 'RotatingLockScreenOverlayEnabled' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v RotatingLockScreenOverlayEnabled }
 Cmd 'SlideshowEnabled' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v SlideshowEnabled }
