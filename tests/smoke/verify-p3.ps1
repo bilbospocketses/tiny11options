@@ -1,4 +1,4 @@
-$out = 'C:\Temp\v103-p3-opportunistic.txt'
+$out = 'C:\Temp\p3-opportunistic.txt'
 Remove-Item -LiteralPath $out -ErrorAction SilentlyContinue
 
 function Section($name, $expected) {
