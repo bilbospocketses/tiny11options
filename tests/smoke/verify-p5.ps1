@@ -1,4 +1,4 @@
-$out = 'C:\Temp\v103-p5-verify.txt'
+$out = 'C:\Temp\p5-verify.txt'
 Remove-Item -LiteralPath $out -ErrorAction SilentlyContinue
 
 function Section($name, $expected) {
