@@ -30,6 +30,7 @@ internal static class HeadlessRunner
         "src/Tiny11.Actions.ProvisionedAppx.psm1",
         "src/Tiny11.Actions.ScheduledTask.psm1",
         "src/Tiny11.PostBoot.psm1",
+        "src/Tiny11.Wim.psm1",
     };
 
     public static int Run(string[] args)
