@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-05-30-wim-integrity-gate-e2e-design.md`
 
+> **As-built correction (2026-05-30):** during implementation we found `Get-WindowsImage` has **no `-CheckIntegrity` parameter** (that switch is only on `Mount-`/`Dismount-`/`Export-`/`New-WindowsImage`). The code blocks below were corrected to call `Get-WindowsImage -ImagePath <wim> -Index <n>` — a structural-**readability** gate. The deep, full-resource verify is the `dism /Export-Image … /CheckIntegrity` pass on the normal build path. The synthetic harness confirmed the readability gate still catches an injected byte-flip corruption.
+
 ---
 
 ## Conventions for this plan
@@ -60,11 +62,11 @@ Import-Module "$PSScriptRoot/Tiny11.TestHelpers.psm1" -Force
 Import-Tiny11Module -Name 'Tiny11.Wim'
 
 Describe 'Assert-Tiny11WimIntegrity' {
-    It 'passes -Index and -CheckIntegrity to Get-WindowsImage and does not throw on success' {
+    It 'passes -ImagePath and -Index to Get-WindowsImage and does not throw on success' {
         Mock -CommandName Get-WindowsImage -ModuleName 'Tiny11.Wim' -MockWith { [pscustomobject]@{ ImageIndex = 2 } }
         { Assert-Tiny11WimIntegrity -ImagePath 'X:\install.wim' -Index 2 } | Should -Not -Throw
         Should -Invoke -CommandName Get-WindowsImage -ModuleName 'Tiny11.Wim' -Times 1 `
-            -ParameterFilter { $CheckIntegrity -eq $true -and $Index -eq 2 -and $ImagePath -eq 'X:\install.wim' }
+            -ParameterFilter { $Index -eq 2 -and $ImagePath -eq 'X:\install.wim' }
     }
 
     It 'throws an actionable error when Get-WindowsImage fails' {
@@ -91,13 +93,16 @@ function Assert-Tiny11WimIntegrity {
         [Parameter(Mandatory)][string]$ImagePath,
         [Parameter(Mandatory)][int]$Index
     )
-    # Verify a saved/exported WIM is structurally sound before it can ship. A silent
-    # partial commit from Dismount-WindowsImage -Save (transient host interference:
-    # AV scan, Search indexer, Controlled Folder Access, a stray handle) is exactly
-    # what this catches -- before oscdimg wraps a broken install.wim into an ISO that
-    # then fails Windows Setup at the file-copy step.
+    # Validate the WIM is structurally readable (header + serviced-image metadata
+    # parse). Get-WindowsImage throws on a truncated / corrupt-header WIM -- the gross
+    # form of a silent partial Dismount-WindowsImage -Save commit (transient host
+    # interference: AV scan, Search indexer, Controlled Folder Access, a stray handle)
+    # -- before oscdimg wraps a broken install.wim into an ISO that fails Windows Setup
+    # at the file-copy step. NOTE: Get-WindowsImage has no -CheckIntegrity parameter
+    # (that switch is on the write/mount/export cmdlets); the deep full-resource verify
+    # is the dism /Export-Image ... /CheckIntegrity pass on the normal build path.
     try {
-        Get-WindowsImage -ImagePath $ImagePath -Index $Index -CheckIntegrity -ErrorAction Stop | Out-Null
+        Get-WindowsImage -ImagePath $ImagePath -Index $Index -ErrorAction Stop | Out-Null
     } catch {
         throw ("Build aborted -- '$ImagePath' (index $Index) failed its post-save integrity check; " +
                "the image was NOT shipped. Likely transient host interference (AV real-time scan / " +
