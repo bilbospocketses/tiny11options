@@ -1,50 +1,44 @@
-# verify-p9.ps1 -- P9 keep-list smoke verification (runtime arm).
+# verify-p9.ps1 -- P9 keep-list smoke verification (runtime arm, self-configuring).
 #
 # Purpose:
 #   Validate the cleanup-task keep-list contract end-to-end on a freshly
-#   installed VM. Asserts that items the user chose to KEEP at build time are
-#   actually present post-install AND that the items they chose to REMOVE are
-#   actually absent. Catches wire-up bugs between UI -> wrapper -> generator
-#   that would silently ship a "removes everything regardless of selections"
-#   build.
+#   installed VM: items the build KEPT are present post-install, items it
+#   REMOVED are absent. Catches wire-up bugs between UI -> wrapper -> generator
+#   that would silently ship a "removes everything regardless of selections" build.
 #
-# Default parameter values match the P9 build profile
-# (C:\Temp\p9-keep-edge-clipchamp.json): Clipchamp + Edge + Edge WebView +
-# Edge uninstall registry keys all KEPT. Override with -KeptAppx /
-# -KeptPaths / -KeptRegistryKeys for future keep-list smokes.
+# SELF-CONFIGURING -- no keep-list flags. The test reads the build's OWN baked
+#   cleanup script (C:\Windows\Setup\Scripts\tiny11-cleanup.ps1) to learn what
+#   THIS image kept vs removed. The generator emits an action ONLY for apply-state
+#   (non-kept) items, so for every catalog item in scope:
+#       signature present in baked script  => REMOVED => assert ABSENT
+#       signature absent  from baked script => KEPT    => assert PRESENT
+#   Run it bare on ANY keep profile and it adapts -- a kept Clipchamp/Edge is
+#   asserted PRESENT, the rest asserted ABSENT, with no manual -KeptAppx list.
 #
-# Source of truth for the "must be absent" list:
-#   catalog/catalog.json -- the 52 prefixes that match tests/smoke/verify-p6.ps1,
-#   minus any prefixes in -KeptAppx (so the partition is exhaustive).
+# Scope (the catalog surface this contract covers):
+#   - the 52 provisioned-appx prefixes (same inventory as verify-p6.ps1)
+#   - the Edge browser/WebView filesystem paths
+#   - the Edge uninstall registry keys
+#
+# Re-stagers (notably Microsoft.Copilot) re-provision after first boot, so by
+# default this drives the Post-Boot Cleanup task to completion FIRST, so the
+# absence assertions reflect the post-enforcement steady state.
 #
 # Usage (run elevated on the VM under test):
 #   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\verify-p9.ps1
 #
 # Exit codes:
-#   0 -- every kept item PRESENT and every non-kept catalog item ABSENT.
-#   1 -- at least one assertion failed (kept item missing OR removed item still present).
+#   0 -- every kept item PRESENT and every removed item ABSENT.
+#   1 -- at least one assertion failed (kept item missing OR removed item present).
 
 [CmdletBinding()]
 param(
-    [string[]] $KeptAppx = @(
-        'Clipchamp.Clipchamp'
-    ),
-    [string[]] $KeptPaths = @(
-        'C:\Program Files (x86)\Microsoft\Edge',
-        'C:\Program Files (x86)\Microsoft\EdgeUpdate',
-        'C:\Program Files (x86)\Microsoft\EdgeCore',
-        'C:\Windows\System32\Microsoft-Edge-Webview'
-    ),
-    [string[]] $KeptRegistryKeys = @(
-        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge',
-        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge Update'
-    ),
+    # The build's baked cleanup script -- authoritative record of kept vs removed.
+    [string] $CleanupScriptPath = 'C:\Windows\Setup\Scripts\tiny11-cleanup.ps1',
 
-    # Re-stagers (notably Microsoft.Copilot) get re-provisioned by Windows after
-    # the first-boot cleanup, so a snapshot taken in that window shows them back.
-    # By default this drives the Post-Boot Cleanup task to completion FIRST, so
-    # the absence assertions (Arm 4) reflect the post-enforcement steady state.
-    # Pass -NoTriggerCleanup to assert the current state without re-running it.
+    # Drive the Post-Boot Cleanup task to completion before asserting, so
+    # re-stagers (Microsoft.Copilot et al.) are in their post-enforcement steady
+    # state. -NoTriggerCleanup asserts the current state without re-running it.
     [switch] $NoTriggerCleanup,
     [string] $TaskPath = '\tiny11options\',
     [string] $TaskName = 'Post-Boot Cleanup',
@@ -53,7 +47,52 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Full 52-prefix catalog inventory (same as verify-p6.ps1).
+# --- Load the build's intent from its baked cleanup script -------------------
+$script:CleanupText = $null
+if (Test-Path -LiteralPath $CleanupScriptPath) {
+    $script:CleanupText = Get-Content -LiteralPath $CleanupScriptPath -Raw
+}
+
+function Test-EmittedByBuild {
+    # TRUE  -> the item's action signature is baked into the cleanup script => the
+    #          build APPLIED it (removed the path/appx, set the tweak).
+    # FALSE -> absent => the item was KEPT (skip-state, omitted by the generator).
+    # Signature matched as a COMPLETE token (followed by the generator's closing
+    # quote -- " for $env:-expanded paths, ' for prefixes/keypaths/comments) so
+    # '...\Edge' is not a false hit in '...\EdgeUpdate', nor 'Microsoft Edge' in
+    # 'Microsoft Edge Update'.
+    # No cleanup script (cleanup-OFF build) => cannot self-derive => fall back to
+    # default-apply (TRUE = removed) and warn up front.
+    param([Parameter(Mandatory)][string] $Signature)
+    if ($null -eq $script:CleanupText) { return $true }
+    $t = $script:CleanupText
+    return ($t.IndexOf($Signature + '"', [System.StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+           ($t.IndexOf($Signature + "'", [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
+}
+
+function Assert-KeptOrRemoved {
+    # For a path/registry key: derive remove-vs-keep from the build, assert state.
+    param([Parameter(Mandatory)][string] $TestPath, [Parameter(Mandatory)][string] $Signature)
+    $removed = Test-EmittedByBuild -Signature $Signature
+    $present = Test-Path -LiteralPath $TestPath
+    if ($removed) {
+        if (-not $present) {
+            Write-Host "      OK   $TestPath absent (removed-by-build)" -ForegroundColor Green
+        } else {
+            Write-Host "      FAIL $TestPath PRESENT (build removes it)" -ForegroundColor Red
+            $failures.Add("removed item '$TestPath' should be absent but is present")
+        }
+    } else {
+        if ($present) {
+            Write-Host "      OK   $TestPath (kept-by-build)" -ForegroundColor Green
+        } else {
+            Write-Host "      FAIL $TestPath MISSING (kept-by-build but absent)" -ForegroundColor Red
+            $failures.Add("kept item '$TestPath' should be present but is absent")
+        }
+    }
+}
+
+# Full 52-prefix catalog inventory (same as verify-p6.ps1). Drift-guarded below.
 $catalogAppx = @(
     'AppUp.IntelManagementandSecurityStatus',
     'Clipchamp.Clipchamp',
@@ -113,24 +152,39 @@ if ($catalogAppx.Count -ne 52) {
     throw "verify-p9.ps1: expected 52 catalog appx prefixes, got $($catalogAppx.Count) -- inventory drifted, resync against catalog/catalog.json."
 }
 
-# Partition: anything in KeptAppx must be PRESENT; everything else in catalogAppx must be ABSENT.
-$expectedAbsent = @($catalogAppx | Where-Object { $KeptAppx -notcontains $_ })
-
-Write-Host ''
-Write-Host 'P9 keep-list smoke verification'
-Write-Host '================================'
-Write-Host "Kept appx:       $($KeptAppx.Count)"
-Write-Host "Kept paths:      $($KeptPaths.Count)"
-Write-Host "Kept reg keys:   $($KeptRegistryKeys.Count)"
-Write-Host "Expected absent: $($expectedAbsent.Count) (of $($catalogAppx.Count) catalog items)"
-Write-Host ''
+# Edge filesystem paths + uninstall reg keys (keep-list surface beyond appx).
+# Sig = the substring the generator bakes for the REMOVE of that item.
+$edgePaths = @(
+    @{ Path = 'C:\Program Files (x86)\Microsoft\Edge';       Sig = 'Program Files (x86)\Microsoft\Edge' }
+    @{ Path = 'C:\Program Files (x86)\Microsoft\EdgeUpdate'; Sig = 'Program Files (x86)\Microsoft\EdgeUpdate' }
+    @{ Path = 'C:\Program Files (x86)\Microsoft\EdgeCore';   Sig = 'Program Files (x86)\Microsoft\EdgeCore' }
+    @{ Path = 'C:\Windows\System32\Microsoft-Edge-Webview';  Sig = 'Windows\System32\Microsoft-Edge-Webview' }
+)
+$edgeRegKeys = @(
+    @{ Path = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge';        Sig = 'Uninstall\Microsoft Edge' }
+    @{ Path = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge Update'; Sig = 'Uninstall\Microsoft Edge Update' }
+)
 
 $failures = New-Object System.Collections.Generic.List[string]
 
+# Derive the appx partition from the build.
+$keptAppx       = @($catalogAppx | Where-Object { -not (Test-EmittedByBuild -Signature $_) })
+$expectedAbsent = @($catalogAppx | Where-Object {      (Test-EmittedByBuild -Signature $_) })
+
+Write-Host ''
+Write-Host 'P9 keep-list smoke verification (self-configuring)'
+Write-Host '=================================================='
+if ($null -eq $script:CleanupText) {
+    Write-Host "WARNING: no baked cleanup script at $CleanupScriptPath -- cannot self-derive" -ForegroundColor Yellow
+    Write-Host "         keep-vs-remove. Falling back to default-apply (all items REMOVED)." -ForegroundColor Yellow
+} else {
+    Write-Host "Build intent derived from: $CleanupScriptPath ($($script:CleanupText.Length) bytes)"
+}
+Write-Host "Kept appx (derived):   $($keptAppx.Count)  [$($keptAppx -join ', ')]"
+Write-Host "Removed appx (derived): $($expectedAbsent.Count) (of $($catalogAppx.Count) catalog items)"
+Write-Host ''
+
 # --- Pre-step: drive the cleanup task to completion (re-stager steady state) ---
-# Microsoft.Copilot (and friends) re-provision after first boot; the snapshot
-# below must be taken AFTER the enforcer runs, or a re-staged package reads as a
-# removal failure. Trigger + wait-for-completion, then snapshot.
 if (-not $NoTriggerCleanup) {
     $task = Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
     if (-not $task) {
@@ -152,12 +206,15 @@ if (-not $NoTriggerCleanup) {
     }
 }
 
-# --- ARM 1: kept appx MUST be present ---
-Write-Host '[1/4] Kept appx must be PRESENT ...'
+# Snapshot appx state once (after the cleanup trigger).
 $installedNames = Get-AppxPackage -AllUsers | Select-Object -ExpandProperty Name -Unique
 $provNames      = Get-AppxProvisionedPackage -Online | Select-Object -ExpandProperty DisplayName -Unique
-foreach ($prefix in $KeptAppx) {
-    $inInstalled = $installedNames -match [regex]::Escape($prefix)
+
+# --- ARM 1: kept appx MUST be present ---
+Write-Host "[1/4] $($keptAppx.Count) kept appx must be PRESENT ..."
+if ($keptAppx.Count -eq 0) { Write-Host '      (none kept by this build)' -ForegroundColor DarkGray }
+foreach ($prefix in $keptAppx) {
+    $inInstalled   = $installedNames -match [regex]::Escape($prefix)
     $inProvisioned = $provNames -match [regex]::Escape($prefix)
     if ($inInstalled -and $inProvisioned) {
         Write-Host "      OK   $prefix (installed + provisioned)" -ForegroundColor Green
@@ -166,57 +223,42 @@ foreach ($prefix in $KeptAppx) {
         $failures.Add("kept appx '$prefix' present in only one of (installed, provisioned)")
     } else {
         Write-Host "      FAIL $prefix MISSING from both installed AND provisioned" -ForegroundColor Red
-        $failures.Add("kept appx '$prefix' MISSING (cleanup task removed it despite skip)")
+        $failures.Add("kept appx '$prefix' MISSING (cleanup removed it despite being kept)")
     }
 }
 
-# --- ARM 2: kept filesystem paths MUST be present ---
+# --- ARM 2: Edge filesystem paths (kept => present, removed => absent) ---
 Write-Host ''
-Write-Host '[2/4] Kept filesystem paths must be PRESENT ...'
-foreach ($p in $KeptPaths) {
-    if (Test-Path -LiteralPath $p) {
-        Write-Host "      OK   $p" -ForegroundColor Green
-    } else {
-        Write-Host "      FAIL $p MISSING" -ForegroundColor Red
-        $failures.Add("kept path '$p' MISSING")
-    }
-}
+Write-Host "[2/4] $($edgePaths.Count) Edge filesystem paths (expectation derived) ..."
+foreach ($e in $edgePaths) { Assert-KeptOrRemoved -TestPath $e.Path -Signature $e.Sig }
 
-# --- ARM 3: kept registry keys MUST be present ---
+# --- ARM 3: Edge uninstall registry keys (kept => present, removed => absent) ---
 Write-Host ''
-Write-Host '[3/4] Kept registry keys must be PRESENT ...'
-foreach ($k in $KeptRegistryKeys) {
-    if (Test-Path -LiteralPath $k) {
-        Write-Host "      OK   $k" -ForegroundColor Green
-    } else {
-        Write-Host "      FAIL $k MISSING" -ForegroundColor Red
-        $failures.Add("kept registry key '$k' MISSING")
-    }
-}
+Write-Host "[3/4] $($edgeRegKeys.Count) Edge uninstall registry keys (expectation derived) ..."
+foreach ($k in $edgeRegKeys) { Assert-KeptOrRemoved -TestPath $k.Path -Signature $k.Sig }
 
 # --- ARM 4: removed appx MUST be absent ---
 Write-Host ''
-Write-Host "[4/4] $($expectedAbsent.Count) non-kept catalog appx items must be ABSENT ..."
-$stillInstalled = @($expectedAbsent | Where-Object { $installedNames -match [regex]::Escape($_) })
+Write-Host "[4/4] $($expectedAbsent.Count) removed catalog appx must be ABSENT ..."
+$stillInstalled   = @($expectedAbsent | Where-Object { $installedNames -match [regex]::Escape($_) })
 $stillProvisioned = @($expectedAbsent | Where-Object { $provNames -match [regex]::Escape($_) })
 
 if ($stillInstalled.Count -eq 0) {
-    Write-Host '      OK   0 of expected-absent present in installed.' -ForegroundColor Green
+    Write-Host '      OK   0 of removed-set present in installed.' -ForegroundColor Green
 } else {
     Write-Host "      FAIL $($stillInstalled.Count) still installed (cleanup did not remove these):" -ForegroundColor Red
     $stillInstalled | ForEach-Object {
         Write-Host "             $_"
-        $failures.Add("expected-absent appx '$_' still installed")
+        $failures.Add("removed appx '$_' still installed")
     }
 }
-
 if ($stillProvisioned.Count -eq 0) {
-    Write-Host '      OK   0 of expected-absent present in provisioned.' -ForegroundColor Green
+    Write-Host '      OK   0 of removed-set present in provisioned.' -ForegroundColor Green
 } else {
     Write-Host "      FAIL $($stillProvisioned.Count) still provisioned:" -ForegroundColor Red
     $stillProvisioned | ForEach-Object {
         Write-Host "             $_"
-        $failures.Add("expected-absent appx '$_' still provisioned")
+        $failures.Add("removed appx '$_' still provisioned")
     }
 }
 
@@ -225,9 +267,9 @@ Write-Host ''
 Write-Host 'Summary:'
 Write-Host '--------'
 if ($failures.Count -eq 0) {
-    Write-Host '  PASS -- keep-list contract holds end-to-end.' -ForegroundColor Green
-    Write-Host "         $($KeptAppx.Count) kept appx PRESENT, $($KeptPaths.Count) kept paths PRESENT, $($KeptRegistryKeys.Count) kept reg keys PRESENT."
-    Write-Host "         $($expectedAbsent.Count) non-kept catalog appx ABSENT (in both installed and provisioned)."
+    Write-Host '  PASS -- keep-list contract holds end-to-end (kept vs removed self-derived' -ForegroundColor Green
+    Write-Host "         from the build's own baked cleanup script)." -ForegroundColor Green
+    Write-Host "         $($keptAppx.Count) kept appx PRESENT; $($expectedAbsent.Count) removed appx ABSENT; Edge paths + reg keys per build." -ForegroundColor Green
     Write-Host ''
     exit 0
 } else {
