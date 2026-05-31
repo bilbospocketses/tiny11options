@@ -4,6 +4,7 @@ Import-Module "$PSScriptRoot/Tiny11.Hives.psm1"          -Force -Global -Disable
 Import-Module "$PSScriptRoot/Tiny11.Iso.psm1"            -Force -Global -DisableNameChecking
 Import-Module "$PSScriptRoot/Tiny11.Autounattend.psm1"   -Force -Global -DisableNameChecking
 Import-Module "$PSScriptRoot/Tiny11.PostBoot.psm1"       -Force -Global -DisableNameChecking
+Import-Module "$PSScriptRoot/Tiny11.Wim.psm1"            -Force -Global -DisableNameChecking
 
 # A11/v1.0.3: Get-Tiny11ApplyItems and Invoke-Tiny11ApplyActions moved to
 # Tiny11.Actions.psm1 (their natural home alongside the Invoke-Tiny11Action
@@ -115,7 +116,7 @@ function Invoke-Tiny11BuildPipeline {
             & $progress @{ phase='wim-save'; step="Dismounting install.wim ($dismountVerb)"; percent=80 }
             try {
                 if ($installPipelineSucceeded) {
-                    Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
+                    Invoke-Tiny11WimDismountSave -MountPath $scratchImg
                 } else {
                     Dismount-WindowsImage -Path $scratchImg -Discard | Out-Null
                 }
@@ -132,13 +133,22 @@ function Invoke-Tiny11BuildPipeline {
             throw 'Worker build pipeline failed mid-flight (see preceding error). install.wim unmounted with /Discard.'
         }
 
+        # WIM-integrity gate (post-save). On the FastBuild path (export skipped below)
+        # this is the gate on the shipped artifact; on the normal path the export adds
+        # a second, full-resource verify.
+        & $progress @{ phase='integrity-check'; step='Verifying install.wim integrity (post-save)'; percent=82 }
+        Assert-Tiny11WimIntegrity -ImagePath "$tinyDir\sources\install.wim" -Index $ImageIndex
+
         if ($FastBuild) {
             & $progress @{ phase='export-skip'; step='Skipping /Export-Image recovery compression (FastBuild)'; percent=85 }
         } else {
             & $progress @{ phase='export'; step='Exporting install.wim with recovery compression'; percent=85 }
-            & 'dism.exe' '/Export-Image' "/SourceImageFile:$tinyDir\sources\install.wim" "/SourceIndex:$ImageIndex" "/DestinationImageFile:$tinyDir\sources\install2.wim" '/Compress:recovery' | Out-Null
+            & 'dism.exe' '/Export-Image' "/SourceImageFile:$tinyDir\sources\install.wim" "/SourceIndex:$ImageIndex" "/DestinationImageFile:$tinyDir\sources\install2.wim" '/Compress:recovery' '/CheckIntegrity' | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Build aborted -- dism /Export-Image failed (exit $LASTEXITCODE) for install.wim; the image was NOT shipped. Likely WIM corruption or transient host interference. Re-run the build." }
             Remove-Item -Path "$tinyDir\sources\install.wim" -Force | Out-Null
             Rename-Item -Path "$tinyDir\sources\install2.wim" -NewName 'install.wim' | Out-Null
+            & $progress @{ phase='integrity-check'; step='Verifying exported install.wim integrity'; percent=86 }
+            Assert-Tiny11WimIntegrity -ImagePath "$tinyDir\sources\install.wim" -Index 1
         }
 
         & $progress @{ phase='bootwim'; step='Applying hardware-bypass tweaks to boot.wim'; percent=88 }
@@ -169,7 +179,7 @@ function Invoke-Tiny11BuildPipeline {
             & $progress @{ phase='bootwim-save'; step="Dismounting boot.wim ($dismountVerb)"; percent=90 }
             try {
                 if ($bootPipelineSucceeded) {
-                    Dismount-WindowsImage -Path $scratchImg -Save | Out-Null
+                    Invoke-Tiny11WimDismountSave -MountPath $scratchImg
                 } else {
                     Dismount-WindowsImage -Path $scratchImg -Discard | Out-Null
                 }
@@ -182,6 +192,11 @@ function Invoke-Tiny11BuildPipeline {
         if (-not $bootPipelineSucceeded) {
             throw 'Worker boot.wim pipeline failed mid-flight (see preceding error). boot.wim unmounted with /Discard.'
         }
+
+        # WIM-integrity gate (boot.wim, post-save). Smaller blast radius than
+        # install.wim, but boot.wim corruption fails WinPE -- gate it for symmetry.
+        & $progress @{ phase='integrity-check'; step='Verifying boot.wim integrity (post-save)'; percent=91 }
+        Assert-Tiny11WimIntegrity -ImagePath $bootWim -Index 2
 
         & $progress @{ phase='autounattend-iso'; step='Writing autounattend.xml to ISO root'; percent=92 }
         Set-Content -Path "$tinyDir\autounattend.xml" -Value $renderedAutounattend -Encoding UTF8

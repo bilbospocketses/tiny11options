@@ -2,7 +2,14 @@
 # Tested against Pester 5.7.1. Floor 5.3.1 sidesteps BeforeAll variable-
 # visibility behavior changes that landed earlier in 5.x; ceiling 5.99.99
 # caps below Pester 6.x which is not yet validated against this suite.
+[CmdletBinding()]
+param(
+    [string[]]$Tag,
+    [string[]]$ExcludeTag
+)
 $config = & "$PSScriptRoot/Tiny11.PesterConfig.ps1"
+if ($Tag)        { $config.Filter.Tag = $Tag }
+if ($ExcludeTag) { $config.Filter.ExcludeTag = $ExcludeTag }
 $result = Invoke-Pester -Configuration $config
 # v1.0.10: [System.Environment]::Exit() instead of `exit`. Long-standing pwsh
 # quirk: when this script is invoked via `pwsh -NoProfile -File Run-Tests.ps1`

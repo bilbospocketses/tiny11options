@@ -9,7 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **WIM-integrity gate — a corrupt image can no longer ship silently.** After the offline-servicing save, the build verifies `install.wim` (post-`Dismount-WindowsImage -Save`, and again post-`/Export-Image`) and `boot.wim`, and **aborts the build** with an actionable error if verification fails. This closes the silent-partial-commit class behind the v1.0.26 "Windows installation has failed" file-copy failure (a transient dismount-save lock leaving `install.wim` partially committed → a valid-looking ISO that fails Windows Setup). New module `src/Tiny11.Wim.psm1` (`Assert-Tiny11WimIntegrity`, `Invoke-Tiny11WimDismountSave`). The post-save check is a structural-readability verify (`Get-WindowsImage`); the deep, full-resource hash verify is the `dism /Export-Image … /CheckIntegrity` pass on the normal (non-FastBuild) build path.
+- **Synthetic-WIM end-to-end test harness.** `tests/Tiny11.Wim.Synthetic.Tests.ps1` (tag `Synthetic`, admin-gated — auto-skips on a non-elevated host) validates the integrity gate and the dismount-save retry against a real, tiny `New-WindowsImage`-captured WIM (mount → modify → save → verify, plus injected-corruption detection). `tests/Run-Tests.ps1` now accepts `-Tag` / `-ExcludeTag` to filter by tag (e.g. `-ExcludeTag Synthetic` for a fast non-elevated run).
 - **CI orphan-detection restored (test-only, image-neutral).** Re-added `tests/Tiny11.Catalog.ReferenceIntegrity.Drift.Tests.ps1` — a CI scan that fails if any production file hardcodes a catalog-ID literal absent from `catalog.json` — and re-hardened the autounattend bindings test to derive `ResolvedSelections` from the real catalog (via `New-`/`Resolve-Tiny11Selections`) instead of a fabricated fixture. Together they catch the "orphan reference" class (the root of the v1.0.8–v1.0.24 18% build crash) at test time, before shipping — the correct layer, replacing the runtime `State`-throw permanently dropped in v1.0.28. Pester 491 → 495.
+
+### Changed
+
+- **`Dismount-WindowsImage -Save` is now retried on transient failure** (3 attempts, exponential backoff) for both `install.wim` and `boot.wim`, recovering from transient locks (Defender real-time scan, Windows Search indexer, Controlled Folder Access, a lingering handle) instead of failing the build outright. The recovery-compression `dism /Export-Image` step now also passes `/CheckIntegrity`.
+- **xUnit tests now run inside a git worktree.** The repo-root locator in the test suite (`FindRepoRoot`) treated `.git` as a directory; in a linked worktree `.git` is a file (a `gitdir:` pointer), so the locator threw and the resource-drift tests could not run. It now accepts either form (`Path.Exists`). No change to behavior in a normal checkout.
 
 ## [1.0.28] - 2026-05-30
 

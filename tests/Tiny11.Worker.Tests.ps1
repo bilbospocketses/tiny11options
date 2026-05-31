@@ -73,7 +73,7 @@ Describe 'Invoke-Tiny11BuildPipeline install.wim commit/discard symmetry (B6/B7 
         # The unmount must live in a finally so it runs even when the inner
         # try throws, and it must choose between -Save (success) and -Discard
         # (failure) based on the flag.
-        $script:workerSource | Should -Match 'Dismount-WindowsImage -Path \$scratchImg -Save'
+        $script:workerSource | Should -Match 'Invoke-Tiny11WimDismountSave -MountPath \$scratchImg'
         $script:workerSource | Should -Match 'Dismount-WindowsImage -Path \$scratchImg -Discard'
         $script:workerSource | Should -Match '(?ms)finally\s*\{[\s\S]*?Dismount-WindowsImage -Path \$scratchImg -Discard'
     }
@@ -99,10 +99,31 @@ Describe 'Invoke-Tiny11BuildPipeline boot.wim commit/discard symmetry (v1.0.2 ca
     }
     It 'has boot.wim Dismount-WindowsImage in a finally with both -Save and -Discard arms' {
         # Both arms must exist, gated by the flag. Match the install.wim block's structure.
-        $script:workerSource | Should -Match '(?ms)if \(\$bootPipelineSucceeded\) \{\s*Dismount-WindowsImage -Path \$scratchImg -Save'
+        $script:workerSource | Should -Match '(?ms)if \(\$bootPipelineSucceeded\) \{\s*Invoke-Tiny11WimDismountSave -MountPath \$scratchImg'
         $script:workerSource | Should -Match '(?ms)\} else \{\s*Dismount-WindowsImage -Path \$scratchImg -Discard'
     }
     It 'rethrows with a boot.wim mid-flight diagnostic when the inner pipeline fails' {
         $script:workerSource | Should -Match "throw 'Worker boot\.wim pipeline failed mid-flight"
+    }
+}
+
+Describe 'Invoke-Tiny11BuildPipeline WIM-integrity gate' {
+    BeforeAll {
+        $script:workerSource = Get-Content (Join-Path $PSScriptRoot '..' 'src' 'Tiny11.Worker.psm1') -Raw
+    }
+    It 'imports the Tiny11.Wim module' {
+        $script:workerSource | Should -Match 'Import-Module[^\r\n]*Tiny11\.Wim\.psm1'
+    }
+    It 'routes both WIM commits through Invoke-Tiny11WimDismountSave' {
+        ([regex]::Matches($script:workerSource, 'Invoke-Tiny11WimDismountSave -MountPath \$scratchImg')).Count |
+            Should -BeGreaterOrEqual 2
+    }
+    It 'verifies install.wim integrity post-save and post-export, and boot.wim post-save' {
+        $script:workerSource | Should -Match 'Assert-Tiny11WimIntegrity -ImagePath "\$tinyDir\\sources\\install\.wim" -Index \$ImageIndex'
+        $script:workerSource | Should -Match 'Assert-Tiny11WimIntegrity -ImagePath "\$tinyDir\\sources\\install\.wim" -Index 1'
+        $script:workerSource | Should -Match 'Assert-Tiny11WimIntegrity -ImagePath \$bootWim -Index 2'
+    }
+    It 'adds /CheckIntegrity to the install.wim export' {
+        $script:workerSource | Should -Match "'/Export-Image'[\s\S]*?'/CheckIntegrity'"
     }
 }
