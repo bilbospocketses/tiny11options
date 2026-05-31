@@ -36,7 +36,9 @@ public class BridgePayloadContractTests
     private static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, ".git")))
+        // Path.Exists (not Directory.Exists): .git is a regular file (a "gitdir:" pointer)
+        // inside a linked worktree, and a directory in a normal checkout. Either marks the root.
+        while (dir != null && !Path.Exists(Path.Combine(dir.FullName, ".git")))
             dir = dir.Parent;
         if (dir is null)
             throw new InvalidOperationException(
