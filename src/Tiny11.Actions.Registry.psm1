@@ -129,24 +129,23 @@ function Invoke-RegistryPatternZeroAction {
     }
 
     $mountKey = Get-Tiny11HiveMountKey -Hive $Action.hive       # native reg.exe form: HKLM\zNTUSER
-    $psPath   = "HKLM:\z$($Action.hive)\$($Action.key)"          # PSDrive form: HKLM:\zNTUSER\<key>
+    $fullKey  = "$mountKey\$($Action.key)"                       # HKLM\zNTUSER\<key>
 
-    if (-not (Test-Path -LiteralPath $psPath)) {
-        # Source ISO doesn't have this key populated -- legitimate no-op for
-        # source ISOs that ship without the CDM key (rare but valid).
-        return
-    }
-
-    # v1.0.8 audit BLOCKER ps-modules B1: use Get-Item -LiteralPath | Property
-    # to read the actual registry value names array from the provider, without
-    # PSObject metadata pollution (PSPath, PSChildName, PSDrive, PSProvider,
-    # PSParentPath) that Get-ItemProperty | Get-Member would also surface.
-    $allNames = @(Get-Item -LiteralPath $psPath -ErrorAction SilentlyContinue |
-                  Select-Object -ExpandProperty Property)
-    $names = @($allNames | Where-Object { $_ -like $Action.namePattern })
+    # Enumerate matching value names via reg.exe (Get-Tiny11RegValueNames), NEVER the .NET
+    # registry provider. Through v1.0.29 this used Test-Path + Get-Item on the
+    # "HKLM:\z<hive>\..." provider drive; the provider caches an in-process RegistryKey
+    # handle to the loaded offline NTUSER hive that survives `reg unload` and locks the
+    # mount at Dismount-WindowsImage -Save ("being used by another process" -- the build
+    # break this fixes). reg.exe runs in a child process whose handle dies on exit, so
+    # nothing in the long-lived build process ever holds the hive open -- the reg.exe-only
+    # pattern of upstream tiny11builder and Microsoft's offline-servicing docs. An absent
+    # key yields no names (reg query exit 1): the legitimate no-op for source ISOs that
+    # ship without the CDM key (B1: reg query also avoids the PSObject metadata pollution
+    # that the old Get-ItemProperty | Get-Member form had to filter out).
+    $names = Get-Tiny11RegValueNames -Key $fullKey -NamePattern $Action.namePattern
 
     foreach ($name in $names) {
-        Invoke-RegCommand 'add' "$mountKey\$($Action.key)" '/v' $name '/t' $Action.valueType '/d' '0' '/f' | Out-Null
+        Invoke-RegCommand 'add' $fullKey '/v' $name '/t' $Action.valueType '/d' '0' '/f' | Out-Null
     }
 }
 

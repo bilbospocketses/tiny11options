@@ -66,3 +66,58 @@ Describe "Invoke-RegistryAction" {
         }
     }
 }
+
+Describe "Invoke-RegistryPatternZeroAction (offline, reg.exe-only -- no .NET registry provider)" {
+    # v1.0.30 dismount-lock fix. Through v1.0.29 this read value names via
+    # Get-Item "HKLM:\z<hive>\..." (the .NET provider), which cached an in-process hive
+    # handle that survived `reg unload` and locked Dismount-WindowsImage -Save with
+    # "being used by another process". It now enumerates via reg.exe (Get-Tiny11RegValueNames)
+    # and writes matches via reg.exe (Invoke-RegCommand). These tests pin that contract.
+    BeforeEach { Mock -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Actions.Registry' -MockWith { 0 } }
+
+    It "writes 0 to each matching value name via 'reg add' under the z-mounted key" {
+        Mock -CommandName 'Get-Tiny11RegValueNames' -ModuleName 'Tiny11.Actions.Registry' -MockWith {
+            @('SubscribedContent-338388Enabled', 'SubscribedContent-338389Enabled')
+        }
+        $action = @{ type='registry-pattern-zero'; hive='NTUSER'; key='Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; namePattern='SubscribedContent-*Enabled'; valueType='REG_DWORD' }
+        Invoke-RegistryPatternZeroAction -Action $action -ScratchDir 'C:\s'
+        Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Actions.Registry' -Times 2 -Exactly
+        Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Actions.Registry' -ParameterFilter {
+            $RegArgs[0] -eq 'add' -and
+            $RegArgs[1] -eq 'HKLM\zNTUSER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -and
+            $RegArgs -contains '/v' -and
+            $RegArgs -contains '/t' -and $RegArgs -contains 'REG_DWORD' -and
+            $RegArgs -contains '/d' -and $RegArgs -contains '0' -and $RegArgs -contains '/f'
+        }
+    }
+    It "is a no-op when no value names match (absent key or no matches)" {
+        Mock -CommandName 'Get-Tiny11RegValueNames' -ModuleName 'Tiny11.Actions.Registry' -MockWith { @() }
+        $action = @{ type='registry-pattern-zero'; hive='NTUSER'; key='K'; namePattern='SubscribedContent-*Enabled'; valueType='REG_DWORD' }
+        Invoke-RegistryPatternZeroAction -Action $action -ScratchDir 'C:\s'
+        Should -Invoke -CommandName 'Invoke-RegCommand' -ModuleName 'Tiny11.Actions.Registry' -Times 0 -Exactly
+    }
+    It "passes the native z-key and the namePattern through to the reg.exe enumerator" {
+        Mock -CommandName 'Get-Tiny11RegValueNames' -ModuleName 'Tiny11.Actions.Registry' -MockWith { @() }
+        $action = @{ type='registry-pattern-zero'; hive='NTUSER'; key='Software\X'; namePattern='SubscribedContent-*Enabled'; valueType='REG_DWORD' }
+        Invoke-RegistryPatternZeroAction -Action $action -ScratchDir 'C:\s'
+        Should -Invoke -CommandName 'Get-Tiny11RegValueNames' -ModuleName 'Tiny11.Actions.Registry' -ParameterFilter {
+            $Key -eq 'HKLM\zNTUSER\Software\X' -and $NamePattern -eq 'SubscribedContent-*Enabled'
+        }
+    }
+    It "enumerates via reg.exe (Get-Tiny11RegValueNames), never the .NET provider" {
+        Mock -CommandName 'Get-Tiny11RegValueNames' -ModuleName 'Tiny11.Actions.Registry' -MockWith { @() }
+        Mock -CommandName 'Get-Item'  -ModuleName 'Tiny11.Actions.Registry' -MockWith { throw 'provider must not be used on offline hives' }
+        Mock -CommandName 'Test-Path' -ModuleName 'Tiny11.Actions.Registry' -MockWith { throw 'provider must not be used on offline hives' }
+        $action = @{ type='registry-pattern-zero'; hive='NTUSER'; key='K'; namePattern='X*'; valueType='REG_DWORD' }
+        { Invoke-RegistryPatternZeroAction -Action $action -ScratchDir 'C:\s' } | Should -Not -Throw
+        Should -Invoke -CommandName 'Get-Tiny11RegValueNames' -ModuleName 'Tiny11.Actions.Registry' -Times 1
+    }
+    It "still validates: throws on a non-NTUSER hive" {
+        $action = @{ type='registry-pattern-zero'; hive='SOFTWARE'; key='K'; namePattern='X*'; valueType='REG_DWORD' }
+        { Invoke-RegistryPatternZeroAction -Action $action -ScratchDir 'C:\s' } | Should -Throw '*only supports NTUSER*'
+    }
+    It "still validates: throws on a non-DWORD/QWORD value type" {
+        $action = @{ type='registry-pattern-zero'; hive='NTUSER'; key='K'; namePattern='X*'; valueType='REG_SZ' }
+        { Invoke-RegistryPatternZeroAction -Action $action -ScratchDir 'C:\s' } | Should -Throw '*REG_DWORD / REG_QWORD*'
+    }
+}

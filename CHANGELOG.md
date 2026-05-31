@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.30] - 2026-05-30
+
+**Fixes the `Dismount-WindowsImage -Save` lock that broke ISO creation — at its real root cause.** v1.0.29 (now retracted) misdiagnosed the WIM-commit failure as transient host interference and bolted on a retry; the lock is actually an **in-process .NET registry-provider handle** held by the build's own PowerShell process, which a retry can never clear. Offline-hive value enumeration now uses `reg.exe` exclusively (never the `HKLM:\z*` provider), so no hive handle is held at dismount time — the reg.exe-only pattern of upstream `tiny11builder` and Microsoft's offline-servicing docs. Pester 521/0 (plus the admin-gated Synthetic harness).
+
+### Fixed
+
+- **The Standard build no longer fails at `Dismount-WindowsImage -Save` with "The process cannot access the file because it is being used by another process."** Root cause: `Invoke-RegistryPatternZeroAction` read the loaded offline `NTUSER` hive through the .NET PowerShell registry **provider** (`Test-Path` / `Get-Item` on `HKLM:\z…`). The provider caches an in-process `RegistryKey` handle to the hive's backing file *inside the mount*; the kernel keeps a hive loaded while any key handle is open, and `reg unload` has no force flag — so the handle survived into the dismount and locked `install.wim`. v1.0.29's retry could not help: the handle is held by the same long-lived process for the whole retry window, and GC (the only thing that would release it) is non-deterministic and never fires during the backoff. The latent bug has existed since **v1.0.3** — the provider read predates the v1.0.28 idiom tweak and was byte-identical in the v1.0.27 "revert to v1.0.6" — surfacing intermittently with GC timing and deterministically once a build actually reached the commit step. This corrects the v1.0.26–v1.0.29 "a transient WIM dismount/save file-lock is the leading suspect" framing: it was never environmental.
+- **Stale-hive recovery (`Clear-Tiny11StaleHives`) no longer opens a provider handle either.** It detected stranded `HKLM\z*` hives with `Test-Path HKLM:\z…`, which — on the exact stranded-hive path it exists to recover — opened a fresh in-process handle. It now probes via `reg.exe` (`Test-Tiny11HiveLoaded`).
+
+### Changed
+
+- **All offline-hive registry access in the build process is now `reg.exe`-only.** New `Tiny11.Hives` helpers: `Get-Tiny11RegValueNames` (value-name enumeration via `reg query`, replacing `Get-Item … | Select-Object -ExpandProperty Property`), `Test-Tiny11HiveLoaded` (load check via `reg query`), and `Invoke-Tiny11RegExe` (a `%SystemRoot%\System32\reg.exe` absolute-path wrapper — child process, handle closed on exit). `Invoke-RegistryPatternZeroAction` is rewritten onto `Get-Tiny11RegValueNames`. No change to a successful build's output image — the same value names are matched and the same `reg add … /d 0` writes are issued.
+- **v1.0.29's WIM-integrity gate and `-Save` retry are retained as defense-in-depth** (harmless, and they still guard a genuinely bad save or rare external interference), but they are no longer the mechanism — the reg.exe fix removes the in-process cause at the source.
+- **Offline-servicing binaries now resolve from `%SystemRoot%\System32` by absolute path, not via `%PATH%` (Local-Dependencies-Only).** `reg.exe` (Hives `Invoke-RegCommand` + Core's inline tweak writes), `dism.exe` (Worker cleanup/export, Core appx enumeration/removal, `Actions.ProvisionedAppx`, and the `Start-CoreProcess` wrapper that backs dism/takeown/icacls), and `robocopy.exe` (Worker ISO copy) are all OS-intrinsic servicing tools that can't be vendored, so they're pinned to the System32 path — blocking a PATH-hijacked stand-in. New `Tiny11.Hives` resolvers `Get-Tiny11RegExePath` / `Get-Tiny11DismExePath`. (The post-boot cleanup script's `reg.exe` runs on the *target* machine — a separate context — and is unchanged.)
+
+### Added
+
+- **Regression guard `tests/Tiny11.OfflineHive.NoProvider.Drift.Tests.ps1`** — a static scan that fails if any `src` module reintroduces an `HK*:\z` offline-hive provider-drive reference. Plus reg.exe-only unit coverage for `Get-Tiny11RegValueNames`, `Test-Tiny11HiveLoaded`, and the rewritten `Invoke-RegistryPatternZeroAction`. (The v1.0.29 synthetic-WIM harness never loaded a registry hive, so it structurally could not have caught this class.)
+
+### Notes
+
+- **Process fix:** v1.0.29 shipped without a real end-to-end ISO build — only the content-agnostic synthetic-WIM test ran in CI — which is exactly why a real-build regression slipped through. v1.0.30 is gated on an actual `install.wim`-loading build (load hives → pattern-zero → unload → dismount-save) before release.
+- v1.0.29 was **retracted**: its GitHub release and Velopack feed assets were deleted, so v1.0.28 remains the offered latest until v1.0.30 ships. The signed `v1.0.29` tag is retained — the repo's tag-protection ruleset blocks tag deletion.
+
 ## [1.0.29] - 2026-05-31
 
 **Hardens the WIM commit path so a corrupt image can never ship silently, and adds real-DISM end-to-end test coverage for it.** Under transient host interference (Defender real-time scan, Windows Search indexer, Controlled Folder Access, a lingering handle), `Dismount-WindowsImage -Save` could partially commit `install.wim` — producing a valid-looking ISO that then failed Windows Setup at the file-copy step (the v1.0.26 "Windows installation has failed" symptom). The build now retries a failed save and verifies the saved/exported `install.wim` and `boot.wim`, aborting with a clear error rather than shipping a broken image. A new admin-gated synthetic-WIM harness validates the gate + retry against a real `New-WindowsImage` WIM (and runs for real in CI). No change to a successful build's output image. Pester 507/0, xUnit 140/0.
