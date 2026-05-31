@@ -2,6 +2,11 @@ Set-StrictMode -Version Latest
 
 $script:packageCache = @{}
 
+# Absolute path to the OS (inbox) dism.exe -- resolved here, not via PATH, per the
+# Local-Dependencies-Only rule (dism.exe is an OS-intrinsic servicing tool that can't be
+# vendored; pinning the System32 path also blocks a PATH-hijacked dism.exe).
+$script:Tiny11DismExe = Join-Path $env:SystemRoot 'System32\dism.exe'
+
 function Clear-Tiny11AppxPackageCache {
     [CmdletBinding()] param([string]$ScratchDir)
     if ($ScratchDir) { $script:packageCache.Remove($ScratchDir) | Out-Null }
@@ -15,7 +20,7 @@ function Get-ProvisionedAppxPackagesFromImage {
         return $script:packageCache[$ScratchDir]
     }
     $list = [System.Collections.Generic.List[string]]::new()
-    & 'dism.exe' '/English' "/image:$ScratchDir" '/Get-ProvisionedAppxPackages' |
+    & $script:Tiny11DismExe '/English' "/image:$ScratchDir" '/Get-ProvisionedAppxPackages' |
         ForEach-Object {
             if ($_ -match '^PackageName\s*:\s*(.+)$') { $list.Add($matches[1].Trim()) }
         }
@@ -26,7 +31,7 @@ function Get-ProvisionedAppxPackagesFromImage {
 function Invoke-DismRemoveAppx {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$ScratchDir, [Parameter(Mandatory)][string]$PackageName)
-    & 'dism.exe' '/English' "/image:$ScratchDir" '/Remove-ProvisionedAppxPackage' "/PackageName:$PackageName" | Out-Null
+    & $script:Tiny11DismExe '/English' "/image:$ScratchDir" '/Remove-ProvisionedAppxPackage' "/PackageName:$PackageName" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "dism /Remove-ProvisionedAppxPackage failed for $PackageName (exit $LASTEXITCODE)" }
     if ($script:packageCache.ContainsKey($ScratchDir)) {
         $null = $script:packageCache[$ScratchDir].Remove($PackageName)

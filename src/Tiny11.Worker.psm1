@@ -51,7 +51,8 @@ function Invoke-Tiny11BuildPipeline {
         $scratchImg = Join-Path $ScratchDir 'scratchdir'
         New-Item -ItemType Directory -Force -Path "$tinyDir\sources" | Out-Null
         New-Item -ItemType Directory -Force -Path $scratchImg | Out-Null
-        & 'robocopy.exe' $sourceRoot.TrimEnd('\') $tinyDir '/MIR' '/MT:8' '/NFL' '/NDL' '/NJH' '/NJS' '/NP' '/NS' '/NC' | Out-Null
+        # robocopy.exe resolved from System32 (absolute), not PATH -- Local-Dependencies-Only.
+        & (Join-Path $env:SystemRoot 'System32\robocopy.exe') $sourceRoot.TrimEnd('\') $tinyDir '/MIR' '/MT:8' '/NFL' '/NDL' '/NJH' '/NJS' '/NP' '/NS' '/NC' | Out-Null
         if ($LASTEXITCODE -ge 8) { throw "robocopy failed (exit $LASTEXITCODE) copying $sourceRoot to $tinyDir" }
         CheckCancel
 
@@ -103,7 +104,7 @@ function Invoke-Tiny11BuildPipeline {
                 & $progress @{ phase='cleanup-image-skip'; step='Skipping /Cleanup-Image (FastBuild)'; percent=75 }
             } else {
                 & $progress @{ phase='cleanup-image'; step='dism /Cleanup-Image /StartComponentCleanup /ResetBase'; percent=75 }
-                & 'dism.exe' "/Image:$scratchImg" '/Cleanup-Image' '/StartComponentCleanup' '/ResetBase' | Out-Null
+                & (Get-Tiny11DismExePath) "/Image:$scratchImg" '/Cleanup-Image' '/StartComponentCleanup' '/ResetBase' | Out-Null
             }
 
             & $progress @{ phase='inject-postboot-cleanup'; step='Installing post-boot cleanup task'; percent=78 }
@@ -143,7 +144,7 @@ function Invoke-Tiny11BuildPipeline {
             & $progress @{ phase='export-skip'; step='Skipping /Export-Image recovery compression (FastBuild)'; percent=85 }
         } else {
             & $progress @{ phase='export'; step='Exporting install.wim with recovery compression'; percent=85 }
-            & 'dism.exe' '/Export-Image' "/SourceImageFile:$tinyDir\sources\install.wim" "/SourceIndex:$ImageIndex" "/DestinationImageFile:$tinyDir\sources\install2.wim" '/Compress:recovery' '/CheckIntegrity' | Out-Null
+            & (Get-Tiny11DismExePath) '/Export-Image' "/SourceImageFile:$tinyDir\sources\install.wim" "/SourceIndex:$ImageIndex" "/DestinationImageFile:$tinyDir\sources\install2.wim" '/Compress:recovery' '/CheckIntegrity' | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "Build aborted -- dism /Export-Image failed (exit $LASTEXITCODE) for install.wim; the image was NOT shipped. Likely WIM corruption or transient host interference. Re-run the build." }
             Remove-Item -Path "$tinyDir\sources\install.wim" -Force | Out-Null
             Rename-Item -Path "$tinyDir\sources\install2.wim" -NewName 'install.wim' | Out-Null

@@ -193,7 +193,7 @@ Describe 'Get-Tiny11CoreRegistryTweaks' {
         $coreSource = Get-Content (Join-Path $PSScriptRoot '..' 'src' 'Tiny11.Core.psm1') -Raw
         # No reg.exe 'add' call should pass $t.Value directly without escape;
         # all such call sites must use $regValue (the escaped variant).
-        $coreSource | Should -Not -Match "reg\.exe' 'add'[^|]*'/d' \`$t\.Value '/f'"
+        $coreSource | Should -Not -Match "'add'[^|]*'/d' \`$t\.Value '/f'"
         # ConfigureStartPins (with embedded ") must be in the tweaks table.
         ($script:tweaks | Where-Object Name -eq 'ConfigureStartPins').Value | Should -Match '"pinnedList"'
     }

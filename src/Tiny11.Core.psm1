@@ -13,6 +13,13 @@ Set-StrictMode -Version Latest
 
 Import-Module (Join-Path $PSScriptRoot 'Tiny11.PostBoot.psm1') -Force -Global -DisableNameChecking
 
+# OS-intrinsic servicing tools resolved by absolute System32 path, not PATH (Local-
+# Dependencies-Only). reg.exe/dism.exe can't be vendored -- they must be the host's to
+# service the offline image; absolute paths also block PATH-hijacked stand-ins. The
+# Start-CoreProcess wrapper (dism/takeown/icacls) resolves its FileName the same way.
+$script:Tiny11RegExe  = Join-Path $env:SystemRoot 'System32\reg.exe'
+$script:Tiny11DismExe = Join-Path $env:SystemRoot 'System32\dism.exe'
+
 # ---------- Build log infrastructure ----------
 # Persistent on-disk log of every Core build, written to $ScratchDir\tiny11-core-build.log.
 # Survives the post-failure cleanup commands (those only nuke `mount/` and `source/` subdirs of the scratch root).
@@ -480,7 +487,10 @@ function Start-CoreProcess {
     $output = $null
     try {
         try {
-            $output = & $FileName @Arguments 2>&1
+            # Resolve a bare OS tool name (dism.exe/takeown.exe/icacls.exe) to its absolute
+            # System32 path (Local-Dependencies-Only); a path-bearing FileName is used as-is.
+            $resolved = if ($FileName -match '[\\/]') { $FileName } else { Join-Path $env:SystemRoot "System32\$FileName" }
+            $output = & $resolved @Arguments 2>&1
             $exit = $LASTEXITCODE
         }
         catch {
@@ -1286,7 +1296,7 @@ function Invoke-Tiny11CoreBuildPipeline {
         # Phase 4: appx-removal (upstream lines 111-128)
         & $ProgressCallback @{ phase='appx-removal'; step="Removing provisioned apps"; percent=15 }
         $appxPrefixes = Get-Tiny11CoreAppxPrefixes
-        $allAppxOutput = (& 'dism.exe' '/English' "/image:$mountDir" '/Get-ProvisionedAppxPackages') -join "`n"
+        $allAppxOutput = (& $script:Tiny11DismExe '/English' "/image:$mountDir" '/Get-ProvisionedAppxPackages') -join "`n"
         $allAppxPackages = @()
         foreach ($line in ($allAppxOutput -split "`n")) {
             # D4.1 — \s*:\s* tolerates non-canonical DISM whitespace; intentional widening from upstream's literal " : ".
@@ -1295,7 +1305,7 @@ function Invoke-Tiny11CoreBuildPipeline {
         foreach ($pkg in $allAppxPackages) {
             foreach ($prefix in $appxPrefixes) {
                 if ($pkg -like "$prefix*") {
-                    & 'dism.exe' '/English' "/image:$mountDir" '/Remove-ProvisionedAppxPackage' "/PackageName:$pkg" | Out-Null
+                    & $script:Tiny11DismExe '/English' "/image:$mountDir" '/Remove-ProvisionedAppxPackage' "/PackageName:$pkg" | Out-Null
                     # D4.3 — surface non-zero so silent removal failures are visible; build continues per upstream tolerance.
                     if ($LASTEXITCODE -ne 0) {
                         Write-Warning "dism /Remove-ProvisionedAppxPackage $pkg failed (exit $LASTEXITCODE) — non-fatal, continuing"
@@ -1388,12 +1398,12 @@ function Invoke-Tiny11CoreBuildPipeline {
                         # Tiny11.Actions.Registry.psm1's Invoke-RegistryAction;
                         # required here too because Core has its own inline path.
                         $regValue = ([string]$t.Value) -replace '"', '\"'
-                        & 'reg.exe' 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $regValue '/f' | Out-Null
+                        & $script:Tiny11RegExe 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $regValue '/f' | Out-Null
                     } elseif ($t.Op -eq 'delete') {
                         if ($t.PSObject.Properties['Name'] -and $t.Name) {
-                            & 'reg.exe' 'delete' $fullKey '/v' $t.Name '/f' | Out-Null
+                            & $script:Tiny11RegExe 'delete' $fullKey '/v' $t.Name '/f' | Out-Null
                         } else {
-                            & 'reg.exe' 'delete' $fullKey '/f' | Out-Null
+                            & $script:Tiny11RegExe 'delete' $fullKey '/f' | Out-Null
                         }
                     }
                 }
@@ -1537,11 +1547,11 @@ function Invoke-Tiny11CoreBuildPipeline {
                 if ($t.Op -eq 'add') {
                     # Pre-escape " for reg.exe (see Tiny11.Actions.Registry.psm1).
                     $regValue = ([string]$t.Value) -replace '"', '\"'
-                    & 'reg.exe' 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $regValue '/f' | Out-Null
+                    & $script:Tiny11RegExe 'add' $fullKey '/v' $t.Name '/t' $t.Type '/d' $regValue '/f' | Out-Null
                 }
             }
             # Plus the setup-image-only CmdLine override (upstream tiny11Coremaker.ps1 line 514)
-            & 'reg.exe' 'add' 'HKLM\zSYSTEM\Setup' '/v' 'CmdLine' '/t' 'REG_SZ' '/d' 'X:\sources\setup.exe' '/f' | Out-Null
+            & $script:Tiny11RegExe 'add' 'HKLM\zSYSTEM\Setup' '/v' 'CmdLine' '/t' 'REG_SZ' '/d' 'X:\sources\setup.exe' '/f' | Out-Null
         }
         finally {
             foreach ($hive in @('SYSTEM', 'SOFTWARE', 'NTUSER', 'DEFAULT', 'COMPONENTS')) {
