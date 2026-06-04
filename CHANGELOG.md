@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`verify-p4.ps1` Test 7 waits for the cleanup task to complete** (polls task state) instead of a fixed 15s sleep.
 - **De-versioned the smoke-script labels/comments** (dropped `v1.0.x` references from `verify-p3`..`verify-p7`).
 - **Documentation accuracy sweep.** README: catalog count corrected to 75; replaced the resolved v1.0.1 sponsored-apps "known limitation" with the current catalog-complete note; corrected the PowerShell-for-GUI requirement and the (now-shipped) bundled-launcher caveat; replaced the drift-prone hardcoded test-count narrative with a capability summary; added the v1.0.30 final-cut smoke matrix to the tested-matrices list. CONTRIBUTING: removed the non-existent `dependencies/` directory from the project-structure tree. CHANGELOG: corrected the `[1.0.30]` release date (2026-05-30 → 2026-05-31) and the v1.0.29 retraction note (the signed tag was deleted, not retained).
+- **Bumped Velopack `1.0.1` → `1.2.0`** — both pins moved in lockstep: the `vpk` CLI pin (`release.yml` env `VPK_VERSION`) and the `Velopack` NuGet `PackageReference` (`launcher/tiny11options.Launcher.csproj`). Routine refresh to the current stable; no API-surface change (the launcher uses the stable `VelopackApp` / `UpdateManager` / `GithubSource` APIs). The 1.2.0 runtime reaches existing installs on the next tagged release.
 
 ## [1.0.30] - 2026-05-31
 
