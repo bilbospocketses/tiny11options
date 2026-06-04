@@ -6,7 +6,7 @@
 
 > **Built on the shoulders of [ntdevlabs / NTDEV](https://github.com/ntdevlabs) and the upstream [tiny11builder](https://github.com/ntdevlabs/tiny11builder) project.** Enormous credit to the upstream maintainer for the years of deep image-trimming work that this fork stands on — the DISM orchestration, the `install.wim` + `boot.wim` mount/commit choreography, the autounattend integration, the scratch-mount-deploy pipeline. tiny11options exists only because that foundation was built first. If you find this fork useful, please go give the original a star and consider donating to them for this incredible project!
 
-A catalog-driven Windows 11 image trimmer with an interactive WebView2 + WPF wizard. Build your own customized Win11 ISO by picking what to keep and what to remove from a curated list of ~74 items across 10 categories.
+A catalog-driven Windows 11 image trimmer with an interactive WebView2 + WPF wizard. Build your own customized Win11 ISO by picking what to keep and what to remove from a curated list of 75 items across 10 categories.
 
 ## What's different from upstream
 
@@ -201,7 +201,7 @@ The task:
 - Runs as **SYSTEM** at boot + daily + on every WU EventID 19. Default execution time limit 30 minutes.
 - Is **opt-out**. Uncheck "Install post-boot cleanup task" in Step 1 of the launcher, or pass `-NoPostBootCleanup` on the CLI.
 
-**Known limitation (v1.0.1):** the cleanup script only re-applies what the catalog enumerates. The `tweak-disable-sponsored-apps` item currently covers 4 of the 11 canonical `ContentDeliveryManager` registry values; the other 7 (FeatureManagementEnabled, PreInstalledAppsEverEnabled, RotatingLockScreenEnabled, RotatingLockScreenOverlayEnabled, SlideshowEnabled, SoftLandingEnabled, SystemPaneSuggestionsEnabled) plus `HKLM\SOFTWARE\Policies\Microsoft\WindowsStore\AutoDownload=2` remain uncovered by the catalog and will be restored by CUs. The 4 values that *are* covered propagate to user profiles created after cleanup runs (the cleanup loads `C:\Users\Default\NTUSER.DAT` into a transient `HKU:\tiny11_default` mount, writes through it, and unloads -- new accounts inherit the disabled state). Catalog completeness lands in v1.0.2.
+**Sponsored-app coverage (catalog-complete since v1.0.3).** The `tweak-disable-sponsored-apps` item disables the full `ContentDeliveryManager` value set (sponsored content, Start-pin suggestions, lock-screen rotation/slideshow, feature management, consumer features) plus the `HKLM\SOFTWARE\Policies\Microsoft\WindowsStore\AutoDownload=2` policy, and zeroes any residual `SubscribedContent-*Enabled` values via a pattern-zero pass. These per-user values propagate to profiles created after cleanup runs (the task loads `C:\Users\Default\NTUSER.DAT` into a transient `HKU:\tiny11_default` mount, writes through it, and unloads -- new accounts inherit the disabled state).
 
 ### Choose carefully -- build-time selections are permanent for the life of this ISO
 
@@ -230,7 +230,7 @@ The launcher offers two build modes in Step 1. Pick the one that fits your use c
 
 ### Standard tiny11 (default)
 
-Reduced Windows 11 image. Removes ~74 catalog items (consumer apps, Office stubs, telemetry components, sponsored apps, scheduled tasks, etc.) configurable per-item in Step 2. Output ISO is ~2 GB smaller than vanilla Windows 11; with the "Fast build" checkbox unchecked, recovery compression saves an additional ~2 GB.
+Reduced Windows 11 image. Removes ~75 catalog items (consumer apps, Office stubs, telemetry components, sponsored apps, scheduled tasks, etc.) configurable per-item in Step 2. Output ISO is ~2 GB smaller than vanilla Windows 11; with the "Fast build" checkbox unchecked, recovery compression saves an additional ~2 GB.
 
 **Use when:** you want a leaner Windows 11 install for everyday use, kept up to date via Windows Update, with the option to add languages or enable features later. Suitable as a daily-driver Windows install.
 
@@ -268,7 +268,7 @@ The catalog item `remove-edge` controls Edge browser; `remove-edge-webview` (if 
 
 ## Catalog
 
-Single source of truth: [`catalog/catalog.json`](catalog/catalog.json). 10 categories, ~74 items, every item traceable to the legacy upstream removal list.
+Single source of truth: [`catalog/catalog.json`](catalog/catalog.json). 10 categories, 75 items, every item traceable to the legacy upstream removal list.
 
 Each item has:
 - `id` — stable identifier used in profile JSONs
@@ -297,7 +297,7 @@ A profile JSON has shape `{ "version": 1, "selections": { "<item-id>": "apply"|"
 
 - Windows 11 host (10 may work for scripted builds; GUI requires WebView2 Runtime, which is preinstalled on Win11)
 - **Host architecture: x64.** The bundled `tiny11options.exe` launcher is published `win-x64` only and rejects non-x64 hosts at startup (see [Architecture and language support](#architecture-and-language-support) below).
-- PowerShell 7 (`pwsh.exe`) on PATH for the GUI; PowerShell 5.1 (`powershell.exe`) is sufficient for scripted mode
+- Windows PowerShell 5.1 (`powershell.exe`, built into every Windows install) is sufficient for both the GUI and scripted mode; PowerShell 7+ (`pwsh.exe`) also works
 - Microsoft Edge WebView2 Runtime (preinstalled on Win11; on Win10, install from https://developer.microsoft.com/microsoft-edge/webview2/)
 - ~10 GB free in the scratch directory
 - A Windows 11 ISO (Microsoft media-creation-tool, direct ISO download, or VL/MSDN multi-edition).
@@ -341,7 +341,7 @@ If detection fails (marker line absent, malformed), the language code defaults t
 
 `pwsh.exe` invoked from another `pwsh.exe` terminal (`pwsh → pwsh -File tiny11maker.ps1`) **deterministically produces ISOs that fail Win11 25H2 Setup product-key validation**, even though the build output is content-identical to working invocations. Mechanism is unknown; full investigation 2026-05-04 → 2026-05-06 confirmed every byte of the produced ISO matches a working build except for `reg.exe` timestamp/sequence noise inside hives.
 
-The script blocks this combination at runtime with a clear error message. **Workaround**: launch `tiny11maker.ps1` from a `cmd.exe` or Windows PowerShell 5.1 terminal. A future bundled `.exe` launcher will eliminate this caveat by always running under a controlled host.
+The script blocks this combination at runtime with a clear error message. **Workaround**: launch `tiny11maker.ps1` from a `cmd.exe` or Windows PowerShell 5.1 terminal — or simply use the bundled `tiny11options.exe` launcher, which sidesteps the caveat entirely by always running the build under Windows PowerShell 5.1 (and needs no `pwsh` install at all).
 
 Five working invocation patterns:
 - `cmd → powershell -File tiny11maker.ps1` ✅
@@ -359,11 +359,9 @@ One blocked:
 pwsh -NoProfile -File tests/Run-Tests.ps1
 ```
 
-521 Pester tests (catalog parsing + schema validation, selection model + reconcile/lock logic, registry hive helpers, four action handlers including the post-boot online emitter shapes, action dispatcher, ISO mounting + edition enumeration, autounattend templating + drift detection, worker / Core dispatch, bridge protocol, WebView2 SDK detection, post-boot generator + helpers golden + Format-PSNamedParams + task XML + SetupComplete + Install + the v1.0.2 audit-bundle regression guards across A3 / A4 / A5 / A6 / A7 / A11 + boot.wim pipelineSucceeded wrap + Core Hives -Global + the v1.0.3 BCP-47 language regex coverage across every Windows 11 Language Pack tag including Serbian Latin + the v1.0.3 `registry-pattern-zero` action-type coverage from catalog completeness phase 2 + v1.0.7 takeown/icacls stderr noise-suppression guards + v1.0.8 audit-cleanup guards: registry pattern-zero scope + catalog hive/required-field validation + filesystem noise-filter anchored regex + orchestrator type-aware Build-RelaunchArgs / NonInteractive self-elevation refuse + v1.0.10 retargeting of the UI source-text Pester suite onto the v1.0.9 Step 1 two-column / Step 3 segmented-cards surface: canMoveForward forward-nav predicate gates on outputFilled + outputClean + Output ISO Step 1 field markup with `.req-asterisk` label + `aria-required` input + reserved `.error-slot`, replacing 9 deleted assertions against the pre-v1.0.9 Step 3 output-required-warning + outputMissing predicate + Build ISO tooltip + 4 anchor rewrites on Cleanup.Tests.ps1 for buildDisabled wiring moved into renderIdleCtaCard / build-error path running through renderErrorCard + 1 PostBootCleanup anchor rewrite onto stable input id literals; dead `.output-required-warning` CSS rules + their 3 retained CSS-rule tests pruned in the same release + v1.0.13 RefocusUpdateCheck coverage for the focus-based update re-check: UPDATE_CHECK_MIN_INTERVAL_MS 5-min throttle constant + lastUpdateCheckMs state init + boot-time stamp-before-dispatch order + window.focus listener registration + skip-if-applying / throttle-window / stamp-before-dispatch guard clauses + dispatch-shape match against the boot handshake) and 140 xUnit launcher tests (BuildHandlers / CleanupHandlers / EmbeddedResources drift / payload contracts + v1.0.3 ArchitectureGate rejection coverage for arm64 / arm / x86 hosts + v1.0.3 A13 HeadlessArgs parser + BuildLogPathResolver coverage + v1.0.7 AppVersion formatter + v1.0.8 ArgQuoting shared helper + bridge requestType echo + Process state cache-before-Dispose + v1.0.9 AutoScratchPath generator + PathValidationHandlers covering scratch + output path validation with writability probe + v1.0.11 AutoScratchPath relocation guards: path is under `<UserDocuments>\tiny11_outputs` + leaf uses `tiny11-<8charhex>` suffix pattern + helper is side-effect-free relative to disk).
+The test suite spans **Pester** (PowerShell module behavior — catalog parsing + schema validation, the selection / reconcile / lock model, registry-hive helpers, the four typed action handlers, the action dispatcher, ISO mounting + edition enumeration, autounattend templating + drift detection, Worker / Core dispatch, the bridge protocol, WebView2 SDK detection, and the post-boot cleanup generator) and **xUnit** (the .NET launcher — bridge contracts, manifest + embedded-resource extraction/drift, path validation, the architecture gate, and headless `--log` arg parsing). The live counts come from the runs themselves — `pwsh -NoProfile -File tests/Run-Tests.ps1` for Pester, `dotnet test` for xUnit — rather than a hardcoded figure that drifts every release.
 
-Note on the v1.0.1 "409 / 0" headline: the 2026-05-14 empirical audit reconciled this against `Invoke-Pester` runs in a worktree at each landing commit and revealed v1.0.1 actually shipped at **408 passed / 1 failed** (the prior figure reported `TotalCount` rather than `PassedCount`). The persistent failure was a CRLF-vs-LF byte-equal mismatch in the helpers golden fixture and healed in the v1.0.2 cycle by the A6 W2 line-ending-normalize fix. The full audit-verified chain is embedded in `CHANGELOG.md` `[1.0.1] > Test counts > Audit-verified Pester test count chain`.
-
-Build path and ISO install are smoke-tested via two documented matrices: the v1.0.1 baseline at `docs/superpowers/smoke/2026-05-12-post-boot-cleanup-smoke.md` (P1-P9 all PASS), and the v1.0.3 cycle matrix at `docs/superpowers/smoke/2026-05-14-v1.0.3-catalog-and-logging-smoke.md` (P1-P9 + A11-I3-S2 + A13-S1..S4 all PASS; A11-I3-S1 N/A on 25H2 with documented indirect-verification rationale; Findings 1, 3, 4 captured as informational). End-to-end automated build-pipeline + GUI tests beyond these manual matrices remain a future follow-up.
+Build path and ISO install are smoke-tested via three documented matrices: the v1.0.1 baseline at `docs/superpowers/smoke/2026-05-12-post-boot-cleanup-smoke.md` (P1-P9 all PASS), the v1.0.3 cycle matrix at `docs/superpowers/smoke/2026-05-14-v1.0.3-catalog-and-logging-smoke.md` (P1-P9 + A11-I3-S2 + A13-S1..S4 all PASS; A11-I3-S1 N/A on 25H2 with documented indirect-verification rationale; Findings 1, 3, 4 captured as informational), and the v1.0.30 final-cut regression matrix at `docs/superpowers/smoke/2026-05-31-v1.0.30-final-cut-smoke.md` (P1-P9 + P9-static + additives, 16/16 PASS, signed off 2026-05-31). End-to-end automated build-pipeline + GUI tests beyond these manual matrices remain a future follow-up.
 
 ## VM testing recommendations
 

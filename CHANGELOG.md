@@ -13,8 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`verify-p9-static.ps1` auto-resolves the install.wim index** from the ISO's `autounattend.xml /IMAGE/INDEX`, replacing a fragile `Windows 11 Pro` name-match default that threw on a Home-targeted FastBuild (FastBuild modifies only the installed edition; the rest are pristine).
 - **`verify-p4.ps1` Test 7 waits for the cleanup task to complete** (polls task state) instead of a fixed 15s sleep.
 - **De-versioned the smoke-script labels/comments** (dropped `v1.0.x` references from `verify-p3`..`verify-p7`).
+- **Documentation accuracy sweep.** README: catalog count corrected to 75; replaced the resolved v1.0.1 sponsored-apps "known limitation" with the current catalog-complete note; corrected the PowerShell-for-GUI requirement and the (now-shipped) bundled-launcher caveat; replaced the drift-prone hardcoded test-count narrative with a capability summary; added the v1.0.30 final-cut smoke matrix to the tested-matrices list. CONTRIBUTING: removed the non-existent `dependencies/` directory from the project-structure tree. CHANGELOG: corrected the `[1.0.30]` release date (2026-05-30 → 2026-05-31) and the v1.0.29 retraction note (the signed tag was deleted, not retained).
 
-## [1.0.30] - 2026-05-30
+## [1.0.30] - 2026-05-31
 
 **Fixes the `Dismount-WindowsImage -Save` lock that broke ISO creation — at its real root cause.** v1.0.29 (now retracted) misdiagnosed the WIM-commit failure as transient host interference and bolted on a retry; the lock is actually an **in-process .NET registry-provider handle** held by the build's own PowerShell process, which a retry can never clear. Offline-hive value enumeration now uses `reg.exe` exclusively (never the `HKLM:\z*` provider), so no hive handle is held at dismount time — the reg.exe-only pattern of upstream `tiny11builder` and Microsoft's offline-servicing docs. Pester 521/0 (plus the admin-gated Synthetic harness).
 
@@ -36,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Notes
 
 - **Process fix:** v1.0.29 shipped without a real end-to-end ISO build — only the content-agnostic synthetic-WIM test ran in CI — which is exactly why a real-build regression slipped through. v1.0.30 is gated on an actual `install.wim`-loading build (load hives → pattern-zero → unload → dismount-save) before release.
-- v1.0.29 was **retracted**: its GitHub release and Velopack feed assets were deleted, so v1.0.28 remains the offered latest until v1.0.30 ships. The signed `v1.0.29` tag is retained — the repo's tag-protection ruleset blocks tag deletion.
+- v1.0.29 was **retracted**: its GitHub release, Velopack feed assets, and the signed `v1.0.29` tag were all removed — deleting the protected tag required temporarily relaxing the tag-protection ruleset, then restoring it. v1.0.28 remained the offered latest until v1.0.30 shipped.
 
 ## [1.0.29] - 2026-05-31
 
