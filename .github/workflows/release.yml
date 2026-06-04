@@ -21,7 +21,7 @@ on:
       - 'v*'
 
 env:
-  VPK_VERSION: 1.0.1
+  VPK_VERSION: 1.2.0
 
 jobs:
   build-sign-release:
