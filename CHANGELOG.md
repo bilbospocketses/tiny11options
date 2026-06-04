@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.31] - 2026-06-04
+
+**Maintenance release — Velopack auto-update runtime refresh.** Updates the bundled Velopack updater `1.0.1` → `1.2.0` and folds in the post-v1.0.30 self-configuring smoke harness and documentation accuracy sweep. No change to the image-build logic or the ISO it produces — only the launcher executable and its updater runtime change. Ships unsigned (Trusted Signing deferred to v1.1.0); existing installs auto-update to this build.
+
 ### Changed
 
 - **Smoke harness (`tests/smoke/`) is now self-configuring.** `verify-p8.ps1` and `verify-p9.ps1` derive each catalog item's keep-vs-remove expectation from the build's own baked `tiny11-cleanup.ps1` (the generator emits an action only for apply-state items), instead of requiring operator-supplied keep-list flags — a forgotten flag previously produced a misleading FAIL on a kept-item build. Verified offline against an extracted real baked script + a synthetic quote-boundary test.
