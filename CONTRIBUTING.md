@@ -55,7 +55,6 @@ tiny11options/
 ├── autounattend.template.xml        Bundled autounattend template (embedded in the exe; no runtime fetch as of v1.0.28)
 ├── catalog/                         Removal lists, registry tweaks, capability deprovisioning data
 ├── config/                          Default JSON profiles consumed by the GUI + headless flows
-├── dependencies/                    Vendored helpers
 ├── src/                             PowerShell modules (Tiny11.*.psm1)
 ├── ui/                              WebView2 UI assets (index.html, app.js, style.css)
 ├── launcher/                        .NET 10 WebView2 host
