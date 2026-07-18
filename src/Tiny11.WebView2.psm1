@@ -1,7 +1,5 @@
 Set-StrictMode -Version Latest
 
-$PinnedVersion = '1.0.2535.41'
-
 # Minimum sizes must match the XAML MinWidth/MinHeight below; clamping prevents loading a
 # stale settings.json from a previous build whose minimums were smaller.
 $script:MinWindowWidth  = 1000
@@ -33,18 +31,40 @@ function Save-Tiny11UserSettings {
     [System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
 }
 
+function Get-Tiny11WebView2Version {
+    # The launcher csproj's <PackageReference> is the single source of truth for the
+    # WebView2 version. Reading it here (instead of hardcoding a copy) means a routine
+    # Dependabot bump to the csproj flows through automatically -- the SDK-path
+    # resolution below follows it with no second edit, so the two never drift.
+    [CmdletBinding()]
+    param([string]$CsprojPath)
+    if (-not $CsprojPath) {
+        $CsprojPath = Join-Path $PSScriptRoot '..\launcher\tiny11options.Launcher.csproj'
+    }
+    if (-not (Test-Path $CsprojPath)) {
+        throw "Cannot resolve the WebView2 version: launcher csproj not found at $CsprojPath."
+    }
+    $content = Get-Content -Path $CsprojPath -Raw
+    if ($content -match '<PackageReference\s+Include="Microsoft\.Web\.WebView2"\s+Version="([^"]+)"') {
+        return $Matches[1]
+    }
+    throw "Cannot resolve the WebView2 version: no Microsoft.Web.WebView2 <PackageReference> in $CsprojPath."
+}
+
 function Get-Tiny11WebView2SdkPath {
     [CmdletBinding()]
-    param([string]$NugetPackagesRoot)
+    param([string]$NugetPackagesRoot, [string]$Version)
     # Resolve the NuGet global packages folder. NUGET_PACKAGES env var overrides
     # the default per Microsoft's NuGet docs on global-packages-and-cache-folders.
     if (-not $NugetPackagesRoot) {
         $NugetPackagesRoot = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE '.nuget\packages' }
     }
+    # Version tracks the csproj (single source of truth) unless the caller overrides it.
+    if (-not $Version) { $Version = Get-Tiny11WebView2Version }
     # NuGet caches as <root>\<id-lowercased>\<version>\... -- package id is lowercased on disk.
     # Managed wrappers live under lib\<tfm>\; net462 is the right TFM for PowerShell 5.1
     # (.NET Framework 4.x WPF host). Native loader lives under runtimes\win-x64\native\.
-    $pkgDir = Join-Path $NugetPackagesRoot "microsoft.web.webview2\$PinnedVersion"
+    $pkgDir = Join-Path $NugetPackagesRoot "microsoft.web.webview2\$Version"
     [pscustomobject]@{
         VersionDir = $pkgDir
         CoreDll    = Join-Path $pkgDir 'lib\net462\Microsoft.Web.WebView2.Core.dll'
@@ -193,4 +213,4 @@ function Show-Tiny11Wizard {
     [void]$window.ShowDialog()
 }
 
-Export-ModuleMember -Function Get-Tiny11WebView2SdkPath, Test-Tiny11WebView2SdkPresent, Test-Tiny11WebView2RuntimeInstalled, Show-Tiny11Wizard, Set-Tiny11WizardWindow, Get-Tiny11WizardWindow, Get-Tiny11WizardWebView, Get-Tiny11UserSettingsPath, Get-Tiny11UserSettings, Save-Tiny11UserSettings
+Export-ModuleMember -Function Get-Tiny11WebView2Version, Get-Tiny11WebView2SdkPath, Test-Tiny11WebView2SdkPresent, Test-Tiny11WebView2RuntimeInstalled, Show-Tiny11Wizard, Set-Tiny11WizardWindow, Get-Tiny11WizardWindow, Get-Tiny11WizardWebView, Get-Tiny11UserSettingsPath, Get-Tiny11UserSettings, Save-Tiny11UserSettings

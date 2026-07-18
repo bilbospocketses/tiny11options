@@ -110,10 +110,11 @@
     <!-- Microsoft.Web.WebView2 brings Core + Wpf managed wrappers + the
          native WebView2Loader.dll runtime asset. NuGet handles all three;
          MSBuild copies WebView2Loader.dll to the output dir automatically
-         via the package's build/native targets. Pinned to the exact same
-         version (1.0.2535.41) that was previously vendored under
-         dependencies/webview2/. Bumping is a routine Dependabot PR. -->
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2535.41" />
+         via the package's build/native targets. This <PackageReference> is the
+         SINGLE SOURCE OF TRUTH for the WebView2 version: src/Tiny11.WebView2.psm1
+         resolves the SDK path from it (Get-Tiny11WebView2Version), so a routine
+         Dependabot bump flows through with no second edit. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
