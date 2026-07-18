@@ -2,19 +2,52 @@ Set-StrictMode -Version 3.0
 Import-Module "$PSScriptRoot/Tiny11.TestHelpers.psm1" -Force
 Import-Tiny11Module -Name 'Tiny11.WebView2'
 
+BeforeAll {
+    # The WebView2 version is sourced from the launcher csproj (single source of
+    # truth); derive the expected value the same way so these tests never hardcode a
+    # version that drifts when Dependabot bumps the csproj.
+    $script:ver = Get-Tiny11WebView2Version
+}
+
+Describe "Get-Tiny11WebView2Version" {
+    It "reads the Microsoft.Web.WebView2 version from the launcher csproj" {
+        $script:ver | Should -Match '^\d+\.\d+\.\d+\.\d+$'
+    }
+    It "honors an explicit -CsprojPath override" {
+        $tmp = New-TempScratchDir
+        try {
+            $csproj = Join-Path $tmp 'x.csproj'
+            Set-Content -Path $csproj -Value '<Project><ItemGroup><PackageReference Include="Microsoft.Web.WebView2" Version="9.9.9.9" /></ItemGroup></Project>'
+            Get-Tiny11WebView2Version -CsprojPath $csproj | Should -Be '9.9.9.9'
+        } finally {
+            Remove-TempScratchDir -Path $tmp
+        }
+    }
+    It "throws when the csproj has no WebView2 PackageReference" {
+        $tmp = New-TempScratchDir
+        try {
+            $csproj = Join-Path $tmp 'x.csproj'
+            Set-Content -Path $csproj -Value '<Project></Project>'
+            { Get-Tiny11WebView2Version -CsprojPath $csproj } | Should -Throw -ExpectedMessage '*no Microsoft.Web.WebView2*'
+        } finally {
+            Remove-TempScratchDir -Path $tmp
+        }
+    }
+}
+
 Describe "Get-Tiny11WebView2SdkPath" {
     It "returns paths under the NuGet packages cache for microsoft.web.webview2/<version>" {
         $r = Get-Tiny11WebView2SdkPath
         $r.CoreDll   | Should -Match 'lib[\\/]net462[\\/]Microsoft\.Web\.WebView2\.Core\.dll$'
         $r.WpfDll    | Should -Match 'lib[\\/]net462[\\/]Microsoft\.Web\.WebView2\.Wpf\.dll$'
         $r.NativeDll | Should -Match 'runtimes[\\/]win-x64[\\/]native[\\/]WebView2Loader\.dll$'
-        $r.VersionDir | Should -Match 'microsoft\.web\.webview2[\\/]1\.0\.2535\.41$'
+        $r.VersionDir | Should -Match "microsoft\.web\.webview2[\\/]$([regex]::Escape($script:ver))$"
     }
     It "honors -NugetPackagesRoot override" {
         $tmp = New-TempScratchDir
         try {
             $r = Get-Tiny11WebView2SdkPath -NugetPackagesRoot $tmp
-            $r.CoreDll | Should -BeLike "$tmp*microsoft.web.webview2*1.0.2535.41*lib*net462*Microsoft.Web.WebView2.Core.dll"
+            $r.CoreDll | Should -BeLike "$tmp*microsoft.web.webview2*$script:ver*lib*net462*Microsoft.Web.WebView2.Core.dll"
         } finally {
             Remove-TempScratchDir -Path $tmp
         }
@@ -25,11 +58,15 @@ Describe "Get-Tiny11WebView2SdkPath" {
         try {
             $env:NUGET_PACKAGES = $tmp
             $r = Get-Tiny11WebView2SdkPath
-            $r.CoreDll | Should -BeLike "$tmp*microsoft.web.webview2*1.0.2535.41*lib*net462*Microsoft.Web.WebView2.Core.dll"
+            $r.CoreDll | Should -BeLike "$tmp*microsoft.web.webview2*$script:ver*lib*net462*Microsoft.Web.WebView2.Core.dll"
         } finally {
             $env:NUGET_PACKAGES = $original
             Remove-TempScratchDir -Path $tmp
         }
+    }
+    It "honors an explicit -Version override" {
+        $r = Get-Tiny11WebView2SdkPath -NugetPackagesRoot 'C:\pkgs' -Version '1.2.3.4'
+        $r.VersionDir | Should -BeLike '*microsoft.web.webview2*1.2.3.4'
     }
 }
 
@@ -37,8 +74,8 @@ Describe "Test-Tiny11WebView2SdkPresent" {
     It "returns paths object when all 3 DLLs present" {
         $tmp = New-TempScratchDir
         try {
-            $libDir    = Join-Path $tmp 'microsoft.web.webview2\1.0.2535.41\lib\net462'
-            $nativeDir = Join-Path $tmp 'microsoft.web.webview2\1.0.2535.41\runtimes\win-x64\native'
+            $libDir    = Join-Path $tmp "microsoft.web.webview2\$script:ver\lib\net462"
+            $nativeDir = Join-Path $tmp "microsoft.web.webview2\$script:ver\runtimes\win-x64\native"
             New-Item -ItemType Directory -Force -Path $libDir    | Out-Null
             New-Item -ItemType Directory -Force -Path $nativeDir | Out-Null
             New-Item -ItemType File -Path (Join-Path $libDir    'Microsoft.Web.WebView2.Core.dll') -Force | Out-Null
@@ -71,7 +108,7 @@ Describe "Test-Tiny11WebView2SdkPresent" {
     It "throws when only some DLLs are present" {
         $tmp = New-TempScratchDir
         try {
-            $libDir = Join-Path $tmp 'microsoft.web.webview2\1.0.2535.41\lib\net462'
+            $libDir = Join-Path $tmp "microsoft.web.webview2\$script:ver\lib\net462"
             New-Item -ItemType Directory -Force -Path $libDir | Out-Null
             New-Item -ItemType File -Path (Join-Path $libDir 'Microsoft.Web.WebView2.Core.dll') -Force | Out-Null
             { Test-Tiny11WebView2SdkPresent -NugetPackagesRoot $tmp } | Should -Throw -ExpectedMessage '*WebView2 SDK DLL missing*'
