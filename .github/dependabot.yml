@@ -31,6 +31,16 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
+    # Batch all minor + patch NuGet bumps into ONE weekly PR so related packages
+    # (the Velopack SDK, xUnit + runner, Microsoft.NET.Test.Sdk, WebView2) move
+    # together instead of as split PRs. Majors still open individually for review.
+    groups:
+      nuget-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: github-actions
     directory: /
