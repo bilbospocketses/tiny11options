@@ -359,6 +359,8 @@ One blocked:
 pwsh -NoProfile -File tests/Run-Tests.ps1
 ```
 
+The runner pins Pester 6.1.0 (its `PESTER_PIN` line is the only place the version lives; CI reads it from there) and runs the suite in a fresh process. `-Tag` / `-ExcludeTag` filter as before.
+
 The test suite spans **Pester** (PowerShell module behavior — catalog parsing + schema validation, the selection / reconcile / lock model, registry-hive helpers, the four typed action handlers, the action dispatcher, ISO mounting + edition enumeration, autounattend templating + drift detection, Worker / Core dispatch, the bridge protocol, WebView2 SDK detection, and the post-boot cleanup generator) and **xUnit** (the .NET launcher — bridge contracts, manifest + embedded-resource extraction/drift, path validation, the architecture gate, and headless `--log` arg parsing). The live counts come from the runs themselves — `pwsh -NoProfile -File tests/Run-Tests.ps1` for Pester, `dotnet test` for xUnit — rather than a hardcoded figure that drifts every release.
 
 Build path and ISO install are smoke-tested via three documented matrices: the v1.0.1 baseline at `docs/superpowers/smoke/2026-05-12-post-boot-cleanup-smoke.md` (P1-P9 all PASS), the v1.0.3 cycle matrix at `docs/superpowers/smoke/2026-05-14-v1.0.3-catalog-and-logging-smoke.md` (P1-P9 + A11-I3-S2 + A13-S1..S4 all PASS; A11-I3-S1 N/A on 25H2 with documented indirect-verification rationale; Findings 1, 3, 4 captured as informational), and the v1.0.30 final-cut regression matrix at `docs/superpowers/smoke/2026-05-31-v1.0.30-final-cut-smoke.md` (P1-P9 + P9-static + additives, 16/16 PASS, signed off 2026-05-31). End-to-end automated build-pipeline + GUI tests beyond these manual matrices remain a future follow-up.

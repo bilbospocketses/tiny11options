@@ -46,7 +46,15 @@ jobs:
 
       - name: Test (Pester)
         shell: pwsh
-        run: pwsh -NoProfile -File tests/Run-Tests.ps1
+        # tests/Run-Tests.ps1 owns the Pester version (its PESTER_PIN line). Read it from
+        # there and install exactly that version so the number lives in one place;
+        # the runner then re-imports the pin itself and fails if anything else loaded.
+        run: |
+          $pin = (Select-String -Path tests/Run-Tests.ps1 -Pattern "= '([^']+)',\s+# PESTER_PIN").Matches[0].Groups[1].Value
+          Write-Host "Pester pin from tests/Run-Tests.ps1: $pin"
+          Install-Module Pester -RequiredVersion $pin -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+          pwsh -NoProfile -File tests/Run-Tests.ps1
+          if ($LASTEXITCODE -ne 0) { throw "tests/Run-Tests.ps1 exited $LASTEXITCODE" }
 
       - name: Upload test results
         if: always()
