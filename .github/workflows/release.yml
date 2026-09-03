@@ -76,11 +76,16 @@ jobs:
 
       - name: Test (Pester)
         shell: pwsh
-        # v1.0.8 audit WARNING ci B1: use Run-Tests.ps1 so the
-        # #Requires Pester 5.3.1/5.99.99 pin from v1.0.2 A6 W4 is honored.
-        # Inline config previously bypassed the pin; would silently regress
-        # against Pester 6.x when PSGallery rolls it as latest.
-        run: pwsh -NoProfile -File tests/Run-Tests.ps1
+        # v1.0.8 audit ci B1 kept: always go through Run-Tests.ps1 (inline config once
+        # bypassed the pin). tests/Run-Tests.ps1 owns the Pester version (its PESTER_PIN line). Read it from
+        # there and install exactly that version so the number lives in one place;
+        # the runner then re-imports the pin itself and fails if anything else loaded.
+        run: |
+          $pin = (Select-String -Path tests/Run-Tests.ps1 -Pattern "= '([^']+)',\s+# PESTER_PIN").Matches[0].Groups[1].Value
+          Write-Host "Pester pin from tests/Run-Tests.ps1: $pin"
+          Install-Module Pester -RequiredVersion $pin -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+          pwsh -NoProfile -File tests/Run-Tests.ps1
+          if ($LASTEXITCODE -ne 0) { throw "tests/Run-Tests.ps1 exited $LASTEXITCODE" }
 
       - name: Publish (single-file, self-contained)
         run: |

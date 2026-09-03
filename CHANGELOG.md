@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Pester pinned at 6.1.0 through `tests/Run-Tests.ps1`** (was `#Requires` 5.3.1 <= Pester < 6, which capped below 6.x "until validated"; the suite is validated on 6.1.0 now, 527/527). The pin moved from the `#Requires` line to a `-PesterVersion` parameter tagged `PESTER_PIN`, the only place the version lives: `ci.yml` and `release.yml` read it from there and `Install-Module` exactly that version before running the script (the runner image's Pester is no longer what runs). The runner re-launches itself in a fresh `pwsh -NoProfile -NonInteractive` so an already-loaded Pester cannot win over `-RequiredVersion`, keeps `-Tag` / `-ExcludeTag`, keeps the v1.0.10 `[System.Environment]::Exit` exit-code contract, and now also fails when Pester returns no result object. CONTRIBUTING and README updated.
+
 ## [1.0.31] - 2026-06-04
 
 **Maintenance release — Velopack auto-update runtime refresh.** Updates the bundled Velopack updater `1.0.1` → `1.2.0` and folds in the post-v1.0.30 self-configuring smoke harness and documentation accuracy sweep. No change to the image-build logic or the ISO it produces — only the launcher executable and its updater runtime change. Ships unsigned (Trusted Signing deferred to v1.1.0); existing installs auto-update to this build.

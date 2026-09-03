@@ -9,7 +9,7 @@ This project is a standalone fork; we do not contribute back to the upstream `nt
 - **PowerShell 5.1** (Windows built-in) — the legacy `tiny11maker.ps1` + `tiny11Coremaker.ps1` runtimes target Windows PowerShell, not PowerShell 7+
 - **.NET 10 SDK** (pinned via `global.json`) — install the matching SDK from [dotnet.microsoft.com](https://dotnet.microsoft.com/download)
 - **WebView2 Runtime** — bundled with modern Windows 11 / Edge; install from Microsoft if missing for older hosts
-- **Pester 5.3.1 – 5.99.99** — pinned in `tests/Run-Tests.ps1`. Install via `Install-Module -Name Pester -RequiredVersion 5.x.x`
+- **Pester 6.1.0** — pinned in `tests/Run-Tests.ps1` (its `PESTER_PIN` line; CI reads the same line). Install via `Install-Module -Name Pester -RequiredVersion 6.1.0`
 - A Windows 10/11 host (the app builds and runs Windows-only; ISO modification requires `dism.exe` + `oscdimg.exe` + `reg.exe`)
 
 ## Setup
@@ -39,7 +39,7 @@ dotnet test launcher/Tests/tiny11options.Launcher.Tests.csproj -c Release  # xUn
 pwsh -NoProfile -File tests/Run-Tests.ps1            # Pester (PowerShell module tests)
 ```
 
-The Pester runner enforces the `#Requires Pester 5.3.1`/`5.99.99` pin so the suite cannot silently regress against a Pester 6.x prerelease.
+The Pester runner re-launches itself in a fresh `pwsh -NoProfile -NonInteractive` and imports exactly the pinned Pester (6.1.0), so an already-loaded Pester in your shell cannot win over the pin and the suite cannot silently drift to whatever the gallery calls latest. `-PesterVersion` trials a newer engine without editing the pin.
 
 ## Project Structure
 
