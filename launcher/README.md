@@ -15,7 +15,7 @@ dotnet build launcher/Tiny11Options.Launcher.csproj
 dotnet test launcher/Tests/tiny11options.Launcher.Tests.csproj
 ```
 
-The xUnit test project lives at `launcher/Tests/`. Pester tests for the PowerShell side are under `tests/` at the repo root.
+The xUnit test project lives at `launcher/Tests/`. Pester tests for the PowerShell side are under `tests/` at the repo root. Run those with `pwsh -NoProfile -File tests/Run-Tests.ps1` (Pester pinned at 6.1.0 on that file's `PESTER_PIN` line).
 
 ## Local single-file publish
 
