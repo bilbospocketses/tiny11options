@@ -16,8 +16,10 @@
 #     security fixes shipped in the actions themselves.
 #
 # Weekly Monday 09:00 ET cadence keeps PR noise manageable for a solo-owned
-# repo. PowerShell modules + Pester pinning are handled out-of-band by
-# Run-Tests.ps1's #Requires; no PowerShellGallery ecosystem entry needed.
+# repo. PowerShell modules + Pester pinning are handled out-of-band by the
+# PESTER_PIN line in tests/Run-Tests.ps1 (ci.yml and release.yml read it, and
+# todo item 2 is the periodic version check); no PowerShellGallery ecosystem
+# entry needed.
 
 version: 2
 updates:
