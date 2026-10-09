@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **American-spelling gate in CI.** `build-and-test` now runs the pinned gate from `bilbospocketses/american-spelling` (v1.0.2) before the build, so a pull request that adds British spelling in its lines or commit messages fails the required check. Exceptions take the inline `spelling: allow` marker or the gate's central allow list; none are kept in this repo.
+
 ### Changed
 
 - **Pester pinned at 6.1.0 through `tests/Run-Tests.ps1`** (was `#Requires` 5.3.1 <= Pester < 6, which capped below 6.x "until validated"; the suite is validated on 6.1.0 now, 527/527). The pin moved from the `#Requires` line to a `-PesterVersion` parameter tagged `PESTER_PIN`, the only place the version lives: `ci.yml` and `release.yml` read it from there and `Install-Module` exactly that version before running the script (the runner image's Pester is no longer what runs). The runner re-launches itself in a fresh `pwsh -NoProfile -NonInteractive` so an already-loaded Pester cannot win over `-RequiredVersion`, keeps `-Tag` / `-ExcludeTag`, keeps the v1.0.10 `[System.Environment]::Exit` exit-code contract, and now also fails when Pester returns no result object. CONTRIBUTING and README updated.
