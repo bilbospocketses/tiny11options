@@ -106,9 +106,11 @@ public class BuildHandlersTests
     public async System.Threading.Tasks.Task DismountSourceIsoIfApplicable_EarlyReturnsCompletedTask_WhenActiveSourceEmpty()
     {
         // The early-return paths (no _activeSource, non-.iso, file doesn't exist)
-        // must complete near-instantly without spinning up a Task.Run shell-out.
+        // must return Task.CompletedTask without spinning up a Task.Run shell-out.
         // Default state has _activeSource = "" so this exercises the first
-        // early-return branch.
+        // early-return branch. Asserting the identity of the returned Task proves
+        // "no shell-out was started" directly; elapsed time is never asserted, so
+        // a slow box cannot fail correct code.
         var bridge = new Bridge(Array.Empty<IBridgeHandler>());
         var bh = new BuildHandlers(bridge, Path.GetTempPath());
 
@@ -116,16 +118,11 @@ public class BuildHandlersTests
             "DismountSourceIsoIfApplicable",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
         var task = (System.Threading.Tasks.Task)method.Invoke(bh, null)!;
-        await task;
-        sw.Stop();
 
+        Assert.Same(System.Threading.Tasks.Task.CompletedTask, task);
+        await task;
         Assert.True(task.IsCompletedSuccessfully);
-        // 250ms ceiling is generous; the early-return path should complete in
-        // microseconds. The point is "demonstrably not blocking on shell-out".
-        Assert.True(sw.ElapsedMilliseconds < 250,
-            $"Early-return path took {sw.ElapsedMilliseconds}ms; expected near-instant.");
     }
 
     [Fact]
