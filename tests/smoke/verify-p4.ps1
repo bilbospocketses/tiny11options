@@ -53,18 +53,23 @@ Cmd 'Trigger Post-Boot Cleanup task' { Start-ScheduledTask -TaskPath '\tiny11opt
 # within a hard-coded sleep, and the one where a late-starting task read as
 # already finished. A run that never finishes is reported as HUNG, not as a
 # wrong value.
-Add-Content -LiteralPath $out -Value '> Waiting for Post-Boot Cleanup to complete (up to 120s) ...'
-$deadline = (Get-Date).AddSeconds(120)
+# Guard past the task's own 30-min ExecutionTimeLimit (src/Tiny11.PostBoot.psm1), so a
+# slow-but-correct run is never reported as HUNG: the scheduler stops a stuck run first.
+$triggerTimeoutSeconds = 1860
+Add-Content -LiteralPath $out -Value "> Waiting for Post-Boot Cleanup to complete (up to ${triggerTimeoutSeconds}s) ..."
+$deadline = (Get-Date).AddSeconds($triggerTimeoutSeconds)
 do {
     Start-Sleep -Seconds 3
-    $taskState = (Get-ScheduledTask -TaskPath '\tiny11options\' -TaskName 'Post-Boot Cleanup' -ErrorAction SilentlyContinue).State
+    # LastRunTime first, then State: a launch between the two reads can then only
+    # pair an OLD LastRunTime with Running (not done), never a fresh one with a stale Ready.
     $taskInfo  = Get-ScheduledTaskInfo -TaskPath '\tiny11options\' -TaskName 'Post-Boot Cleanup' -ErrorAction SilentlyContinue
-    $taskDone  = $taskInfo -and $taskInfo.LastRunTime -ge $triggeredAt -and $taskState -ne 'Running' -and $taskState -ne 'Queued'
-} while (-not $taskDone -and (Get-Date) -lt $deadline)
+    $taskState = (Get-ScheduledTask -TaskPath '\tiny11options\' -TaskName 'Post-Boot Cleanup' -ErrorAction SilentlyContinue).State
+    $taskDone  = $taskInfo -and $taskInfo.LastRunTime -ge $triggeredAt -and $null -ne $taskState -and $taskState -ne 'Running' -and $taskState -ne 'Queued'
+} while (-not $taskDone -and $taskState -ne 'Disabled' -and (Get-Date) -lt $deadline)   # a Disabled task never runs: stop waiting
 if ($taskDone) {
     Add-Content -LiteralPath $out -Value "  (task state after wait: $taskState)"
 } else {
-    Add-Content -LiteralPath $out -Value "  HUNG: Post-Boot Cleanup did not finish its triggered run within 120s (waited on Get-ScheduledTask State / Get-ScheduledTaskInfo LastRunTime; last state=$taskState). The post-trigger value below is NOT a valid result."
+    Add-Content -LiteralPath $out -Value "  HUNG: Post-Boot Cleanup did not finish its triggered run (waited up to ${triggerTimeoutSeconds}s on Get-ScheduledTask State / Get-ScheduledTaskInfo LastRunTime; last state=$taskState). The post-trigger value below is NOT a valid result."
 }
 Start-Sleep -Seconds 2
 Cmd 'Post-trigger value (should be 0x0)' { reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' /v 'SubscribedContent-FAKE99Enabled' }

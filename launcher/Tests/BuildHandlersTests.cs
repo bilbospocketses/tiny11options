@@ -109,8 +109,9 @@ public class BuildHandlersTests
         // must return Task.CompletedTask without spinning up a Task.Run shell-out.
         // Default state has _activeSource = "" so this exercises the first
         // early-return branch. Asserting the identity of the returned Task proves
-        // "no shell-out was started" directly; elapsed time is never asserted, so
-        // a slow box cannot fail correct code.
+        // the method handed back Task.CompletedTask rather than the Task.Run
+        // shell-out task; elapsed time is never asserted, so a slow box cannot
+        // fail correct code.
         var bridge = new Bridge(Array.Empty<IBridgeHandler>());
         var bh = new BuildHandlers(bridge, Path.GetTempPath());
 
