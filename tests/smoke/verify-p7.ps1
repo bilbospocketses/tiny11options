@@ -34,7 +34,8 @@
 # Exit codes:
 #   0 -- PASS: every canary value = 0 in all live user hives + User2 (offline) +
 #        Default, and zero "_Classes" hits in the cleanup log.
-#   1 -- FAIL: a canary missing/non-zero, a "_Classes" hit, or an unmet prerequisite.
+#   1 -- FAIL: a canary missing/non-zero, a "_Classes" hit, an unmet prerequisite, or the
+#        triggered cleanup run not finishing within -TriggerTimeoutSeconds (HUNG).
 
 [CmdletBinding()]
 param(
@@ -42,6 +43,9 @@ param(
     [string]$TaskPath   = '\tiny11options\',
     [string]$TaskName   = 'Post-Boot Cleanup',
     [string]$CleanupLog = 'C:\Windows\Logs\tiny11-cleanup.log',
+    # Past the task's own 30-min ExecutionTimeLimit (src/Tiny11.PostBoot.psm1), so a
+    # slow-but-correct run is never HUNG: the scheduler stops a stuck run first.
+    [int]   $TriggerTimeoutSeconds = 1860,
     [switch]$SkipTrigger
 )
 
@@ -160,9 +164,30 @@ if (-not (Test-Path -LiteralPath $user2Dat)) {
 # Trigger the cleanup task so the fan-out runs over live hives + the Default hive.
 if (-not $SkipTrigger) {
     Write-Host ""
-    Write-Host "[trigger] Start-ScheduledTask '$TaskPath$TaskName' + 30s wait ..."
-    try { Start-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName; Start-Sleep -Seconds 30 }
+    Write-Host "[trigger] Start-ScheduledTask '$TaskPath$TaskName', then wait for that run to finish (up to ${TriggerTimeoutSeconds}s) ..."
+    $started = $false
+    # LastRunTime is whole seconds: back the mark off 1s so this run's own start time counts.
+    $triggeredAt = (Get-Date).AddSeconds(-1)
+    try { Start-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction Stop; $started = $true }
     catch { Write-Host "  WARN: could not start the task ($($_.Exception.Message)); checking current state." -ForegroundColor Yellow }
+    if ($started) {
+        # Poll for the event (this run started AND left Running/Queued), never a fixed sleep.
+        $deadline = (Get-Date).AddSeconds($TriggerTimeoutSeconds)
+        do {
+            Start-Sleep -Seconds 3
+            # LastRunTime first, then State: a launch between the two reads can then only
+            # pair an OLD LastRunTime with Running (not done), never a fresh one with a stale Ready.
+            $info  = Get-ScheduledTaskInfo -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
+            $state = (Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue).State
+            $done  = $info -and $info.LastRunTime -ge $triggeredAt -and $null -ne $state -and $state -ne 'Running' -and $state -ne 'Queued'
+        } while (-not $done -and $state -ne 'Disabled' -and (Get-Date) -lt $deadline)   # a Disabled task never runs: stop waiting
+        if ($done) {
+            Write-Host ("  task finished: state={0} lastResult=0x{1:x}" -f $state, $info.LastTaskResult)
+        } else {
+            $failures.Add("HUNG: task '$TaskPath$TaskName' did not finish its triggered run (waited up to ${TriggerTimeoutSeconds}s on Get-ScheduledTask State / Get-ScheduledTaskInfo LastRunTime; last state=$state)")
+            Write-Host "  HUNG: task did not finish its triggered run (waited up to ${TriggerTimeoutSeconds}s; last state=$state); checking current state anyway." -ForegroundColor Red
+        }
+    }
 } else {
     Write-Host ""
     Write-Host "[trigger] skipped (-SkipTrigger)"

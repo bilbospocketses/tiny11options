@@ -29,7 +29,8 @@
 #
 # Exit codes:
 #   0 -- every kept item PRESENT and every removed item ABSENT.
-#   1 -- at least one assertion failed (kept item missing OR removed item present).
+#   1 -- at least one assertion failed (kept item missing OR removed item present),
+#        or the triggered cleanup run did not finish within -TriggerTimeoutSeconds (HUNG).
 
 [CmdletBinding()]
 param(
@@ -42,7 +43,9 @@ param(
     [switch] $NoTriggerCleanup,
     [string] $TaskPath = '\tiny11options\',
     [string] $TaskName = 'Post-Boot Cleanup',
-    [int]    $TriggerTimeoutSeconds = 120
+    # Past the task's own 30-min ExecutionTimeLimit (src/Tiny11.PostBoot.psm1), so a
+    # slow-but-correct run is never HUNG: the scheduler stops a stuck run first.
+    [int]    $TriggerTimeoutSeconds = 1860
 )
 
 $ErrorActionPreference = 'Stop'
@@ -191,16 +194,26 @@ if (-not $NoTriggerCleanup) {
         Write-Host "NOTE: task '$TaskPath$TaskName' not found -- asserting current state without a cleanup trigger." -ForegroundColor Yellow
     } else {
         Write-Host "Triggering '$TaskName' and waiting for completion (re-stager steady state) ..."
+        # LastRunTime is whole seconds: back the mark off 1s so this run's own start time counts.
+        $triggeredAt = (Get-Date).AddSeconds(-1)
         Start-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName
-        Start-Sleep -Seconds 2
+        # Poll for the event (this run started AND left Running/Queued), never a fixed sleep;
+        # a run that never finishes fails as HUNG instead of as a wrong appx state.
         $deadline = (Get-Date).AddSeconds($TriggerTimeoutSeconds)
         do {
             Start-Sleep -Seconds 3
+            # LastRunTime first, then State: a launch between the two reads can then only
+            # pair an OLD LastRunTime with Running (not done), never a fresh one with a stale Ready.
+            $info  = Get-ScheduledTaskInfo -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
             $state = (Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue).State
-        } while ($state -eq 'Running' -and (Get-Date) -lt $deadline)
-        $info = Get-ScheduledTaskInfo -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
-        $lr   = if ($info) { '0x{0:x}' -f [int]$info.LastTaskResult } else { 'n/a' }
+            $done  = $info -and $info.LastRunTime -ge $triggeredAt -and $null -ne $state -and $state -ne 'Running' -and $state -ne 'Queued'
+        } while (-not $done -and $state -ne 'Disabled' -and (Get-Date) -lt $deadline)   # a Disabled task never runs: stop waiting
+        $lr   = if ($info) { '0x{0:x}' -f $info.LastTaskResult } else { 'n/a' }
         Write-Host "  task state=$state lastResult=$lr"
+        if (-not $done) {
+            $failures.Add("HUNG: task '$TaskPath$TaskName' did not finish its triggered run (waited up to ${TriggerTimeoutSeconds}s on Get-ScheduledTask State / Get-ScheduledTaskInfo LastRunTime; last state=$state)")
+            Write-Host "  HUNG: task did not finish its triggered run (waited up to ${TriggerTimeoutSeconds}s; last state=$state)." -ForegroundColor Red
+        }
         Start-Sleep -Seconds 3   # settle: let deprovision changes surface to Get-AppxProvisionedPackage
         Write-Host ''
     }
