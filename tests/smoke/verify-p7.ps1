@@ -42,6 +42,7 @@ param(
     [string]$TaskPath   = '\tiny11options\',
     [string]$TaskName   = 'Post-Boot Cleanup',
     [string]$CleanupLog = 'C:\Windows\Logs\tiny11-cleanup.log',
+    [int]   $TriggerTimeoutSeconds = 120,
     [switch]$SkipTrigger
 )
 
@@ -160,9 +161,28 @@ if (-not (Test-Path -LiteralPath $user2Dat)) {
 # Trigger the cleanup task so the fan-out runs over live hives + the Default hive.
 if (-not $SkipTrigger) {
     Write-Host ""
-    Write-Host "[trigger] Start-ScheduledTask '$TaskPath$TaskName' + 30s wait ..."
-    try { Start-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName; Start-Sleep -Seconds 30 }
+    Write-Host "[trigger] Start-ScheduledTask '$TaskPath$TaskName', then wait for that run to finish (up to ${TriggerTimeoutSeconds}s) ..."
+    $started = $false
+    # LastRunTime is whole seconds: back the mark off 1s so this run's own start time counts.
+    $triggeredAt = (Get-Date).AddSeconds(-1)
+    try { Start-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction Stop; $started = $true }
     catch { Write-Host "  WARN: could not start the task ($($_.Exception.Message)); checking current state." -ForegroundColor Yellow }
+    if ($started) {
+        # Poll for the event (this run started AND left Running/Queued), never a fixed sleep.
+        $deadline = (Get-Date).AddSeconds($TriggerTimeoutSeconds)
+        do {
+            Start-Sleep -Seconds 3
+            $state = (Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue).State
+            $info  = Get-ScheduledTaskInfo -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
+            $done  = $info -and $info.LastRunTime -ge $triggeredAt -and $state -ne 'Running' -and $state -ne 'Queued'
+        } while (-not $done -and (Get-Date) -lt $deadline)
+        if ($done) {
+            Write-Host ("  task finished: state={0} lastResult=0x{1:x}" -f $state, $info.LastTaskResult)
+        } else {
+            $failures.Add("HUNG: task '$TaskPath$TaskName' did not finish its triggered run within ${TriggerTimeoutSeconds}s (waited on Get-ScheduledTask State / Get-ScheduledTaskInfo LastRunTime; last state=$state)")
+            Write-Host "  HUNG: task did not finish within ${TriggerTimeoutSeconds}s (last state=$state); checking current state anyway." -ForegroundColor Red
+        }
+    }
 } else {
     Write-Host ""
     Write-Host "[trigger] skipped (-SkipTrigger)"

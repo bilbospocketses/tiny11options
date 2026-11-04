@@ -191,16 +191,24 @@ if (-not $NoTriggerCleanup) {
         Write-Host "NOTE: task '$TaskPath$TaskName' not found -- asserting current state without a cleanup trigger." -ForegroundColor Yellow
     } else {
         Write-Host "Triggering '$TaskName' and waiting for completion (re-stager steady state) ..."
+        # LastRunTime is whole seconds: back the mark off 1s so this run's own start time counts.
+        $triggeredAt = (Get-Date).AddSeconds(-1)
         Start-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName
-        Start-Sleep -Seconds 2
+        # Poll for the event (this run started AND left Running/Queued), never a fixed sleep;
+        # a run that never finishes fails as HUNG instead of as a wrong appx state.
         $deadline = (Get-Date).AddSeconds($TriggerTimeoutSeconds)
         do {
             Start-Sleep -Seconds 3
             $state = (Get-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue).State
-        } while ($state -eq 'Running' -and (Get-Date) -lt $deadline)
-        $info = Get-ScheduledTaskInfo -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
-        $lr   = if ($info) { '0x{0:x}' -f [int]$info.LastTaskResult } else { 'n/a' }
+            $info  = Get-ScheduledTaskInfo -TaskPath $TaskPath -TaskName $TaskName -ErrorAction SilentlyContinue
+            $done  = $info -and $info.LastRunTime -ge $triggeredAt -and $state -ne 'Running' -and $state -ne 'Queued'
+        } while (-not $done -and (Get-Date) -lt $deadline)
+        $lr   = if ($info) { '0x{0:x}' -f $info.LastTaskResult } else { 'n/a' }
         Write-Host "  task state=$state lastResult=$lr"
+        if (-not $done) {
+            $failures.Add("HUNG: task '$TaskPath$TaskName' did not finish its triggered run within ${TriggerTimeoutSeconds}s (waited on Get-ScheduledTask State / Get-ScheduledTaskInfo LastRunTime; last state=$state)")
+            Write-Host "  HUNG: task did not finish within ${TriggerTimeoutSeconds}s (last state=$state)." -ForegroundColor Red
+        }
         Start-Sleep -Seconds 3   # settle: let deprovision changes surface to Get-AppxProvisionedPackage
         Write-Host ''
     }
